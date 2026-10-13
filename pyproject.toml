@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-parser"
+version = "3.0.0"
+description = "Local React workspace and CLI for video parsing and organization"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "python-multipart>=0.0.20",
+  "pydantic>=2.5.0",
+  "requests>=2.32.4",
+  "qrcode==8.2",
+  "urllib3>=2.2.2",
+  "pillow>=11.0.0",
+  "python-dotenv>=1.1.0",
+  "openai>=2.3.0",
+  "beautifulsoup4>=4.12.3",
+  "lxml>=5.3.0",
+  "py-mini-racer>=0.6.0",
+  "colorama>=0.4.6",
+  "jieba>=0.42.1",
+  "playwright==1.63.0"
+]
+
+[project.optional-dependencies]
+test = ["httpx2==2.13.1"]
+
+[project.scripts]
+video-parser = "video_parser.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["video_parser*"]
+
+[tool.setuptools.package-data]
+"video_parser.platforms.douyin_utils" = ["*.js"]
+
+"video_parser.integrations.whisper" = ["model-manifest.json"]

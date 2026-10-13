@@ -1,0 +1,4 @@
+interface:
+  display_name: "vedio-download"
+  short_description: "视频链接先列出可用操作并询问需求，再通过本地 CLI 完成任务"
+  default_prompt: "使用 $vedio-download 处理这个视频链接，先列出可用操作并问我需要做什么。"

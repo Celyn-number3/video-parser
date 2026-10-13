@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+  <title id="title">Video Parser — 视频、字幕与转写，本地有序归档</title>
+  <desc id="desc">流程示意而非界面截图：视频链接或本地音视频经过下载、字幕处理或语音转写，保存为可继续使用的项目资料。</desc>
+  <rect width="1200" height="460" rx="20" fill="#101514"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, PingFang SC, sans-serif">
+    <g id="project-title">
+      <path d="M64 48h28v24H64z M74 54l10 6-10 6z" fill="none" stroke="#b4f1d7" stroke-width="2"/>
+      <text x="108" y="67" fill="#99aaa1" font-size="22" letter-spacing="3">LOCAL VIDEO WORKSPACE</text>
+      <text x="60" y="182" fill="#e6ede9" font-size="100" font-weight="700" letter-spacing="-4">Video Parser</text>
+      <text x="64" y="245" fill="#b4f1d7" font-size="36" font-weight="500">视频、字幕与转写，本地有序归档。</text>
+    </g>
+    <g id="media-specimen" transform="translate(882 54)">
+      <rect x="26" y="0" width="224" height="148" rx="12" fill="#191f1c" stroke="#313e35" stroke-width="2"/>
+      <rect x="0" y="22" width="224" height="148" rx="12" fill="#191f1c" stroke="#99aaa1" stroke-width="2"/>
+      <path d="M93 59l49 28-49 28z" fill="#b4f1d7"/>
+      <path d="M25 134h81m13 0h79m-173 16h144" fill="none" stroke="#99aaa1" stroke-width="5" stroke-linecap="round"/>
+      <rect x="26" y="189" width="224" height="34" rx="6" fill="#b4f1d7"/>
+      <path d="M42 206h84m12 0h95" fill="none" stroke="#101514" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g id="workflow" transform="translate(64 316)">
+      <path d="M0 0h1072" stroke="#313e35" stroke-width="2"/>
+      <rect x="0" y="-3" width="304" height="6" rx="3" fill="#b4f1d7"/>
+      <rect x="384" y="-3" width="304" height="6" rx="3" fill="#b4f1d7"/>
+      <rect x="768" y="-3" width="304" height="6" rx="3" fill="#b4f1d7"/>
+      <text y="52" fill="#e6ede9" font-size="32" font-weight="600">01  输入素材</text>
+      <text x="384" y="52" fill="#e6ede9" font-size="32" font-weight="600">02  按需处理</text>
+      <text x="768" y="52" fill="#e6ede9" font-size="32" font-weight="600">03  有序归档</text>
+      <text y="91" fill="#99aaa1" font-size="24">视频链接 / 本地音视频</text>
+      <text x="384" y="91" fill="#99aaa1" font-size="24">下载 / 字幕 / 转写</text>
+      <text x="768" y="91" fill="#99aaa1" font-size="24">项目资料库 / 转写结果</text>
+    </g>
+  </g>
+</svg>

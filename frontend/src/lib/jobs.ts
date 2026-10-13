@@ -1,0 +1,52 @@
+import { request } from './api';
+
+export interface TaskInfo {
+  id: string; state: string; message: string; kind?: string; title?: string;
+  phase?: string; progress?: { done?: number; total?: number; bytes?: number; total_bytes?: number };
+  error_code?: string; queue_position?: number; elapsed_seconds?: number; project_id?: string;
+}
+export interface WorkflowJob<T> extends TaskInfo { result: T }
+export const isActive = (state?: string) => ['queued', 'running', 'cancelling'].includes(state || '');
+export const phases: Record<string, string> = { queued:'排队', starting:'启动', reading:'读取信息', downloading:'下载', transcribing:'转录', extracting:'提取画面', analyzing:'模型分析', validating:'校验', archiving:'归档', completed:'完成', empty:'未识别到语音', partial:'部分完成', failed:'失败', login_required:'需要登录', cancelled:'已取消', interrupted:'重启中断' };
+
+function delay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+export async function pollJob<T extends TaskInfo>(path: string, signal: AbortSignal, update: (job: T) => void): Promise<T> {
+  let failures = 0;
+  while (!signal.aborted) {
+    let result: T;
+    try { result = await request<T>(path, signal); failures = 0; }
+    catch (error) {
+      if (signal.aborted || ++failures >= 5) throw error;
+      await delay(Math.min(1000 * 2 ** failures, 10000), signal); continue;
+    }
+    update(result);
+    if (!isActive(result.state)) return result;
+    await delay(document.hidden ? 5000 : 1000, signal);
+  }
+  throw new DOMException('Aborted', 'AbortError');
+}
+
+export function remember(kind: string, id: string) {
+  try { localStorage.setItem('video-parser:task:' + kind, id); } catch { /* Optional browser convenience. */ }
+}
+export function remembered(kind: string): string | null {
+  try { const id = localStorage.getItem('video-parser:task:' + kind); return id && /^[a-f0-9]{32}$/.test(id) ? id : null; } catch { return null; }
+}
+export async function runWorkflow<T>(path: string, body: unknown, signal: AbortSignal, update: (job: TaskInfo) => void): Promise<T> {
+  const initial = await request<WorkflowJob<T>>(path, signal, body);
+  update(initial);
+  const job = isActive(initial.state) ? await pollJob<WorkflowJob<T>>('/tasks/' + initial.id, signal, update) : initial;
+  if (job.state !== 'completed') throw new Error(job.message + (job.error_code ? ' [' + job.error_code + ']' : ''));
+  return job.result;
+}
+export function cancelTask(kind: string, id: string) {
+  return request<TaskInfo>(`/tasks/${kind}/${id}/cancel`, new AbortController().signal, {});
+}
