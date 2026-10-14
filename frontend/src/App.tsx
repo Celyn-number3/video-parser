@@ -10,6 +10,7 @@ import Transcription from './features/transcription/Transcription';
 import Accounts from './features/accounts/Accounts';
 import ProjectPanel from './features/library/ProjectPanel';
 import SettingsDialog from './features/settings/PreferencesDialog';
+import AnalysisPanel from './features/analysis/AnalysisPanel';
 import { preferredQualityId } from './features/settings/settings';
 import usePreferences from './features/settings/usePreferences';
 import WorkbenchLayout from './components/WorkbenchLayout';
@@ -18,7 +19,7 @@ import Panel, { PanelTitle } from './components/Panel';
 import FormField from './components/FormField';
 import ProgressBar from './components/ProgressBar';
 import type { Page } from './features/navigation/navigation';
-import type { Configuration, Media, ParsedVideo } from './lib/api';
+import type { AISettings, AnalysisBody, AnalysisResult, Configuration, Media, ParsedVideo } from './lib/api';
 
 // Re-tested 2026-10-14 (docs/mcp-platform-probe-20261014.md). 小红书 needs a login, so it has no example.
 const examples: Record<string, string> = {
@@ -33,9 +34,11 @@ const tabs = [
 ] as const;
 type Tab = typeof tabs[number]['name'];
 type Operation = 'prepare' | 'analyze';
-type ProjectState = { parsed: ParsedVideo; quality: string; status: string; error: boolean; busy: Operation | null; analysis: string; task?: TaskInfo };
+// analysisVersion changes when an analysis or follow-up finishes, so the panel reloads its records.
+type ProjectState = { parsed: ParsedVideo; quality: string; status: string; error: boolean; busy: Operation | null; analysisVersion: number; lastRecord?: string; task?: TaskInfo };
+type AnalysisRequest = { kind: 'analyze'; body: AnalysisBody } | { kind: 'ask'; recordId: string; question: string };
 // Routine states already shown by the stage, button or quality select; the inspector stays quiet for these.
-const QUIET_STATUS = new Set(['等待解析', '解析完成，请选择画质后归档', '已复用归档视频', '已选择归档视频', '所选画质尚未归档', '所选视频已归档', '画面分析完成']);
+const QUIET_STATUS = new Set(['等待解析', '解析完成，请选择画质后归档', '已复用归档视频', '已选择归档视频', '所选画质尚未归档', '所选视频已归档', '分析完成', '追问已回答']);
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
 const loginPlatforms: [RegExp, string][] = [[/小红书|xiaohongshu|xhslink/, 'xiaohongshu'], [/抖音|douyin/, 'douyin'], [/B站|bilibili|b23\.tv/, 'bilibili']];
 function parseLoginPlatform(message: string, source: string) {
@@ -77,9 +80,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsReturn = useRef<HTMLButtonElement | null>(null);
   const [archiveReminder, setArchiveReminder] = useState(false);
-  const [prompt, setPrompt] = useState('');
-  const [count, setCount] = useState('6');
-  const [consent, setConsent] = useState(false);
+  const [settingsFocusAI, setSettingsFocusAI] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [coverError, setCoverError] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [activeCount, setActiveCount] = useState<number | null>(null);
@@ -101,13 +103,13 @@ export default function App() {
     const next = { ...projects.current, [id]: update(value) };
     projects.current = next; setProjectStates(next);
   }
-  function installProject(result: ParsedVideo, restoredAnalysis = '', restoring = false) {
+  function installProject(result: ParsedVideo, restoring = false) {
     const id = result.project.id;
     const previous = projects.current[id];
     const chosen = previous?.busy ? previous.quality : restoring ? result.default_quality_id || '' : preferredQualityId(result.qualities, result.default_quality_id, settingsRef.current.qualityPreference);
     const next: ProjectState = {
       parsed: result, quality: chosen, status: previous?.busy ? previous.status : result.warning || (result.qualities.find(item => item.id === chosen)?.media ? '已复用归档视频' : '解析完成，请选择画质后归档'),
-      error: false, busy: previous?.busy || null, analysis: restoredAnalysis || previous?.analysis || '',
+      error: false, busy: previous?.busy || null, analysisVersion: previous?.analysisVersion || 0, lastRecord: previous?.lastRecord,
     };
     projects.current = { ...projects.current, [id]: next }; setProjectStates(projects.current);
     return id;
@@ -115,7 +117,7 @@ export default function App() {
   function selectProject(id: string) {
     const value = projects.current[id]; if (!value) return;
     selectedRef.current = id; setSelectedId(id); setSource(value.parsed.source_url);
-    setConsent(false); setCoverError(false); setVideoError(false); setParseError(false); setArchiveReminder(false);
+    setCoverError(false); setVideoError(false); setParseError(false); setArchiveReminder(false);
     const url = new URL(location.href); url.searchParams.set('project', id); history.replaceState(null, '', url);
     try { localStorage.setItem('video-parser:last-project', id); localStorage.setItem('video-parser:last-quality', value.parsed.qualities.find(item => item.id === value.quality)?.media?.resource || ''); } catch { /* Optional restore. */ }
   }
@@ -127,7 +129,8 @@ export default function App() {
       if (focus) document.getElementById('page-title-' + next)?.focus({ preventScroll: true });
     });
   }
-  function openSettings(button: HTMLButtonElement) { settingsReturn.current = button; setMenuOpen(false); setSettingsOpen(true); }
+  function openSettings(button: HTMLButtonElement, ai = false) { settingsReturn.current = button; setSettingsFocusAI(ai); setMenuOpen(false); setSettingsOpen(true); }
+  function updateAI(ai: AISettings) { setConfig(current => current && { ...current, ai, ai_configured: ai.configured }); }
   function closeSettings() {
     setSettingsOpen(false);
     requestAnimationFrame(() => {
@@ -143,7 +146,7 @@ export default function App() {
     try {
       const result = await request<ParsedVideo & { analysis: string }>(`/projects/${id}/resume?quality_id=${encodeURIComponent(qualityResource)}`, controller.signal);
       if (controller.signal.aborted) return;
-      const restoredId = installProject(result, result.analysis, true);
+      const restoredId = installProject(result, true);
       if (version !== projectNavigation.current || parseVersion !== parseEpoch.current) return;
       // Archived projects open on the playable video; un-archived ones on the cover. Callers may still override the tab.
       const restoredMedia = result.qualities.find(item => item.id === (result.default_quality_id || ''))?.media;
@@ -154,7 +157,7 @@ export default function App() {
   }
 
   // Workflow controllers belong to projects, not to the currently displayed page/link.
-  function watchWorkflow(job: WorkflowJob<Media | { text: string }>, controller: AbortController) {
+  function watchWorkflow(job: WorkflowJob<Media | AnalysisResult>, controller: AbortController) {
     const id = job.project_id;
     if (!id || !projects.current[id]) return;
     const operation: Operation = job.kind === 'analysis' ? 'analyze' : 'prepare';
@@ -162,7 +165,7 @@ export default function App() {
     updateProject(id, value => ({ ...value, busy: operation, status: job.message, task: job, error: false }));
     void (async () => {
       try {
-        const final = isActive(job.state) ? await pollJob<WorkflowJob<Media | { text: string }>>('/tasks/' + job.id, controller.signal,
+        const final = isActive(job.state) ? await pollJob<WorkflowJob<Media | AnalysisResult>>('/tasks/' + job.id, controller.signal,
           item => updateProject(id, value => ({ ...value, status: item.message, task: item }))) : job;
         if (controller.signal.aborted) return;
         if (final.state !== 'completed') throw new Error(final.message);
@@ -174,8 +177,9 @@ export default function App() {
       }
     })();
   }
-  function applyWorkflowResult(id: string, result: Media | { text: string }) {
-    if ('text' in result) updateProject(id, value => ({ ...value, analysis: result.text, status: '画面分析完成', error: false }));
+  function applyWorkflowResult(id: string, result: Media | AnalysisResult) {
+    if ('text' in result) updateProject(id, value => ({ ...value, analysisVersion: value.analysisVersion + 1, lastRecord: result.record?.id,
+      parsed: result.project ? { ...value.parsed, project: result.project } : value.parsed, status: result.mode === 'ask' ? '追问已回答' : '分析完成', error: false }));
     else {
       updateProject(id, value => ({ ...value, parsed: { ...value.parsed, qualities: value.parsed.qualities.map(item => item.id === result.quality_id ? { ...item, media: result } : item) }, status: '所选视频已归档', error: false }));
       // Once the archive is ready, move from the cover to the playable video.
@@ -187,13 +191,13 @@ export default function App() {
     const version = projectNavigation.current;
     const parseVersion = parseEpoch.current;
     try {
-      const job = await request<WorkflowJob<Media | { text: string }>>('/tasks/' + identifier, controller.signal);
+      const job = await request<WorkflowJob<Media | AnalysisResult>>('/tasks/' + identifier, controller.signal);
       if (!validId(job.project_id) || !['video', 'analysis'].includes(job.kind || '')) return;
       const id = job.project_id;
       if (!projects.current[id]) {
         const resumed = await request<ParsedVideo & { analysis: string }>(`/projects/${id}/resume`, controller.signal);
         if (controller.signal.aborted) return;
-        installProject(resumed, resumed.analysis, true);
+        installProject(resumed, true);
       }
       if (explicit && version === projectNavigation.current && parseVersion === parseEpoch.current) {
         // Resumed projects key archived files as saved-*, so match the finished task by its archived resource first.
@@ -269,7 +273,7 @@ export default function App() {
   function clearSource(next = '') {
     ++parseEpoch.current; ++projectNavigation.current; parsingRequest.current?.abort(); parsingRequest.current = null;
     setParsing(false); setSource(next); setSelectedId(null); selectedRef.current = null;
-    setConsent(false); setParseError(false); setParseStatus('等待解析'); setArchiveReminder(false); setCoverError(false); setVideoError(false);
+    setParseError(false); setParseStatus('等待解析'); setArchiveReminder(false); setCoverError(false); setVideoError(false);
     const url = new URL(location.href); url.searchParams.delete('project'); history.replaceState(null, '', url);
     try { localStorage.removeItem('video-parser:last-project'); localStorage.removeItem('video-parser:last-quality'); } catch { /* Optional restore. */ }
   }
@@ -288,23 +292,30 @@ export default function App() {
   }
   function chooseQuality(key: string) {
     if (!selectedId || busy) return;
-    updateProject(selectedId, value => ({ ...value, quality: key, analysis: '', error: false, status: value.parsed.qualities.find(item => item.id === key)?.media ? '已选择归档视频' : '所选画质尚未归档' }));
-    setConsent(false); setVideoError(false);
+    updateProject(selectedId, value => ({ ...value, quality: key, error: false, status: value.parsed.qualities.find(item => item.id === key)?.media ? '已选择归档视频' : '所选画质尚未归档' }));
+    setVideoError(false);
   }
-  async function run(operation: Operation) {
-    if (!selectedId || !selected || workflowRequests.current.has(selectedId) || !quality) return;
-    if (operation === 'prepare' && media) return;
-    if (operation === 'analyze' && (!media || !config?.ai_configured || !consent || !validCount)) return;
-    const id = selectedId, parsedId = selected.parsed.id, selectedQuality = quality;
+  // Reads the latest project state (not this render's), so 归档并分析 can chain prepare → analyze.
+  async function run(operation: Operation, analysis?: AnalysisRequest): Promise<boolean> {
+    const id = selectedRef.current, value = id ? projects.current[id] : undefined;
+    if (!id || !value || workflowRequests.current.has(id) || !value.quality) return false;
+    const selectedQuality = value.quality, parsedId = value.parsed.id;
+    const archived = value.parsed.qualities.find(item => item.id === selectedQuality)?.media || null;
+    if (operation === 'prepare' && archived) return true;
+    if (operation === 'analyze' && (!archived || !analysis)) return false;
     const controller = new AbortController(); workflowRequests.current.set(id, controller);
     // Download progress is drawn in the video stage, so leave the cover when archiving starts there.
     if (operation === 'prepare') setTab(current => current === '封面图片' ? '视频预览' : current);
-    updateProject(id, value => ({ ...value, busy: operation, task: undefined, error: false, status: operation === 'prepare' ? '正在下载所选画质并归档…' : '正在提取画面并分析…' }));
+    const path = operation === 'prepare' ? `/videos/${parsedId}/prepare-task`
+      : analysis!.kind === 'ask' ? `/projects/${value.parsed.project.id}/analyses/${analysis!.recordId}/ask-task` : `/videos/${parsedId}/analyze-task`;
+    const body = operation === 'prepare' ? { quality_id: selectedQuality }
+      : analysis!.kind === 'ask' ? { consent: true, question: analysis!.question } : { ...analysis!.body, consent: true, quality_id: selectedQuality };
+    updateProject(id, current => ({ ...current, busy: operation, task: undefined, error: false,
+      status: operation === 'prepare' ? '正在下载所选画质并归档…' : analysis!.kind === 'ask' ? '正在发送追问…' : '正在准备分析材料…' }));
     try {
-      const result = await runWorkflow<Media | { text: string }>(`/videos/${parsedId}/${operation === 'prepare' ? 'prepare-task' : 'analyze-task'}`,
-        operation === 'prepare' ? { quality_id: selectedQuality } : { consent: true, count: Number(count), prompt, quality_id: selectedQuality }, controller.signal,
-        job => { if (!controller.signal.aborted) { remember(operation === 'prepare' ? 'video' : 'analysis', job.id); updateProject(id, value => ({ ...value, status: job.message, task: job })); } });
-      if (controller.signal.aborted) return;
+      const result = await runWorkflow<Media | AnalysisResult>(path, body, controller.signal,
+        job => { if (!controller.signal.aborted) { remember(operation === 'prepare' ? 'video' : 'analysis', job.id); updateProject(id, current => ({ ...current, status: job.message, task: job })); } });
+      if (controller.signal.aborted) return false;
       applyWorkflowResult(id, result);
       if (selectedRef.current === id) {
         setVideoError(false);
@@ -313,12 +324,28 @@ export default function App() {
           try { if ('resource' in result) localStorage.setItem('video-parser:last-quality', result.resource); } catch { /* Optional restore. */ }
         }
       }
+      return true;
     } catch (reason) {
-      if (!controller.signal.aborted) updateProject(id, value => ({ ...value, error: true, status: reason instanceof Error ? reason.message : '操作失败，请重试。' }));
+      if (!controller.signal.aborted) updateProject(id, current => ({ ...current, error: true, status: reason instanceof Error ? reason.message : '操作失败，请重试。' }));
+      return false;
     } finally {
-      if (workflowRequests.current.get(id) === controller) { workflowRequests.current.delete(id); updateProject(id, value => ({ ...value, busy: null })); }
+      if (workflowRequests.current.get(id) === controller) { workflowRequests.current.delete(id); updateProject(id, current => ({ ...current, busy: null })); }
     }
   }
+  async function archiveAndAnalyze(body: AnalysisBody) {
+    if (!config?.ai_configured) return;
+    if (await run('prepare')) { setTab('AI 分析'); await run('analyze', { kind: 'analyze', body }); }
+  }
+  function seekVideo(seconds: number) {
+    setTab('视频预览');
+    requestAnimationFrame(() => {
+      const video = videoRef.current; if (!video) return;
+      const go = () => { video.currentTime = seconds; void video.play().catch(() => undefined); };
+      if (video.readyState >= 1) go(); else { video.addEventListener('loadedmetadata', go, { once: true }); video.load(); }
+      document.getElementById('video-stage')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+  function generateSubtitles() { setSubtitleFocus(value => value + 1); navigate('transcription', true); }
   async function cancelWorkflow() {
     const id = selectedId, task = selected?.task;
     if (!id || !task || !isActive(task.state) || cancellingTask) return;
@@ -327,7 +354,6 @@ export default function App() {
     catch (reason) { updateProject(id, value => ({ ...value, error: true, status: reason instanceof Error ? reason.message : '取消请求失败，请重试。' })); }
     finally { setCancellingTask(null); }
   }
-  const validCount = Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= 16;
   const status = parsing || parseError ? parseStatus : selected?.status || parseStatus;
   // Parse progress/errors are shown once under the link box, not again in the inspector.
   const inspectorStatus = parsing || parseError ? '' : selected?.status || '';
@@ -352,7 +378,7 @@ export default function App() {
     onOpenMenu={() => setMenuOpen(true)}
     onCloseMenu={() => { setMenuOpen(false); requestAnimationFrame(() => menuButton.current?.focus()); }}
     overlays={<>
-      {settingsOpen && <SettingsDialog settings={settings} onChange={saveSettings} config={config} configError={configError} saveStatus={settingsSaveStatus} activeCount={activeCount} onClose={closeSettings} />}
+      {settingsOpen && <SettingsDialog settings={settings} onChange={saveSettings} config={config} configError={configError} saveStatus={settingsSaveStatus} activeCount={activeCount} onClose={closeSettings} onAIChange={updateAI} focusAI={settingsFocusAI} />}
       {archiveReminder && <div className="archive-reminder" role="status" aria-live="polite">视频已归档<button type="button" aria-label="关闭归档提醒" onClick={() => setArchiveReminder(false)}>×</button></div>}
     </>}>
         {configError && <p className="error-text configuration-error" role="alert">{configError}</p>}
@@ -391,7 +417,7 @@ export default function App() {
             <section className="preview-panel" aria-labelledby="content-heading">
           <h2 id="content-heading" className="sr-only">项目内容</h2>
               <div id="tabpanel-1" role="tabpanel" aria-labelledby="tab-1" hidden={tab !== '视频预览'}>
-          <div className="media-stage" id="video-stage">{media ? <video key={media.preview_url} controls playsInline preload="metadata" poster={coverError ? undefined : parsed?.cover_url || undefined} src={media.preview_url} onError={() => setVideoError(true)} aria-label="视频播放器" /> : <div className={'empty-stage' + (busy === 'prepare' ? ' download-stage' : '')}>
+          <div className="media-stage" id="video-stage">{media ? <video ref={videoRef} key={media.preview_url} controls playsInline preload="metadata" poster={coverError ? undefined : parsed?.cover_url || undefined} src={media.preview_url} onError={() => setVideoError(true)} aria-label="视频播放器" /> : <div className={'empty-stage' + (busy === 'prepare' ? ' download-stage' : '')}>
           {busy === 'prepare' ? <div className="download-preview-feedback">
             <div className="download-preview-heading"><Icon name="loader-circle" className="spinner" /><span>视频下载与归档</span></div>
             <p className="download-preview-message" role="status" aria-live="polite" aria-atomic="true">{status}</p>
@@ -412,34 +438,11 @@ export default function App() {
           </div>
           </div>
               <div id="tabpanel-2" role="tabpanel" aria-labelledby="tab-2" hidden={tab !== 'AI 分析'}>
-          <Panel className="analysis-form">
-          <PanelTitle>抽样画面分析</PanelTitle>
-          {!config?.ai_configured && <p className="notice" role="note">{configError || (config ? '请先在本机 .env 配置 QWEN_API_KEY 并重启服务。' : '正在读取 AI 配置…')}
-          </p>}
-          <div className="analysis-fields">
-          <FormField htmlFor="prompt" label={<>分析要求 <span className="optional">（选填）</span></>}>
-          <textarea id="prompt" disabled={busy === 'analyze'} value={prompt} maxLength={4000} rows={3} placeholder="例如：描述场景与人物的动作" onChange={event => setPrompt(event.target.value)} />
-          </FormField>
-          <FormField className="count-field" htmlFor="frame-count" label="抽样帧数">
-          <select id="frame-count" disabled={busy === 'analyze'} value={count} onChange={event => setCount(event.target.value)}>{[1, 2, 4, 6, 8, 12, 16].map(value => <option key={value} value={value}>{value} 帧</option>)}
-          </select>
-          </FormField>
-          </div>
-          <label className="consent">
-          <input type="checkbox" disabled={busy === 'analyze'} checked={consent} onChange={event => setConsent(event.target.checked)} />
-          <span>同意发送抽样画面给模型服务（不含音频和字幕，可能产生费用）</span>
-          </label>
-          <div className="analysis-actions">
-          <button className="primary operation-button" type="button" aria-busy={busy === 'analyze'} disabled={!media || !config?.ai_configured || !consent || !validCount || busy !== null} onClick={() => { void run('analyze'); }}>
-          <Icon name={busy === 'analyze' ? 'loader-circle' : 'scan-eye'} className={busy === 'analyze' ? 'spinner' : ''} />{busy === 'analyze' ? '分析中…' : '开始分析'}
-          </button>
-          {busy === 'analyze' && <button type="button" disabled={cancelDisabled} aria-busy={cancellingTask !== null} onClick={() => { void cancelWorkflow(); }}>取消分析</button>}
-          </div>
-          {(busy === 'analyze' || !!selected?.analysis) && <div className="analysis-result" aria-live="polite" aria-busy={busy === 'analyze'}>
-          <label htmlFor="analysis-result">分析结果</label>
-          <textarea id="analysis-result" readOnly value={selected?.analysis || ''} rows={9} placeholder={busy === 'analyze' ? '正在提取画面并分析…' : ''} />
-          </div>}
-          </Panel>
+          <AnalysisPanel parsed={parsed} media={media} qualityId={quality} config={config} busy={busy} status={selected?.status || ''} error={!!selected?.error}
+            task={selected?.task} version={selected?.analysisVersion || 0} lastRecord={selected?.lastRecord} cancelDisabled={cancelDisabled}
+            onCancel={() => { void cancelWorkflow(); }} onAnalyze={body => { void run('analyze', { kind: 'analyze', body }); }}
+            onArchiveAndAnalyze={body => { void archiveAndAnalyze(body); }} onAsk={(recordId, question) => { void run('analyze', { kind: 'ask', recordId, question }); }}
+            onSeek={media ? seekVideo : undefined} onOpenSettings={button => openSettings(button, true)} onGenerateSubtitles={generateSubtitles} />
           </div>
             </section>
             <Panel as="aside" className={'details-panel' + (!fullInspector ? ' compact-inspector' : '')} aria-labelledby="details-heading">
@@ -491,7 +494,7 @@ export default function App() {
           </>}
               {fullInspector && parsed && <>
           <ProjectPanel key={parsed.project.id} project={parsed.project} />
-          <button type="button" className="subtitle-entry" onClick={() => { setSubtitleFocus(value => value + 1); navigate('transcription', true); }}><Icon name="captions" />生成字幕</button>
+          <button type="button" className="subtitle-entry" onClick={generateSubtitles}><Icon name="captions" />生成字幕</button>
           {qualityLimited && ['missing', 'missing_session', 'expired', 'invalid'].includes(parsed.bilibili_cookie_status || '') && <p className="notice quality-login">{qualityLogin === 'done' ? '已登录 B站，请重新解析链接以获取更高画质。' : <>画质受限：没有登录 B站，最高只有 480p。<button type="button" className="link-button" onClick={() => setQualityLogin('open')}>扫码登录</button><button type="button" className="link-button" onClick={() => openAccounts('bilibili')}>账号与登录</button></>}</p>}
           {qualityLogin === 'open' && <BiliLogin onClose={() => setQualityLogin('closed')} onSuccess={() => setQualityLogin('done')} />}
           </>}

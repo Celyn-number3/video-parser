@@ -33,6 +33,7 @@ class Cancelled(RuntimeError):
 
 def classify(error):
     if isinstance(error, Cancelled): return 'cancelled', '任务已取消；已归档成果保留。'
+    if getattr(error, 'user_message', None): return getattr(error, 'code', 'operation_failed'), error.user_message
     if isinstance(error, PermissionError): return 'permission_denied', '目录不可写，请检查本机文件权限。'
     if isinstance(error, OSError) and error.errno == errno.ENOSPC: return 'disk_full', '磁盘空间不足，请释放空间后重试。'
     if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)): return 'timeout', '操作超时，请检查网络或本机运行环境后重试。'

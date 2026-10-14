@@ -250,3 +250,11 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 }
 .modern-app .subtitle-embedded { padding: 0; border: 0; background: none; box-shadow: none; }
 .subtitle-embedded .subtitle-status:empty { display: none; }
+/* Settings → AI 模型 */
+.settings-ai input:not([type=checkbox]) { width: 100%; min-height: 42px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--color-border-strong); font-size: var(--font-size-md); }
+.settings-ai .settings-price { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.settings-ai .settings-price label { display: grid; gap: 6px; width: 120px; margin: 0; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.settings-ai .settings-price input { margin: 0; }
+.settings-ai .settings-price span { padding-bottom: 9px; font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
+.settings-ai .settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.settings-ai .settings-hint { overflow-wrap: anywhere; }

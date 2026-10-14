@@ -260,6 +260,23 @@ def archive(identifier):
         return target
 
 
+def remove(identifier, names):
+    """Unregister and delete resources, e.g. when the user deletes an analysis record."""
+    project = get(identifier)
+    with file_lock(contained(project['directory'], '.manifest.lock')):
+        project = get(identifier)
+        directory = project['directory']
+        for name in dict.fromkeys(names):
+            if name not in project['resources']: continue
+            path = contained(directory, name)
+            if path.is_file() and not path.is_symlink(): path.unlink()
+            del project['resources'][name]
+            parent = path.parent
+            while parent != directory and parent.is_dir() and not any(parent.iterdir()):
+                parent.rmdir(); parent = parent.parent
+        atomic_json(directory / 'project.json', {k: v for k, v in project.items() if k != 'directory'})
+
+
 def import_frames(identifier, directory):
     files = sorted(Path(directory).glob('*.jpg'))
     if not files: return []

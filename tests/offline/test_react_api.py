@@ -12,6 +12,7 @@ from PIL import Image
 from video_parser.services import videos as cli
 from video_parser.web import routes as workspace
 from video_parser.services import library as library
+from video_parser.services import ai_settings
 class ReactAPITests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -20,6 +21,8 @@ class ReactAPITests(unittest.TestCase):
         patch.object(library, 'LIBRARY_ROOT', self.root / 'library').start()
         self.addCleanup(patch.stopall)
         patch.object(workspace, 'WORKSPACE_ROOT', self.root / 'cache').start()
+        # Never read the user's saved model settings (.local/ai/settings.json).
+        patch.object(ai_settings, 'SETTINGS_PATH', self.root / 'ai' / 'settings.json').start()
         workspace.entries.clear()
         app = FastAPI()
         app.include_router(workspace.router)

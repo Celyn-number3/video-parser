@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field,field_validator
 from video_parser.web.security import local_request
-from video_parser.web import routes
+from video_parser.web import routes,analysis_routes
 from video_parser.services import task_runtime,subtitles,transcription,workflows,storage
 
 router=APIRouter(prefix='/api/workspace',dependencies=[Depends(local_request)])
@@ -30,13 +30,9 @@ def prepare_task(identifier:str,body:routes.PrepareBody):
 
 
 @router.post('/videos/{identifier}/analyze-task',status_code=202)
-def analyze_task(identifier:str,body:routes.AnalyzeBody):
-    entry=routes.get_entry(identifier)
-    if not os.getenv('QWEN_API_KEY','').strip():raise HTTPException(503,'请在本机配置 AI 密钥后重启服务。')
-    choice=routes.select_session(entry,body.quality_id or (entry.media['quality_id'] if entry.media else None))
-    if not choice['media']:raise HTTPException(409,'请先下载并归档所选视频。')
-    return guarded(workflows.start,'analysis',entry.project_id,entry.parsed.metadata['title'],
-        {'resource':choice['media']['resource'],'quality_id':choice['id'],'count':body.count,'prompt':body.prompt.strip(),'consent':True})
+def analyze_task(identifier:str,body:analysis_routes.AnalysisTaskBody):
+    entry,choice=analysis_routes.archived_video(identifier,body.quality_id)
+    return analysis_routes.start_analysis(entry,choice,body)
 
 
 def catalog():

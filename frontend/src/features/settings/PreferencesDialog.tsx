@@ -1,22 +1,34 @@
 import { useEffect, useRef } from 'react';
-import type { Configuration } from '../../lib/api';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import type { AISettings, Configuration } from '../../lib/api';
 import type { Settings } from './settings';
 import CacheManager from './CacheManager';
+import AISettingsSection from './AISettingsSection';
 
-export default function SettingsDialog({ settings, onChange, config, configError, saveStatus, activeCount, onClose }: {
+export default function SettingsDialog({ settings, onChange, config, configError, saveStatus, activeCount, onClose, onAIChange, focusAI = false }: {
   settings: Settings; onChange: (settings: Settings) => void; config: Configuration | null;
   configError: string; saveStatus: string; activeCount: number | null; onClose: () => void;
+  onAIChange: (settings: AISettings) => void; focusAI?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const quality = useRef<HTMLSelectElement>(null);
+  // Close on a backdrop click only when the press also started on the backdrop:
+  // dragging from inside the dialog (e.g. selecting text) and releasing outside must not close it.
+  const pressedBackdrop = useRef(false);
+  const onBackdrop = (event: ReactMouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return false;
+    const box = event.currentTarget.getBoundingClientRect();
+    return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+  };
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
     if (!element.open) element.showModal();
-    quality.current?.focus();
+    // Opened from AI 分析: the AI section focuses itself once loaded.
+    if (!focusAI) quality.current?.focus();
     return () => { if (element.open) element.close(); };
   }, []);
-  return <dialog ref={dialog} className="settings-dialog" aria-labelledby="settings-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === dialog.current) onClose(); }}>
+  return <dialog ref={dialog} className="settings-dialog" aria-labelledby="settings-title" onCancel={event => { event.preventDefault(); onClose(); }} onMouseDown={event => { pressedBackdrop.current = onBackdrop(event); }} onClick={event => { const close = pressedBackdrop.current && onBackdrop(event); pressedBackdrop.current = false; if (close) onClose(); }}>
     <div className="settings-heading"><h2 id="settings-title">设置</h2><button type="button" className="settings-close" aria-label="关闭设置" onClick={onClose}>×</button></div>
     <section aria-labelledby="settings-preferences"><h3 id="settings-preferences">下载偏好</h3>
       <label htmlFor="default-quality">默认画质</label>
@@ -30,6 +42,7 @@ export default function SettingsDialog({ settings, onChange, config, configError
       <label className="settings-check"><input type="checkbox" checked={settings.reuseTranscriptionModel} onChange={event => onChange({ ...settings, reuseTranscriptionModel: event.target.checked })} />连续任务复用模型</label>
       <p className="settings-hint">本机 CUDA 模型（large-v3-turbo）空闲 60 秒后释放，不会切换到 CPU 或云端。</p>
     </section>
+    <AISettingsSection onChange={onAIChange} autoFocus={focusAI} />
     <section aria-labelledby="settings-storage"><h3 id="settings-storage">归档位置</h3>
       <code className="archive-root">{config?.archive_root || (configError ? '无法读取归档位置' : '正在读取…')}</code>
     </section>

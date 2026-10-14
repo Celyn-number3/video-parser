@@ -20,6 +20,8 @@ from video_parser.web.task_routes import router as task_router
 app.include_router(task_router)
 from video_parser.web.account_routes import router as account_router
 app.include_router(account_router)
+from video_parser.web.analysis_routes import router as analysis_router
+app.include_router(analysis_router)
 
 @app.on_event('startup')
 def restore_task_history():

@@ -17,20 +17,14 @@ def execute(payload):
         from video_parser.web.routes import media_response
         return media_response(project_id,result['relative'],payload['quality_id'])
     if payload['kind']!='analysis' or payload.get('consent') is not True:raise ValueError('Explicit consent required')
-    source=library.resource(project_id,payload['resource'])
-    if project['resources'][payload['resource']]['kind']!='video':raise ValueError('Not video')
-    from video_parser.services.analysis import analyze_video
-    frames=directory/'frames';frames.mkdir()
-    task_runtime.progress('analyzing','正在提取画面并发送到已配置的模型服务…')
-    text=analyze_video(str(source),prompt=payload.get('prompt') or None,stream=False,
-                       num_frames=payload['count'],keep_frames_dir=str(frames))
-    if not isinstance(text,str) or not text.strip():raise ValueError('Empty analysis')
-    task_runtime.progress('archiving','正在归档分析报告与抽样画面…')
-    library.import_frames(project_id,frames)
-    report=library.save_text(project_id,'analysis',text,{'frame_count':payload['count'],
-        'prompt':payload.get('prompt',''),'video_resource':payload['resource'],'quality_id':payload['quality_id']})
-    return {'text':text,'frame_count':payload['count'],
-            'report_url':f'/api/workspace/projects/{project_id}/files/{report}',
+    from video_parser.services import ai_analysis
+    if payload.get('mode')=='ask':
+        record=ai_analysis.ask(project_id,payload['record'],payload['question'],directory)
+    else:
+        if project['resources'][payload['resource']]['kind']!='video':raise ValueError('Not video')
+        record=ai_analysis.run(project_id,payload,directory)
+    return {'text':record['text'],'record':record,'mode':payload.get('mode') or 'analyze','frame_count':record['frame_count'],
+            'report_url':f"/api/workspace/projects/{project_id}/files/analysis/{record['id']}.md",
             'project':library.public(library.get(project_id))}
 
 

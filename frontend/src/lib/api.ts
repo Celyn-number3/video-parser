@@ -6,7 +6,35 @@ export interface Configuration {
   transcription_ready: boolean;
   transcription_upload_limit: number;
   archive_root: string;
+  ai?: AISettings;
 }
+
+export interface AIPreset { name: string; base_url: string; model: string; key_required: boolean; models: string[]; hint: string }
+export interface AISettings {
+  provider: string; provider_name: string; base_url: string; model: string;
+  key_saved: boolean; key_hint: string; price_input: number | null; price_output: number | null;
+  configured: boolean; local: boolean; consented: boolean; source: 'settings' | 'env' | 'none'; storage: string;
+  presets: Record<string, AIPreset>;
+}
+export type AnalysisSource = 'both' | 'transcript' | 'frames';
+export interface AnalysisTemplate { id: string; name: string; description: string; source: AnalysisSource; requires: 'frames' | 'transcript' | null }
+export interface TranscriptOption { resource: string; label: string; kind: string; language: string; cues: number; chars: number; merged: boolean; tokens: number; end: string }
+export interface AnalysisContext {
+  transcripts: TranscriptOption[]; duration: number; auto_frame_count: number; image_tokens: number;
+  prompt_tokens: number; output_tokens: number; templates: AnalysisTemplate[]; sources: Record<AnalysisSource, string>; ai: AISettings;
+}
+export interface AnalysisFrame { url: string; time: number; label: string; name?: string }
+export interface AnalysisRecord {
+  id: string; created_at: string | null; template: string; template_name: string; source: AnalysisSource; source_label: string;
+  prompt: string; model: string; provider: string; transcript_label: string; transcript_merged: boolean; video_resource: string | null;
+  frame_count: number; frames: AnalysisFrame[]; usage: { prompt_tokens?: number | null; completion_tokens?: number | null };
+  text: string; followups: { id: string; question: string; answer: string; created_at: string | null }[]; legacy: boolean;
+}
+export interface AnalysisBody {
+  template: string; source: AnalysisSource; transcript_resource: string | null; frame_mode: 'scene' | 'uniform';
+  count: number; preview_token: string | null; frames: string[] | null; prompt: string;
+}
+export interface AnalysisResult { text: string; record: AnalysisRecord; mode: 'analyze' | 'ask'; project: VideoProject }
 
 export interface ParsedVideo {
   id: string;
@@ -59,7 +87,7 @@ export async function request<T>(path: string, signal: AbortSignal, body?: unkno
   const data = await response.json().catch(() => null);
   if (!response.ok || data === null) {
     throw new Error(typeof data?.detail === 'string' ? data.detail :
-      response.status === 422 ? '输入不符合要求，请检查链接、帧数与隐私确认。' : `服务处理失败（HTTP ${response.status}，请求 ${response.headers.get('X-Request-ID')?.slice(0,12) || 'unknown'}）。请检查任务中心或本机诊断。`);
+      response.status === 422 ? '输入不符合要求，请检查填写内容与隐私确认。' : `服务处理失败（HTTP ${response.status}，请求 ${response.headers.get('X-Request-ID')?.slice(0,12) || 'unknown'}）。请检查任务中心或本机诊断。`);
   }
   return data as T;
 }

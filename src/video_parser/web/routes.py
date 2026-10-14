@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from video_parser.services import videos
+from video_parser.services import videos, ai_settings
 from video_parser.services import library as library
 from video_parser.platforms.downloaders.douyin_downloader import DouyinAccessError
 from video_parser.platforms.downloaders.base_downloader import PlatformAccessError
@@ -146,7 +146,7 @@ def select_session(entry, quality_id=None):
 @router.get('/config')
 def configuration():
     return {'platforms': list(videos.CONFIG['PLATFORM_MAP']),
-            'ai_configured': bool(os.getenv('QWEN_API_KEY', '').strip()),
+            'ai_configured': ai_settings.configured(),
             'media_ready': bool(shutil.which('ffmpeg') and shutil.which('ffprobe')),
             'subtitles_ready': subtitles.available(), 'transcription_ready': transcription.available(),
             'transcription_upload_limit': transcription.MAX_UPLOAD_BYTES,
@@ -241,8 +241,8 @@ def prepare(identifier: str, body: PrepareBody):
 @router.post('/videos/{identifier}/analyze')
 def analyze(identifier: str, body: AnalyzeBody):
     entry = get_entry(identifier)
-    if not os.getenv('QWEN_API_KEY', '').strip():
-        raise HTTPException(503, '尚未配置 AI 密钥，请在本机 .env 中配置 QWEN_API_KEY 并重启服务。')
+    if not ai_settings.configured():
+        raise HTTPException(503, '尚未配置 AI 模型，请在“设置 → AI 模型”里填写。')
     choice = select_session(entry, body.quality_id or (entry.media['quality_id'] if entry.media else None))
     if not choice['media']:
         raise HTTPException(409, '请先下载并归档所选视频，再分析画面。')

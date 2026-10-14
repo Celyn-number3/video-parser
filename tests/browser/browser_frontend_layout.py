@@ -27,6 +27,8 @@ def main():
   assert condition,label;checks.append(label)
  def close(a,b):return abs(a-b)<=0.5
  with sync_playwright() as pw:
+  from unittest.mock import patch as _patch;from video_parser.services import ai_settings
+  with _patch.object(ai_settings,'SETTINGS_PATH',OUT/'no-ai-settings.json'),_patch.dict(os.environ,{'QWEN_API_KEY':''}):AI=ai_settings.public()
   for mode in ['classic','hidden','fallback']:
    browser=pw.chromium.launch(headless=True,**({'ignore_default_args':['--hide-scrollbars']} if mode!='hidden' else {}))
    context=browser.new_context(viewport={'width':1920,'height':900});page=context.new_page();page.set_default_timeout(10000);page.on('pageerror',lambda e:errors.append(str(e)))
@@ -39,6 +41,9 @@ def main():
     elif path=='/transcriptions/sources':route.fulfill(json={'sources':[]})
     elif path=='/projects':route.fulfill(json={'projects':[]})
     elif path=='/folders':route.fulfill(json={'folders':[]})
+    elif path=='/ai/settings':route.fulfill(json=AI)
+    elif path.endswith('/analysis/context'):route.fulfill(json={'transcripts':[],'duration':120,'auto_frame_count':8,'image_tokens':800,'prompt_tokens':900,'output_tokens':1500,'templates':[{'id':'summary','name':'内容摘要','description':'要点概括','source':'both','requires':None}],'sources':{'both':'字幕 + 画面','transcript':'只用字幕','frames':'只用画面'},'ai':AI})
+    elif path.endswith('/analyses'):route.fulfill(json={'records':[]})
     elif path=='/parse' or path.startswith('/projects/') and path.endswith('/resume'):route.fulfill(json=video)
     else:unexpected.append(path);route.fulfill(status=400,json={'detail':'Layout test blocks all processing operations'})
    context.route('**/api/workspace/**',route_api)
