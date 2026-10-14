@@ -10,7 +10,11 @@ export default function BiliLogin({ onClose, onSuccess }: { onClose: () => void;
   const [qr, setQr] = useState<QR | null>(null);
   const [state, setState] = useState('loading');
   const [error, setError] = useState('');
-  useEffect(() => { dialog.current?.showModal(); }, []);
+  useEffect(() => {
+    const element = dialog.current;
+    if (element && !element.open) element.showModal();
+    return () => { if (element?.open) element.close(); };
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     let identifier = '';
@@ -44,13 +48,14 @@ export default function BiliLogin({ onClose, onSuccess }: { onClose: () => void;
     };
   }, [generation]);
   const messages: Record<string, string> = { loading: '正在申请二维码…', waiting: '请使用哔哩哔哩手机 App 扫码', scanned: '扫码成功，请在手机上确认登录', expired: '二维码已过期，请刷新后重新扫码', authenticated: '登录成功', error: '登录暂时不可用' };
-  return <dialog ref={dialog} aria-labelledby="bili-login-title" onCancel={event => { event.preventDefault(); onClose(); }} style={{ background: '#18221d', color: '#edf5ef', border: '1px solid #496354', borderRadius: 14, padding: 28, width: 360, maxWidth: '90vw' }}>
+  return <dialog ref={dialog} className="settings-dialog login-dialog" aria-labelledby="bili-login-title" onCancel={event => { event.preventDefault(); onClose(); }}>
     <h2 id="bili-login-title">B站扫码登录</h2>
-    <p>登录成功后继续本次字幕下载，无需打开其他浏览器窗口。</p>
-    {qr && state !== 'expired' && state !== 'error' && <img src={qr.image} alt="使用哔哩哔哩 App 扫描此登录二维码" width="256" height="256" style={{ display: 'block', background: '#fff', margin: '20px auto', maxWidth: '100%' }} />}
-    <p role="status" aria-live="polite">{error || messages[state]}</p>
-    <p className="notice">二维码约 3 分钟有效。登录凭据只保存在本机；关闭弹窗取消等待，不会退出已有登录。</p>
-    <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+    <div className="login-qr" aria-busy={state === 'loading'}>
+      {qr && state !== 'expired' && state !== 'error' ? <img src={qr.image} alt="使用哔哩哔哩 App 扫描此登录二维码" width="256" height="256" /> : <span aria-hidden="true">{state === 'loading' ? '正在获取二维码…' : '二维码暂不可用'}</span>}
+    </div>
+    <p className="login-status" role="status" aria-live="polite" aria-atomic="true">{error || messages[state]}</p>
+    <p className="notice">二维码 3 分钟内有效，登录信息只保存在本机。</p>
+    <div className="login-actions">
       <button type="button" onClick={() => setGeneration(value => value + 1)} disabled={state === 'loading'}>刷新二维码</button>
       <button type="button" onClick={onClose}>取消</button>
     </div>

@@ -1,8 +1,14 @@
+import json
+import tempfile
+from pathlib import Path
+from threading import Lock
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from video_parser.web.app import app
 from video_parser.services import storage,workflows
+from video_parser.web import task_routes
 
 
 class TaskAPITests(unittest.TestCase):
@@ -28,6 +34,22 @@ class TaskAPITests(unittest.TestCase):
                 result=self.client.post('/api/workspace/videos/missing/analyze-task',json={'consent':consent})
                 self.assertEqual(result.status_code,422)
             start.assert_not_called()
+    def test_clear_removes_only_failed_cancelled_and_interrupted_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);states={('%032x'%index):state for index,state in enumerate(['completed','failed','cancelled','interrupted','running','empty'],1)}
+            for identifier in states:(root/(identifier+'.json')).write_text(json.dumps({'version':1}),encoding='utf-8')
+            def get(identifier):
+                if not (root/(identifier+'.json')).exists():raise KeyError(identifier)
+                return SimpleNamespace(state=states[identifier])
+            service=SimpleNamespace(jobs=dict.fromkeys(states),lock=Lock(),get=get)
+            with patch.object(task_routes,'catalog',return_value={'transcriptions':(service,root)}):
+                for value in (False,1,'true',None):
+                    self.assertEqual(self.client.post('/api/workspace/tasks/clear',json={'confirm':value}).status_code,422)
+                self.assertEqual(len(list(root.glob('*.json'))),6)
+                result=self.client.post('/api/workspace/tasks/clear',json={'confirm':True})
+            self.assertEqual(result.json(),{'removed':3})
+            left=sorted(states[path.stem] for path in root.glob('*.json'))
+            self.assertEqual(left,['completed','empty','running']);self.assertEqual(sorted(states[key] for key in service.jobs),left)
     def test_request_id_and_history_headers(self):
         result=self.client.get('/api/workspace/tasks/'+'0'*32)
         self.assertEqual(result.status_code,404);self.assertRegex(result.headers['X-Request-ID'],'^[a-f0-9]{32}$')

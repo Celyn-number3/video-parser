@@ -6,6 +6,7 @@ import contextvars
 import errno
 import json
 import logging
+import math
 import os
 from pathlib import Path
 from queue import Queue, Full
@@ -100,12 +101,15 @@ def checkpoint():
     if control and control['cancel'].is_set(): raise Cancelled('任务已取消；已归档成果保留。')
 
 
-def progress(phase, message=None, **numbers):
+def progress(phase, message=None, force=False, **numbers):
+    allowed = {'done','total','bytes','total_bytes','speed_bytes_per_second','eta_seconds',
+               'track','tracks','estimated_total','sampled_at'}
+    numbers = {k:v for k,v in numbers.items() if k in allowed and type(v) in (int,float) and math.isfinite(v) and v >= 0}
     control = _context.get()
     if not control:
         global _last_emit,_last_phase
         target=os.getenv('VIDEO_PARSER_STAGE_FILE')
-        if target and (_last_phase!=phase or time.monotonic()-_last_emit>=.5):
+        if target and (force or _last_phase!=phase or time.monotonic()-_last_emit>=.5):
             _last_emit=time.monotonic();_last_phase=phase
             atomic(Path(target),{'phase':phase,'message':message,'progress':numbers})
         return
@@ -115,9 +119,10 @@ def progress(phase, message=None, **numbers):
         now=time.monotonic()
         job.stage_timings[job.phase]=job.stage_timings.get(job.phase,0)+(now-control['phase_start'])
         control['phase_start']=now
+        job.progress = {}
     job.phase = phase
     if message: job.message = message
-    if numbers: job.progress = {k:v for k,v in numbers.items() if k in {'done','total','bytes','total_bytes'} and isinstance(v,(int,float)) and v>=0}
+    if numbers: job.progress = numbers
     control['persist']()
 
 

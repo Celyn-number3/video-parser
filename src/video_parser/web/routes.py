@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -20,10 +21,12 @@ from pydantic import BaseModel, Field, field_validator
 from video_parser.services import videos
 from video_parser.services import library as library
 from video_parser.platforms.downloaders.douyin_downloader import DouyinAccessError
+from video_parser.platforms.downloaders.base_downloader import PlatformAccessError
+from video_parser.platforms.downloaders.youtube_downloader import YoutubeAccessError
 
 videos.load_environment()
 from video_parser.services import subtitles, bili_auth
-from video_parser.services import transcription
+from video_parser.services import transcription, folders
 logger = logging.getLogger(__name__)
 WORKSPACE_ROOT = videos.ROOT / 'cache' / 'react-workspace'
 SESSION_TTL = 24 * 60 * 60
@@ -170,7 +173,7 @@ def parse(body: ParseBody):
         with entries_lock:
             entries.pop(identifier, None)
         logger.warning('Workspace parse failed: %s', type(error).__name__)
-        if isinstance(error, DouyinAccessError):
+        if isinstance(error, (DouyinAccessError, PlatformAccessError, YoutubeAccessError)):
             raise HTTPException(502, str(error)) from None
         if isinstance(error, ValueError):
             raise HTTPException(400, '链接无效或平台暂不支持，请检查后重试。') from None
@@ -207,7 +210,8 @@ def parse(body: ParseBody):
             'cover_download_url': cover_url + '?download=true' if cover_url else None, 'warning': warning,
             'project': library.public(library.get(entry.project_id)), 'media': entry.media,
             'qualities': choices, 'default_quality_id': choices[0]['id'] if choices else None,
-            'bilibili_cookie_status': metadata.get('bilibili_cookie_status')}
+            'bilibili_cookie_status': metadata.get('bilibili_cookie_status'),
+            'duration': metadata.get('duration') if isinstance(metadata.get('duration'), (int, float)) else None}
 
 
 @router.post('/videos/{identifier}/prepare')
@@ -323,6 +327,80 @@ class TranscriptionBody(BaseModel):
     resource: str = Field(min_length=1, max_length=500)
     language: Literal['auto', 'zh', 'en'] = 'auto'
     reuse_model: bool = False
+    destination: Literal['source', 'default', 'project', 'folder'] = 'source'
+    target_project_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
+    folder: str | None = Field(default=None, max_length=1000)
+
+
+def output_destination(kind, target_project_id=None, folder=None, source_project=None):
+    """Where results go: the source video's project (default for archived videos), another project, a picked folder or outputs/."""
+    try:
+        if kind == 'source':
+            return {'type': 'project', 'project_id': source_project} if source_project else {}
+        if kind == 'default':
+            return {}
+        if kind == 'project':
+            if not target_project_id: raise ValueError('请选择要保存到的项目。')
+            return {'type': 'project', 'project_id': library.get(target_project_id)['id']}
+        if kind == 'folder':
+            return {'type': 'folder', 'path': str(folders.check(folder))}
+    except KeyError:
+        raise HTTPException(400, '所选项目不存在，请刷新项目列表后重新选择。') from None
+    except (ValueError, PermissionError, FileNotFoundError) as error:
+        raise HTTPException(400, str(error)) from None
+    raise HTTPException(400, '未知的保存位置。')
+
+
+@router.get('/projects')
+def list_projects():
+    projects = []
+    for manifest in library.manifests():
+        try: project = library.load(manifest)
+        except (ValueError, OSError, KeyError): continue
+        platform = next((label for label, slug in library.PLATFORMS.items() if slug == project.get('platform')), project.get('platform', ''))
+        projects.append({'id': project['id'], 'title': project.get('title', ''), 'platform': platform, 'part': project.get('part'),
+                         'location': project['directory'].relative_to(library.LIBRARY_ROOT).as_posix(), 'created_at': project.get('created_at', '')})
+    projects.sort(key=lambda item: (item['created_at'], -(item['part'] or 0)), reverse=True)
+    return {'projects': projects}
+
+
+@router.get('/folders')
+def list_folders():
+    return {'folders': folders.listing()}
+
+
+@router.post('/folders/pick')
+def pick_folder():
+    try:
+        return {'path': folders.pick()}
+    except NotImplementedError as error:
+        raise HTTPException(501, str(error)) from None
+    except BlockingIOError as error:
+        raise HTTPException(429, str(error)) from None
+    except (ValueError, OSError) as error:
+        raise HTTPException(400, str(error) or '无法打开选择文件夹窗口。') from None
+
+
+@router.get('/transcriptions/sources')
+def transcription_sources():
+    # Lists every archived video, newest first. Only size is checked here; the full digest is verified when a job starts.
+    sources = []
+    for manifest in library.manifests():
+        try: project = library.load(manifest)
+        except (ValueError, OSError, KeyError): continue
+        platform = next((label for label, slug in library.PLATFORMS.items() if slug == project.get('platform')), project.get('platform', ''))
+        for name, item in project.get('resources', {}).items():
+            if item.get('kind') != 'video': continue
+            try: path = library.contained(project['directory'], name)
+            except (ValueError, OSError): continue
+            if not path.is_file() or path.stat().st_size != item.get('size_bytes'): continue
+            try: duration = float(((item.get('media') or {}).get('format') or {}).get('duration'))
+            except (TypeError, ValueError): duration = None
+            sources.append({'project_id': project['id'], 'resource': name, 'title': project.get('title', ''), 'platform': platform, 'source_url': project.get('source_url', ''),
+                            'part': project.get('part'), 'quality': (item.get('selected_quality') or {}).get('label') or Path(name).stem,
+                            'duration_seconds': duration, 'size_bytes': item['size_bytes'], 'archived_at': project.get('created_at', '')})
+    sources.sort(key=lambda source: (source['archived_at'], -(source['part'] or 0)), reverse=True)
+    return {'sources': sources}
 
 
 @router.post('/transcriptions', status_code=202)
@@ -333,7 +411,8 @@ def start_transcription(body: TranscriptionBody):
         source = library.resource(body.project_id, body.resource)
         if project['resources'][body.resource]['kind'] != 'video':
             raise HTTPException(400, '只能转写已归档的视频资源。')
-        return transcription.start(source,body.language,project['title'],body.project_id,body.resource,reuse_model=body.reuse_model)
+        destination = output_destination(body.destination, body.target_project_id, body.folder, body.project_id)
+        return transcription.start(source,body.language,project['title'],body.project_id,body.resource,reuse_model=body.reuse_model,destination=destination)
     except FileNotFoundError:
         raise HTTPException(503, '未找到项目内 Whisper 环境或模型，请运行 scripts/setup-local-tools.ps1 -DownloadModel。') from None
     except (KeyError, ValueError, OSError) as error:
@@ -342,7 +421,11 @@ def start_transcription(body: TranscriptionBody):
 
 
 @router.post('/transcriptions/upload', status_code=202)
-async def upload_transcription(request: Request, filename: str, language: Literal['auto', 'zh', 'en'] = 'auto', reuse_model: bool = False):
+async def upload_transcription(request: Request, filename: str, language: Literal['auto', 'zh', 'en'] = 'auto', reuse_model: bool = False,
+                               destination: Literal['default', 'project', 'folder'] = 'default', target_project_id: str | None = None, folder: str | None = None):
+    if target_project_id is not None and not re.fullmatch(r'[a-f0-9]{32}', target_project_id): raise HTTPException(400, '项目编号无效。')
+    if folder is not None and len(folder) > 1000: raise HTTPException(400, '文件夹路径过长。')
+    output = output_destination(destination, target_project_id, folder)
     try:
         transcription.require_tool()
         transcription.upload_name(filename)
@@ -366,7 +449,7 @@ async def upload_transcription(request: Request, filename: str, language: Litera
                 if size > transcription.MAX_UPLOAD_BYTES: raise HTTPException(413, '音视频超过上传大小上限。')
                 stream.write(chunk)
         if not size: raise HTTPException(400, '上传文件为空。')
-        result = transcription.start(path,language,filename,owned_input=True,reuse_model=reuse_model)
+        result = transcription.start(path,language,filename,owned_input=True,reuse_model=reuse_model,destination=output)
         handed_off = True
         return result
     except BlockingIOError as error:
@@ -383,6 +466,18 @@ def transcription_status(identifier: str):
         return transcription.view(transcription.get(identifier))
     except KeyError:
         raise HTTPException(404, '转录任务已失效；已生成的结果仍保留在本机目录。') from None
+
+
+@router.post('/transcriptions/{identifier}/open')
+def open_transcription_folder(identifier: str):
+    try:
+        path = transcription.output_directory(transcription.get(identifier))
+        if not path.is_dir(): raise FileNotFoundError(path)
+        if sys.platform == 'win32': os.startfile(str(path))
+        else: subprocess.Popen(['open' if sys.platform == 'darwin' else 'xdg-open', str(path)])
+        return {'message': '已请求打开保存文件夹。'}
+    except (KeyError, ValueError, OSError):
+        raise HTTPException(404, '无法打开保存文件夹，可能已被移动或删除。') from None
 
 
 @router.get('/transcriptions/{identifier}/files/{token}')

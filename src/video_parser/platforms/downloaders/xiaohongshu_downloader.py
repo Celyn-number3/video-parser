@@ -23,6 +23,10 @@ class XiaohongshuDownloader(BaseDownloader):
             'Sec-Fetch-User': '?1',
             'Upgrade-Insecure-Requests': '1'
         }
+        from video_parser.services import accounts
+        cookie = accounts.cookie_header('xiaohongshu')
+        if cookie:
+            self.headers['Cookie'] = cookie
         self.data = self.fetch_html_data()
 
     def fetch_html_data(self):
@@ -31,18 +35,57 @@ class XiaohongshuDownloader(BaseDownloader):
         json_data = BaseDownloader.parse_html_data(self.html_content, pattern)
         return json_data
 
+    def _note(self):
+        data_dict = json.loads(self.data)
+        first_note_id = data_dict['note']['firstNoteId']
+        return data_dict['note']['noteDetailMap'][first_note_id]['note']
+
+    def streams(self):
+        """Current (2026) page data: per-codec stream lists plus a separate AAC track.
+
+        EF4 is H.264 with audio inside; EF5 is H.265 video only (up to 4K) and needs the
+        separate audio from mediaV2.audio_stream. Returns {'videos', 'audio_urls', 'duration'}.
+        """
+        try:
+            video = self._note().get('video') or {}
+        except (KeyError, TypeError, ValueError):
+            return {'videos': [], 'audio_urls': [], 'duration': None}
+        media = video.get('media') or {}
+        codecs = {'EF4': 'H.264', 'EF5': 'H.265'}
+        videos = []
+        for key, items in (media.get('stream') or {}).items():
+            if key not in codecs:
+                continue  # Unknown codecs (EF6/EF7) are skipped rather than guessed.
+            for item in items or []:
+                urls = [url for url in [item.get('masterUrl'), *(item.get('backupUrls') or [])] if isinstance(url, str) and url.startswith('http')]
+                if urls and item.get('height') and item.get('width'):
+                    videos.append({'codec': codecs[key], 'width': item['width'], 'height': item['height'],
+                                   'bitrate': item.get('avgBitrate') or 0, 'size': item.get('size'),
+                                   'has_audio': key == 'EF4', 'urls': urls})
+        audio_urls = []
+        try:
+            extra = video.get('mediaV2')
+            extra = json.loads(extra) if isinstance(extra, str) else (extra or {})
+            tracks = [track for tracks in (extra.get('audio_stream') or {}).values() for track in tracks or []]
+            if tracks:
+                best = max(tracks, key=lambda track: track.get('avg_bitrate') or track.get('audio_bitrate') or 0)
+                audio_urls = [url for url in [best.get('master_url'), *(best.get('backup_urls') or [])] if isinstance(url, str) and url.startswith('http')]
+        except (ValueError, TypeError, AttributeError):
+            audio_urls = []
+        duration = (media.get('video') or {}).get('duration')
+        return {'videos': videos, 'audio_urls': audio_urls, 'duration': duration if isinstance(duration, (int, float)) and duration > 0 else None}
+
     def get_real_video_url(self):
         try:
-            data_dict = json.loads(self.data)
-            first_note_id = data_dict['note']['firstNoteId']
-            origin_video_key = data_dict['note']['noteDetailMap'][first_note_id]['note']['video']['consumer']['originVideoKey']
-            if not origin_video_key:
-                raise Exception("Failed to find originVideoKey in response")
-            video_key = origin_video_key.replace("\\u002F", "/")
-            video_url = "http://sns-video-bd.xhscdn.com/" + video_key
-            return video_url
-        except (KeyError, json.JSONDecodeError) as e:
+            origin_video_key = ((self._note().get('video') or {}).get('consumer') or {}).get('originVideoKey')
+            if origin_video_key:  # Older page data.
+                return "http://sns-video-bd.xhscdn.com/" + origin_video_key.replace("\\u002F", "/")
+        except (KeyError, TypeError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to parse video URL: {e}")
+            return None
+        # A single file with sound first (H.264), else the largest stream.
+        streams = sorted(self.streams()['videos'], key=lambda item: (item['has_audio'], item['height'], item['bitrate']), reverse=True)
+        return streams[0]['urls'][0] if streams else None
 
     def get_title_content(self):
         try:

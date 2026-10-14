@@ -102,6 +102,8 @@ def main(argv=None, model=None, initial_load_seconds=0.0):
                 segments, info = model.transcribe(
                     str(source), language=None if args.language == "auto" else args.language,
                     beam_size=5, vad_filter=not args.no_vad, condition_on_previous_text=False,
+                    # Auto-detect listens to up to 3 x 30 s of speech, stopping early once a language passes 0.7.
+                    language_detection_segments=3, language_detection_threshold=0.7,
                 )
                 segments = list(segments)
                 elapsed = time.perf_counter() - started

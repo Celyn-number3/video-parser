@@ -147,6 +147,11 @@ def run_cli(url, episodes):
             return process.returncode, {'events':events} if TOOL_ROOT==BUNDLED_ROOT else output
 
 
+def platform_name(title, suffix):
+    # Same folder as local transcripts; the name tells the two sources apart.
+    return (library.safe_name(title)[:60] or 'subtitle') + '.平台字幕' + suffix
+
+
 def sanitize_title(title):
     return re.sub(r'[\\/:*?"<>|]', '_', title).strip().replace(' ', '_')[:100] or 'subtitle'
 
@@ -241,7 +246,7 @@ def worker(job):
                 for path in triplet:
                     target = snapshot / ('_' + path.suffix[1:]) / path.name
                     task_runtime.checkpoint()
-                    relative = library.import_file(project['id'], target, 'subtitles/subtitle' + path.suffix, 'subtitle', {'download_name': path.name})
+                    relative = library.import_file(project['id'], target, 'subtitles/' + platform_name(project['title'], path.suffix), 'subtitle', {'download_name': path.name})
                     target = library.resource(project['id'], relative)
                     token = f'{episode}-{path.suffix[1:]}'
                     downloads[token] = target

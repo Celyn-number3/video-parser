@@ -33,7 +33,8 @@ class EntryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads(result.stdout)
         self.assertTrue(data['ok'])
-        self.assertEqual(len(data['platforms']), 8)
+        self.assertEqual(len(data['platforms']), 4)
+        self.assertIn('YouTube', data['platforms'])
         self.assertIn('cover', data['commands'])
         self.assertTrue(data['speech_transcription'])
 
@@ -133,7 +134,7 @@ class LogicTests(unittest.TestCase):
         })()
         with patch('video_parser.platforms.factory.DownloaderFactory.create_downloader', return_value=fake):
             with self.assertRaises(RuntimeError):
-                self.cli.parse_link('https://www.kuaishou.com/short-video/123')
+                self.cli.parse_link('https://www.xiaohongshu.com/explore/123')
 
     def test_safe_name_no_traversal_or_windows_reserved_name(self):
         for title in ['../../CON', 'CON', 'AUX.txt', 'a:b/c\\d?', '....', '']:
@@ -167,7 +168,7 @@ class LogicTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b'abcde')
 
     def test_download_failure_has_no_final_file(self):
-        parsed = self.cli.ParsedVideo({'title': 'title', 'video_id': '123', 'platform': '快手'}, {}, ['https://cdn/video'], [])
+        parsed = self.cli.ParsedVideo({'title': 'title', 'video_id': '123', 'platform': '小红书'}, {}, ['https://cdn/video'], [])
         with tempfile.TemporaryDirectory() as directory, patch.object(self.cli, 'download_resource', side_effect=RuntimeError('offline')):
             target = Path(directory) / 'final.mp4'
             with self.assertRaises(RuntimeError):

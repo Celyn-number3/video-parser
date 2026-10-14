@@ -1,6 +1,7 @@
 """Task and maintenance endpoints for the existing local-only workbench."""
 from dataclasses import asdict
 import os
+from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field,field_validator
@@ -75,6 +76,38 @@ def cancel_task(kind:str,identifier:str):
     service=domain(kind);job=guarded(service.get,identifier)
     task_runtime.cancel(identifier)
     return service.view(job)
+
+
+CLEARABLE={'failed','cancelled','interrupted'}
+
+
+class ClearTasksBody(BaseModel):
+    confirm:Literal[True]
+
+    @field_validator('confirm',mode='before')
+    @classmethod
+    def explicit_confirmation(cls,value):
+        if value is not True:raise ValueError('请明确确认清理任务记录。')
+        return value
+
+
+@router.post('/tasks/clear')
+def clear_tasks(body:ClearTasksBody):
+    # Deletes only the journals of tasks that ended without a result (failed / cancelled / interrupted).
+    # Output files, archives and successful or running tasks are never touched.
+    removed=0
+    for category,(service,root) in catalog().items():
+        mutex=getattr(service,'jobs_lock',None) or service.lock
+        with mutex:cached=list(service.jobs)
+        for identifier in dict.fromkeys([*cached,*task_runtime.recent_ids(root,limit=100000)]):
+            try:job=service.get(identifier)
+            except (KeyError,OSError,ValueError):continue
+            if job.state not in CLEARABLE or task_runtime.active_id(identifier):continue
+            try:(Path(root)/(identifier+'.json')).unlink(missing_ok=True)
+            except OSError:continue
+            with mutex:service.jobs.pop(identifier,None)
+            removed+=1
+    return {'removed':removed}
 
 
 @router.post('/tasks/subtitles/{identifier}/retry',status_code=202)

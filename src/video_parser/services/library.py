@@ -16,8 +16,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from video_parser.core.paths import ROOT
 
 LIBRARY_ROOT = Path(os.getenv('VIDEO_LIBRARY_ROOT', ROOT / 'library'))
-PLATFORMS = {'哔哩哔哩': 'bilibili', '抖音': 'douyin', '小红书': 'xiaohongshu', '快手': 'kuaishou',
-             '好看视频': 'haokan', '梨视频': 'pearvideo', '微视': 'weishi', '皮皮搞笑': 'pipigaoxiao'}
+PLATFORMS = {'哔哩哔哩': 'bilibili', '抖音': 'douyin', '小红书': 'xiaohongshu', 'YouTube': 'youtube'}
 
 
 def digest(path):
@@ -108,6 +107,11 @@ def identity(metadata):
     key = f'{platform}:{identifier}' + (f':p{part}' if part else '')
     if platform == 'bilibili':
         canonical = f'https://www.bilibili.com/video/{identifier}?p={part}'
+    elif platform == 'youtube':
+        from video_parser.platforms.youtube_links import canonical_url
+        canonical = canonical_url(metadata.get('source_url', ''))
+        if parse_qs(urlsplit(canonical).query)['v'][0] != identifier:
+            raise ValueError('YouTube identity mismatch')
     elif source.scheme in ('https', 'http') and source.hostname:
         canonical = urlunsplit(('https', source.hostname, source.path, '', ''))
     else: canonical = ''

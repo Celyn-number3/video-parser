@@ -86,7 +86,7 @@ Windows 主环境锁定为 `requirements/windows-main.lock.txt` 中实际测试�
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests/offline
 npm.cmd --prefix frontend run build
-.\.venv\Scripts\python.exe tests/browser/browser_optimization.py
+.\.venv\Scripts\python.exe -m tests.browser.browser_frontend_layout
 .\.venv\Scripts\python.exe tests/browser/browser_transcription.py
 .\.venv\Scripts\python.exe tests/runtime/check_task_restart.py
 .\.venv\Scripts\python.exe scripts/benchmark-library-index.py

@@ -19,14 +19,14 @@ DEFAULT_DOWNLOADS = ROOT / 'downloads'
 CONFIG = json.loads((ROOT / 'configs' / 'business_config.json').read_text(encoding='utf-8'))
 COMMANDS = {
     'capabilities': '列出功能与平台', 'doctor': '检查运行环境',
-    'parse': '解析标题、封面和视频直链', 'download': '下载视频（B站合并音视频）',
+    'parse': '解析标题、封面和视频直链', 'download': '下载视频（支持 B站、抖音与 YouTube；B站与 YouTube 合并音视频）',
     'cover': '下载封面', 'frames': '提取本地视频画面',
     'analyze': '使用 Qwen3-VL 分析画面（链接或本地视频）',
     'transcribe': '使用本机 Whisper 将音视频转为文字和字幕',
     'transcribe-batch': '批量本机转录：复用 CUDA 模型，单个失败不影响后续文件',
     'list': '列出本地视频', 'play': '调用系统播放器打开本地视频',
 }
-SHORT_HOSTS = {'b23.tv', 'v.douyin.com', 'xhslink.com', 'www.xhslink.com', 'v.kuaishou.com'}
+SHORT_HOSTS = {'b23.tv', 'v.douyin.com', 'xhslink.com', 'www.xhslink.com'}
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v'}
 
 
@@ -63,7 +63,7 @@ def capabilities():
 def doctor():
     from video_parser.services import transcription,diagnostics
     dependencies = {}
-    for module in ('requests', 'bs4', 'lxml', 'dotenv', 'py_mini_racer', 'PIL', 'openai'):
+    for module in ('requests', 'bs4', 'lxml', 'dotenv', 'py_mini_racer', 'PIL', 'openai', 'yt_dlp'):
         try:
             importlib.import_module(module)
             dependencies[module] = {'available': True}
@@ -109,9 +109,11 @@ def resolve_url(text):
         raise ValueError('该链接的平台尚未支持。运行 capabilities 查看支持列表。')
     if platform == '抖音':
         return UrlParser.douyin_video_address(url), platform
+    if platform == 'YouTube':
+        from video_parser.platforms.youtube_links import canonical_url
+        return canonical_url(url), platform
     query = parse_qs(parsed.query)
-    keys = {'哔哩哔哩': ('p',), '小红书': ('xsec_token', 'xsec_source'),
-            '好看视频': ('vid',), '微视': ('id',)}.get(platform, ())
+    keys = {'哔哩哔哩': ('p',), '小红书': ('xsec_token', 'xsec_source'), 'YouTube': ('v',)}.get(platform, ())
     kept = {key: query[key][0] for key in keys if key in query}
     url = urlunparse(('https', host, parsed.path.rstrip('/'), '', urlencode(kept), ''))
     return url, platform
@@ -141,6 +143,12 @@ def parse_link(text, require_video=True):
         'title': title or UrlParser.get_video_id(url) or 'video',
         'video_url': video_url, 'cover_url': cover_url,
     }
+    if platform == 'YouTube':
+        details = downloader.metadata()
+        identifier = parse_qs(urlparse(url).query)['v'][0]
+        if details['id'] != identifier:
+            raise ValueError('YouTube 返回的视频标识与请求不符。')
+        metadata.update(video_id=identifier, duration=details.get('duration'))
     video_urls = [video_url] if video_url else []
     audio_urls = []
     variants = {}
@@ -156,7 +164,10 @@ def parse_link(text, require_video=True):
             # AVC is broadly playable in browsers; select bitrate within the compatible codec first.
             track = max(same_height, key=lambda item: (str(item.get('codecs', '')).startswith('avc1'), item.get('bandwidth', 0)))
             key = f'{height}p'
-            public = {'id': key, 'label': key, 'width': track.get('width'), 'height': height,
+            # Label by the short side so a 1080x1920 portrait video reads as 1080p, not 1920p.
+            width = track.get('width')
+            label = f'{min(width, height)}p' if width else key
+            public = {'id': key, 'label': label, 'width': track.get('width'), 'height': height,
                       'codec': track.get('codecs'), 'bandwidth': track.get('bandwidth'), 'track_id': track.get('id')}
             variants[key] = {**public, 'video_urls': track_urls(track)}
         if variants:
@@ -169,6 +180,25 @@ def parse_link(text, require_video=True):
             audio_url = downloader.get_audio_url()
             audio_urls = [audio_url] if audio_url else []
         metadata['audio_url'] = audio_urls[0] if audio_urls else None
+    if platform == '小红书' and require_video and hasattr(downloader, 'streams'):
+        found = downloader.streams()
+        audio = found['audio_urls']
+        # Without the separate AAC track only H.264 (sound inside) is usable.
+        usable = [item for item in found['videos'] if audio or item['has_audio']]
+        for height in sorted({min(item['width'], item['height']) for item in usable}, reverse=True):
+            same = [item for item in usable if min(item['width'], item['height']) == height]
+            item = max(same, key=lambda entry: (entry['codec'] == 'H.264', entry['bitrate']))
+            key = f'{height}p'
+            label = key if item['codec'] == 'H.264' else f'{key} · H.265'
+            public = {'id': key, 'label': label, 'width': item['width'], 'height': item['height'],
+                      'codec': item['codec'], 'bandwidth': item['bitrate']}
+            variants[key] = {**public, 'video_urls': item['urls']}
+        if variants:
+            first = next(iter(variants.values()))
+            video_urls = first['video_urls']
+            audio_urls = audio
+            metadata.update(width=first['width'], height=first['height'], duration=found['duration'])
+            metadata['audio_url'] = audio_urls[0] if audio_urls else None
     if platform == '抖音' and isinstance(getattr(downloader, 'data', None), dict):
         video = (downloader.data.get('aweme_detail') or {}).get('video') or {}
         duration = video.get('duration')
@@ -177,16 +207,28 @@ def parse_link(text, require_video=True):
         if downloader.data.get('_browser_user_agent'):
             video_urls = (video.get('play_addr') or {}).get('url_list') or video_urls
     if require_video and not video_urls:
-        raise RuntimeError('未获取到视频直链；可能是图文内容、登录限制、风控或解析器已失效。')
+        from video_parser.platforms.downloaders.base_downloader import PlatformAccessError
+        from video_parser.services import accounts
+        account = {'小红书': 'xiaohongshu', '抖音': 'douyin', '哔哩哔哩': 'bilibili'}.get(platform)
+        hint = ''
+        if account and accounts.load(account):
+            hint = '已使用本机登录态仍失败，登录可能已失效，可在“账号与登录”页重新登录。'
+        elif account:
+            hint = '可以到“账号与登录”页登录该平台后再试。'
+        raise PlatformAccessError('未获取到视频直链；可能是图文内容、登录限制或平台风控。' + hint)
     metadata['video_url'] = video_urls[0] if video_urls else None
-    parsed = ParsedVideo(metadata, downloader.headers or {}, video_urls, audio_urls, variants)
+    headers = dict(downloader.headers or {})
+    if platform == '小红书':
+        headers.pop('Cookie', None)  # The login is for the page only; the CDN does not need it.
+    parsed = ParsedVideo(metadata, headers, video_urls, audio_urls, variants)
     return select_quality(parsed, 'best') if require_video else parsed
 
 
 def quality_options(parsed):
     if parsed.variants:
         return [{key: value for key, value in item.items() if key != 'video_urls'} for item in parsed.variants.values()]
-    return [{'id': 'default', 'label': '平台提供的默认画质', 'width': None, 'height': None, 'codec': None}]
+    label = '最高 1080p · MP4' if parsed.metadata['platform'] == 'YouTube' else '平台提供的默认画质'
+    return [{'id': 'default', 'label': label, 'width': None, 'height': None, 'codec': None}]
 
 
 def select_quality(parsed, quality='best'):
@@ -216,7 +258,8 @@ def archived_videos(identifier):
             height, width = track.get('height'), track.get('width')
             selected = item.get('selected_quality')
             key = 'saved-' + hashlib.sha256(relative.encode()).hexdigest()[:16]
-            videos.append({'id': key, 'label': (f'{height}p' if height else '原有视频（尺寸未知）') + ' · 已归档',
+            short = min(width, height) if width and height else height
+            videos.append({'id': key, 'label': (f'{short}p' if short else '原有视频（尺寸未知）') + ' · 已归档',
                            'width': width, 'height': height, 'codec': track.get('codec_name'),
                            'path': relative, 'media': media, 'size_bytes': path.stat().st_size,
                            'selected_quality': selected})
@@ -282,27 +325,40 @@ def publish(staged, target):
     os.link(staged, target)
 
 
-def download_resource(urls, path, headers):
+def download_resource(urls, path, headers, track=1, tracks=1):
     import requests
+    from video_parser.services import task_runtime
+    from video_parser.services.download_progress import TransferProgress
     if not urls:
         raise RuntimeError('没有可下载的资源链接。')
     errors = []
-    for url in urls:
+    attempts = [url for url in urls for _ in range(2)]  # One quick retry per link for transient CDN errors.
+    for index, url in enumerate(attempts):
+        task_runtime.checkpoint()
+        if index and attempts[index - 1] == url:
+            import time
+            time.sleep(2)
         try:
             received = 0
             with requests.get(url, headers=headers, stream=True, timeout=(15, 60)) as response:
                 response.raise_for_status()
                 expected = int(response.headers.get('Content-Length', 0))
+                if response.headers.get('Content-Encoding', 'identity').lower() != 'identity':
+                    expected = 0  # iter_content decodes compressed bodies.
+                meter = TransferProgress(track, tracks)
+                meter.report(0, expected)
                 with Path(path).open('wb') as output:
                     for chunk in response.iter_content(chunk_size=256 * 1024):
                         if chunk:
                             output.write(chunk)
                             received += len(chunk)
-                            from video_parser.services import task_runtime
-                            task_runtime.progress('downloading','正在下载当前音视频轨道…',bytes=received,total_bytes=expected)
+                            meter.report(received, expected)
                 if not received or (expected and received != expected):
                     raise RuntimeError(f'下载不完整：收到 {received} 字节，预期 {expected} 字节。')
+                meter.report(received, expected, finished=True)
             return
+        except task_runtime.Cancelled:
+            raise
         except (requests.RequestException, RuntimeError) as error:
             errors.append(type(error).__name__)
             print(f'资源下载失败（{type(error).__name__}），尝试下一个备用链接。', file=sys.stderr)
@@ -342,7 +398,30 @@ def download_video(parsed, target):
     target = Path(target).resolve()
     if target.exists():
         raise FileExistsError(f'文件已存在，拒绝覆盖：{target}')
-    needs_audio = parsed.metadata['platform'] == '哔哩哔哩'
+    platform = parsed.metadata['platform']
+    from video_parser.services import task_runtime
+    task_runtime.checkpoint()
+    if platform == 'YouTube':
+        from video_parser.services import task_runtime
+        from video_parser.platforms.youtube import download_youtube
+        require_tools('ffmpeg', 'ffprobe')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.video-download-', dir=target.parent) as directory:
+            staged = Path(directory) / 'output.mp4'
+
+            def _report_progress(done, total, finished=False, **values):
+                import time
+                task_runtime.progress('downloading', '正在下载 YouTube 当前轨道…', force=finished,
+                                      bytes=done, total_bytes=total, sampled_at=time.time(), **values)
+
+            download_youtube(parsed.metadata['source_url'], staged, _report_progress)
+            task_runtime.progress('validating', '正在校验下载结果…', force=True)
+            info = probe(staged)
+            check_video(info, require_audio=True, expected_duration=parsed.metadata.get('duration'))
+            task_runtime.checkpoint()
+            publish(staged, target)
+        return {'path': str(target), 'size_bytes': target.stat().st_size, 'media': info, 'title': parsed.metadata['title']}
+    needs_audio = platform == '哔哩哔哩'
     if needs_audio and not parsed.audio_urls:
         raise RuntimeError('未获取到 B站音轨，停止下载，避免生成无声视频。')
     require_tools('ffprobe', *(['ffmpeg'] if parsed.audio_urls else []))
@@ -352,8 +431,9 @@ def download_video(parsed, target):
         staged = temporary / 'output.mp4'
         if parsed.audio_urls:
             video, audio = temporary / 'video.m4s', temporary / 'audio.m4s'
-            download_resource(parsed.video_urls, video, parsed.headers)
-            download_resource(parsed.audio_urls, audio, parsed.headers)
+            download_resource(parsed.video_urls, video, parsed.headers, track=1, tracks=2)
+            download_resource(parsed.audio_urls, audio, parsed.headers, track=2, tracks=2)
+            task_runtime.progress('merging', '正在合并音视频；剩余时间未知。', force=True)
             result = subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-n',
                                      '-i', str(video), '-i', str(audio), '-map', '0:v:0', '-map', '1:a:0',
                                      '-c', 'copy', '-movflags', '+faststart', str(staged)],
@@ -362,8 +442,10 @@ def download_video(parsed, target):
                 raise RuntimeError('音视频合并失败：' + result.stderr.strip()[-800:])
         else:
             download_resource(parsed.video_urls, staged, parsed.headers)
+        task_runtime.progress('validating', '正在校验下载结果…', force=True)
         info = probe(staged)
         check_video(info, require_audio=bool(parsed.audio_urls), expected_duration=parsed.metadata.get('duration'))
+        task_runtime.checkpoint()
         publish(staged, target)
     return {'path': str(target), 'size_bytes': target.stat().st_size, 'media': info, 'title': parsed.metadata['title']}
 

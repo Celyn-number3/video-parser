@@ -66,6 +66,8 @@ class CLITests(unittest.TestCase):
             self.assertEqual(transcribe.call_count, 2)
             self.assertIsNone(transcribe.call_args.kwargs["language"])
             self.assertFalse(transcribe.call_args.kwargs["vad_filter"])
+            self.assertEqual(transcribe.call_args.kwargs["language_detection_segments"], 3)
+            self.assertEqual(transcribe.call_args.kwargs["language_detection_threshold"], 0.7)
         load.assert_called_once()
 
     @patch("video_parser.integrations.whisper.cli.load_model", side_effect=RuntimeError("model unavailable"))

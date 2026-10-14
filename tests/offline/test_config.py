@@ -12,7 +12,8 @@ class ParserConfigurationTests(unittest.TestCase):
         with patch.dict(os.environ, {'DB_PORT': 'not-a-database-port'}):
             configuration = importlib.reload(constants)
         self.assertTrue(configuration.DOMAIN_TO_NAME)
-        self.assertEqual(len(configuration.PLATFORM_MAP), 8)
+        self.assertEqual(len(configuration.PLATFORM_MAP), 4)  # 2026-10-14: 好看视频/皮皮搞笑/快手/梨视频/微视 removed
+        self.assertIn('YouTube', configuration.PLATFORM_MAP)
         for name in ('DATABASE_CONFIG', 'WECHAT_APP_ID', 'WECHAT_APP_SECRET', 'AUDIT_MODE',
                      'MINI_PROGRAM_LEGAL_DOMAIN', 'SAVE_VIDEO_PATH', 'SAVE_IMAGE_PATH'):
             self.assertFalse(hasattr(configuration, name), name)

@@ -34,7 +34,7 @@ Web 和业务层不导入命令行适配器。命令行解析器只把选项转�
 - `library/`、`cache/`、`outputs/`、`logs/` 原地保留，且仍不纳入 Git。
 - `VIDEO_LIBRARY_ROOT`、`BILI_SUBTITLE_ROOT`、`WHISPER_ROOT` 的原有语义保留。
 - `frontend/dist/` 仍由 FastAPI 提供。
-- 签名 JS 随 Python 包配置为 package data；快手解析器原有敏感索引排除沿新路径保留。
+- 签名 JS 随 Python 包配置为 package data。（快手解析器已于 2026-10-14 删除。）
 
 日志路径现在固定在项目 `logs/`，不再受从哪个目录启动影响。
 

@@ -4,6 +4,10 @@ from bs4 import BeautifulSoup
 from video_parser.core.logging import logger
 
 
+class PlatformAccessError(RuntimeError):
+    """Safe, user-facing Chinese message (no cookies, no response bodies)."""
+
+
 class BaseDownloader:
     def __init__(self, real_url):
         self.real_url = real_url

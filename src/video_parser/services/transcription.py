@@ -157,14 +157,55 @@ class Job:
     stage_timings: dict = field(default_factory=dict)
     reuse_model: bool = False
     worker: dict = field(default_factory=dict)
+    # {} = default output folder; {'type': 'project', 'project_id'}; {'type': 'folder', 'path'}.
+    destination: dict = field(default_factory=dict)
 
 
 jobs: dict[str, Job] = {}
 
 
+def base_name(job):
+    # Uploaded files carry an extension in the title; project titles may contain dots, so keep them whole.
+    return library.safe_name(Path(job.title).stem if job.owned_input or not job.project_id else job.title)[:60] or 'transcript'
+
+
+def output_name(job, fmt):
+    return f'{base_name(job)}.本地转写.{job.detected_language or "auto"}.{fmt}'
+
+
+def destination_of(job):
+    if job.destination: return job.destination
+    return {'type': 'project', 'project_id': job.project_id} if job.project_id else {}
+
+
+def saved_to(job):
+    destination = destination_of(job)
+    try:
+        if destination.get('type') == 'project':
+            project = library.get(destination['project_id'])
+            return {'type': 'project', 'project_id': project['id'], 'title': project['title'],
+                    'location': 'library/' + project['directory'].relative_to(library.LIBRARY_ROOT).as_posix() + '/subtitles'}
+    except (KeyError, ValueError, OSError):
+        return {'type': 'project', 'location': ''}
+    if destination.get('type') == 'folder':
+        return {'type': 'folder', 'location': destination['path']}
+    return {'type': 'default', 'location': 'outputs/transcriptions/' + job.id}
+
+
+def output_directory(job):
+    destination = destination_of(job)
+    if destination.get('type') == 'project':
+        return library.contained(library.get(destination['project_id'])['directory'], 'project.json').parent
+    if destination.get('type') == 'folder':
+        return Path(destination['path'])
+    return OUTPUT_ROOT / job.id
+
+
 def view(job):
     return {**task_runtime.metadata(job), 'id': job.id, 'state': task_runtime.public_state(job), 'message': job.message, 'title': job.title,
-            'text': job.text, 'language': job.detected_language, 'worker':job.worker,
+            'text': job.text, 'language': job.detected_language, 'worker':job.worker, 'saved_to': saved_to(job),
+            # When a language was forced, Whisper reports that language back; the UI must say "按X转写", not "识别为X".
+            'requested_language': job.language, 'source_project_id': job.project_id, 'source_resource': job.resource,
             'files': [{'name': library.safe_name(Path(job.title).stem) + '.' + fmt, 'format': fmt,
                        'url': f'/api/workspace/transcriptions/{job.id}/files/{fmt}'} for fmt in job.files]}
 
@@ -182,13 +223,14 @@ def get(identifier):
         return job
 
 
-def start(source, language='auto', title=None, project_id=None, resource=None, owned_input=False, reuse_model=False):
+def start(source, language='auto', title=None, project_id=None, resource=None, owned_input=False, reuse_model=False, destination=None):
     require_tool()
     validate_language(language)
     source = Path(source).resolve(strict=True)
     if not source.is_file() or not source.stat().st_size: raise ValueError('输入文件为空或不存在。')
     job = Job(uuid4().hex, source, title or source.name, language, project_id, resource, owned_input)
     job.reuse_model=reuse_model
+    job.destination=destination or {}
     with jobs_lock:
         for identifier, old in list(jobs.items()):
             if old.state not in ('queued', 'running') and time.monotonic() - old.created_at > JOB_TTL:
@@ -223,16 +265,22 @@ def worker(job):
             state, message = 'empty', '未识别到有效语音；可能是静音、弱语音或无可识别内容。'
         else:
             files = {}
-            task_runtime.progress('archiving','正在归档已校验的转录结果…')
+            destination = destination_of(job)
+            task_runtime.progress('archiving','正在保存已校验的转录结果…')
             for fmt, filename in result['files'].items():
                 task_runtime.checkpoint()
                 path = Path(filename)
-                relative = None
-                if job.project_id:
-                    relative = library.import_file(job.project_id, path, f'transcriptions/{job.id}/{path.name}',
-                        'transcription', {'language': job.detected_language, 'video_resource': job.resource})
-                    path = library.resource(job.project_id, relative)
-                files[fmt] = {'path': path, 'sha256': library.digest(path), 'relative': relative}
+                relative, owner = None, None
+                if destination.get('type') == 'project':
+                    owner = destination['project_id']
+                    details = {'language': job.detected_language, 'source_title': job.title}
+                    if owner == job.project_id: details['video_resource'] = job.resource
+                    relative = library.import_file(owner, path, 'subtitles/' + output_name(job, fmt), 'transcription', details)
+                    path = library.resource(owner, relative)
+                elif destination.get('type') == 'folder':
+                    from video_parser.services import folders
+                    path = folders.publish(destination['path'], path, output_name(job, fmt))
+                files[fmt] = {'path': path, 'sha256': library.digest(path), 'relative': relative, 'project_id': owner}
             job.files = files
             state, message = 'completed', '转录完成。时间戳为片段级，请人工校对识别结果。'
     except task_runtime.Cancelled:
@@ -254,9 +302,11 @@ def download_file(identifier, token):
     job = get(identifier)
     if job.state != 'completed' or token not in job.files: raise KeyError('Unknown output')
     item = job.files[token]
-    path = library.resource(job.project_id, item['relative']) if job.project_id else item['path']
+    owner = item.get('project_id') or (job.project_id if item.get('relative') else None)
+    path = library.resource(owner, item['relative']) if owner else Path(item['path'])
+    in_folder = destination_of(job).get('type') == 'folder'
     if (path.is_symlink() or not path.is_file()
-            or (not job.project_id and not path.resolve().is_relative_to((OUTPUT_ROOT / job.id).resolve()))
+            or (not owner and not in_folder and not path.resolve().is_relative_to((OUTPUT_ROOT / job.id).resolve()))
             or library.digest(path) != item['sha256']):
         raise ValueError('转录文件已变化。')
     return path

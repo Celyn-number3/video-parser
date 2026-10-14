@@ -46,7 +46,8 @@ class StructureTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     results.append(json.loads(result.stdout))
         self.assertEqual(results[0], results[1])
-        self.assertEqual(len(results[0]['platforms']), 8)
+        self.assertEqual(len(results[0]['platforms']), 4)
+        self.assertIn('YouTube', results[0]['platforms'])
 
     def test_web_and_services_do_not_depend_on_command_adapter(self):
         source = ROOT / 'src/video_parser'

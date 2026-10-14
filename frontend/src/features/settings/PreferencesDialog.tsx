@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { Configuration } from '../../lib/api';
 import type { Settings } from './settings';
+import CacheManager from './CacheManager';
 
-export default function SettingsDialog({ settings, onChange, config, configError, saveStatus, onReset, onClose }: {
+export default function SettingsDialog({ settings, onChange, config, configError, saveStatus, activeCount, onClose }: {
   settings: Settings; onChange: (settings: Settings) => void; config: Configuration | null;
-  configError: string; saveStatus: string; onReset: () => void; onClose: () => void;
+  configError: string; saveStatus: string; activeCount: number | null; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const quality = useRef<HTMLSelectElement>(null);
@@ -23,17 +24,18 @@ export default function SettingsDialog({ settings, onChange, config, configError
         <option value="best">最高可用</option><option value="1080p">优先 1080P</option><option value="720p">优先 720P</option>
       </select>
       <label className="settings-check"><input type="checkbox" checked={settings.completionReminder} onChange={event => onChange({ ...settings, completionReminder: event.target.checked })} />归档完成提醒</label>
-      <p className="settings-hint">偏好仅影响下次解析，不会改变当前视频、正在运行的任务或恢复的历史项目。</p>
-      <p role="status" aria-live="polite" className="settings-save-status">{saveStatus}</p>
-      <button type="button" className="secondary" onClick={onReset}>恢复默认</button>
+      {saveStatus && <p role="status" aria-live="polite" className="settings-save-status">{saveStatus}</p>}
     </section>
-    <section aria-labelledby="settings-storage"><h3 id="settings-storage">保存说明</h3>
-      <p>归档位置（只读）：</p><code className="archive-root">{config?.archive_root || (configError ? '无法读取归档位置' : '正在读取…')}</code>
-      <p>点击“下载”会将视频保存到上述归档目录，可通过“打开项目文件夹”查看。</p>
-      <p>归档按项目和画质管理，已有资源优先复用。</p>
+    <section aria-labelledby="settings-transcription"><h3 id="settings-transcription">本地转写</h3>
+      <label className="settings-check"><input type="checkbox" checked={settings.reuseTranscriptionModel} onChange={event => onChange({ ...settings, reuseTranscriptionModel: event.target.checked })} />连续任务复用模型</label>
+      <p className="settings-hint">本机 CUDA 模型（large-v3-turbo）空闲 60 秒后释放，不会切换到 CPU 或云端。</p>
+    </section>
+    <section aria-labelledby="settings-storage"><h3 id="settings-storage">归档位置</h3>
+      <code className="archive-root">{config?.archive_root || (configError ? '无法读取归档位置' : '正在读取…')}</code>
     </section>
     <section aria-labelledby="settings-services"><h3 id="settings-services">服务状态</h3>
       {config ? <ul className="service-status"><li>媒体工具：{config.media_ready ? '就绪' : '未就绪'}</li><li>字幕：{config.subtitles_ready ? '就绪' : '未就绪'}</li><li>转录：{config.transcription_ready ? '就绪' : '未就绪'}</li><li>AI：{config.ai_configured ? '已配置' : '未配置'}</li></ul> : configError ? <p role="alert" className="error-text">{configError}</p> : <p>正在读取服务状态…</p>}
     </section>
+    <CacheManager activeCount={activeCount} />
   </dialog>;
 }

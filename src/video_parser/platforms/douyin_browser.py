@@ -94,6 +94,11 @@ def normalize(payload, identifier):
             '_browser_user_agent': payload.get('user_agent') if isinstance(payload.get('user_agent'), str) else ''}
 
 
+def saved_cookies():
+    from video_parser.services import accounts
+    return accounts.playwright_cookies('douyin')
+
+
 def _resolve(identifier, kind):
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as BrowserTimeout
@@ -104,6 +109,12 @@ def _resolve(identifier, kind):
         try:
             browser = playwright.chromium.launch(headless=True, timeout=15000)
             context = browser.new_context(viewport={'width': 1280, 'height': 800}, locale='zh-CN')
+            saved = saved_cookies()
+            if saved:
+                try:
+                    context.add_cookies(saved)
+                except Exception:
+                    pass  # A malformed saved login must not block anonymous parsing.
             page = context.new_page()
             page.goto(f'https://www.douyin.com/{kind}/{identifier}', wait_until='domcontentloaded', timeout=30000)
             handle = page.wait_for_function(extraction_script(identifier), timeout=25000)

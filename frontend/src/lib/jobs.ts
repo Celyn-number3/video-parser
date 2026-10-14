@@ -2,12 +2,12 @@ import { request } from './api';
 
 export interface TaskInfo {
   id: string; state: string; message: string; kind?: string; title?: string;
-  phase?: string; progress?: { done?: number; total?: number; bytes?: number; total_bytes?: number };
+  phase?: string; progress?: { done?: number; total?: number; bytes?: number; total_bytes?: number; speed_bytes_per_second?: number; eta_seconds?: number; sampled_at?: number; track?: number; tracks?: number; estimated_total?: number };
   error_code?: string; queue_position?: number; elapsed_seconds?: number; project_id?: string;
 }
 export interface WorkflowJob<T> extends TaskInfo { result: T }
 export const isActive = (state?: string) => ['queued', 'running', 'cancelling'].includes(state || '');
-export const phases: Record<string, string> = { queued:'排队', starting:'启动', reading:'读取信息', downloading:'下载', transcribing:'转录', extracting:'提取画面', analyzing:'模型分析', validating:'校验', archiving:'归档', completed:'完成', empty:'未识别到语音', partial:'部分完成', failed:'失败', login_required:'需要登录', cancelled:'已取消', interrupted:'重启中断' };
+export const phases: Record<string, string> = { queued:'排队', cancelling:'正在取消', starting:'启动', reading:'读取信息', downloading:'下载', merging:'合并音视频', transcribing:'转录', extracting:'提取画面', analyzing:'模型分析', validating:'校验', archiving:'归档', completed:'完成', empty:'未识别到语音', partial:'部分完成', failed:'失败', login_required:'需要登录', cancelled:'已取消', interrupted:'重启中断' };
 
 function delay(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -47,6 +47,6 @@ export async function runWorkflow<T>(path: string, body: unknown, signal: AbortS
   if (job.state !== 'completed') throw new Error(job.message + (job.error_code ? ' [' + job.error_code + ']' : ''));
   return job.result;
 }
-export function cancelTask(kind: string, id: string) {
-  return request<TaskInfo>(`/tasks/${kind}/${id}/cancel`, new AbortController().signal, {});
+export function cancelTask(kind: string, id: string, signal = new AbortController().signal) {
+  return request<TaskInfo>(`/tasks/${kind}/${id}/cancel`, signal, {});
 }

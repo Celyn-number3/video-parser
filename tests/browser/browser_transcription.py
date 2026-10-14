@@ -48,13 +48,13 @@ def main():
                 base = f'http://127.0.0.1:{port}'
                 page.goto(base)
                 page.wait_for_load_state('networkidle')
-                assert '音频转文字' in page.locator('main').inner_text()
-                panel = page.get_by_role('region', name='音频转文字')
-                expect(panel.get_by_role('button', name='开始转录')).to_be_disabled()
-                panel.get_by_label('选择音视频文件', exact=False).set_input_files(str(fixture.source))
-                panel.get_by_role('button', name='开始转录').click()
+                # 2026-10-14 UI: page renamed 字幕与转写; source tabs 上传文件 / 已归档视频; language auto-detected.
+                page.locator('nav').get_by_role('button', name='字幕与转写').click()
+                panel = page.locator('section.transcription-panel')
+                expect(panel.get_by_role('button', name='开始转写')).to_be_disabled()
+                panel.locator('#transcription-file').set_input_files(str(fixture.source))
+                panel.get_by_role('button', name='开始转写').click()
                 expect(panel.get_by_label('识别文字')).to_have_value('你好，世界。', timeout=10000)
-                expect(panel.get_by_role('status')).to_contain_text('转录完成')
                 for fmt in ('TXT', 'SRT'):
                     with page.expect_download() as downloaded:
                         panel.get_by_role('button', name='下载 ' + fmt, exact=True).click()
@@ -71,28 +71,28 @@ def main():
                 page.set_viewport_size({'width': 1280, 'height': 900})
                 bad = fixture.root / 'bad.exe'
                 bad.write_bytes(b'bad')
-                panel.get_by_label('选择音视频文件', exact=False).set_input_files(str(bad))
-                panel.get_by_role('button', name='开始转录').click()
-                expect(panel.get_by_role('status')).to_contain_text('有效的音频或视频文件名')
-                report['checks'].append('invalid upload displays actionable HTTP error')
+                panel.locator('#transcription-file').set_input_files(str(bad))
+                # Non-media files are filtered in the browser before any upload.
+                expect(panel.get_by_role('button', name='开始转写')).to_be_disabled()
+                report['checks'].append('invalid local file is not submitted')
                 project = library.ensure({'platform': '抖音', 'video_id': 'browser', 'title': '浏览器视频'})
                 media = {'format': {'duration': '2'}, 'streams': [
                     {'codec_type': 'video', 'width': 640, 'height': 360, 'codec_name': 'h264'}, {'codec_type': 'audio'}]}
                 resource = library.import_file(project['id'], fixture.source, 'videos/720p.mp4', 'video', {'media': media})
                 page.goto(base + '?project=' + project['id'])
-                expect(page.get_by_role('complementary', name='视频信息')).to_contain_text('浏览器视频', timeout=10000)
-                panel = page.get_by_role('region', name='音频转文字')
-                panel.get_by_label('转录来源').select_option('video')
-                panel.get_by_label('识别语言').select_option('en')
-                panel.get_by_role('button', name='开始转录').click()
+                expect(page.locator('.info-title')).to_contain_text('浏览器视频', timeout=10000)
+                page.locator('.subtitle-entry').click()  # 生成字幕 → 字幕与转写 with this video preselected.
+                panel = page.locator('section.transcription-panel')
+                expect(panel.locator('.source-option.checked')).to_contain_text('浏览器视频')
+                panel.get_by_role('button', name='开始转写').click()
                 expect(panel.get_by_label('识别文字')).to_have_value('你好，世界。', timeout=10000)
                 items = library.get(project['id'])['resources']
                 saved = [item for item in items.values() if item['kind'] == 'transcription']
                 assert len(saved) == 2 and all(item['video_resource'] == resource for item in saved)
-                report['checks'].append('restored exact video version -> transcription -> archived outputs')
-                expect(page.get_by_role('region', name='B站字幕下载')).to_be_visible()
+                assert all(path.startswith('subtitles/') and '.本地转写.' in path for path, item in items.items() if item['kind'] == 'transcription')
+                report['checks'].append('生成字幕 -> archived video preselected -> transcription saved to project subtitles/')
                 assert not errors, errors
-                report['checks'].append('subtitle panel intact; no browser runtime errors')
+                report['checks'].append('no browser runtime errors')
             finally:
                 browser.close()
     finally:

@@ -1,13 +1,27 @@
 .task-center { margin-top: 20px; }
-.task-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.task-heading h2 span { margin-left: 12px; color: var(--muted); font-weight: 400; }
 .task-center .notice { margin: 12px 0; }
 .task-list { padding: 0; list-style: none; max-height: 420px; overflow: auto; }
-.task-list > li { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 0; border-top: 1px solid var(--line); box-shadow: inset 0 1px 0 #ffffff04; }
+.task-list > li { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 0; border-top: 1px solid var(--line); box-shadow: none; }
 .task-list strong { overflow-wrap: anywhere; }
 .task-list small { display: block; color: var(--muted); }
 .task-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
-.cache-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+.cache-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
 .cache-preview p { margin: 10px 0; }
 .task-inline-actions { display: flex; gap: 10px; margin: 10px 0; }
-@media (max-width: 600px) { .task-list > li { align-items: flex-start; flex-direction: column; gap: 10px; } .task-heading { align-items: flex-start; } }
+@media (max-width: 600px) { .task-list > li { align-items: flex-start; flex-direction: column; gap: 10px; } }
+
+.task-description { min-width: 0; flex: 1; }
+.task-description p, .task-description small { overflow-wrap: anywhere; }
+.task-duration { font-variant-numeric: tabular-nums; }
+.task-details { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.task-details summary { width: fit-content; cursor: pointer; }
+.task-details p { margin-top: 5px; }
+.task-details code { overflow-wrap: anywhere; }
+.task-actions button, .task-actions .button,
+.task-center > button, .task-inline-actions button { box-shadow: none; }
+.cache-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.cache-actions button { box-shadow: none; }
+button.danger-button { color: var(--color-text); background: var(--color-bg); border-color: var(--color-text); }
+button.danger-button:hover:not(:disabled) { background: var(--color-fill-hover); border-color: var(--color-text); }
+button.danger-button:active:not(:disabled) { background: var(--color-fill-hover); }
+button.danger-button:disabled { color: var(--color-text-disabled); background: var(--color-fill-disabled); border-color: var(--color-border); }

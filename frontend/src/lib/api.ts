@@ -21,6 +21,7 @@ export interface ParsedVideo {
   qualities: VideoQuality[];
   default_quality_id: string | null;
   bilibili_cookie_status?: string | null;
+  duration?: number | null;
 }
 
 export interface VideoQuality {
@@ -65,7 +66,7 @@ export async function request<T>(path: string, signal: AbortSignal, body?: unkno
 
 export interface SubtitleJob {
   id: string;
-  state: 'queued' | 'running' | 'completed' | 'partial' | 'failed' | 'login_required' | 'cancelled' | 'interrupted';
+  state: 'queued' | 'running' | 'cancelling' | 'completed' | 'partial' | 'failed' | 'login_required' | 'cancelled' | 'interrupted';
   message: string;
   title: string;
   downloaded: number;
@@ -92,12 +93,38 @@ export interface VideoProject {
   resources: { path: string; kind: string; size_bytes: number; url: string }[];
 }
 
+export interface TranscriptionSource {
+  project_id: string;
+  resource: string;
+  title: string;
+  platform: string;
+  source_url?: string;
+  part: number | null;
+  quality: string;
+  duration_seconds: number | null;
+  size_bytes: number;
+  archived_at: string;
+}
+
 export interface TranscriptionJob {
   id: string;
-  state: 'queued' | 'running' | 'completed' | 'empty' | 'failed' | 'cancelled' | 'interrupted';
+  state: 'queued' | 'running' | 'cancelling' | 'completed' | 'empty' | 'failed' | 'cancelled' | 'interrupted';
   message: string;
   title: string;
   text: string;
   language: string;
   files: { name: string; format: string; url: string }[];
+  requested_language?: 'auto' | 'zh' | 'en';
+  source_project_id?: string | null;
+  source_resource?: string | null;
+  saved_to?: { type: 'project' | 'folder' | 'default'; location: string; project_id?: string; title?: string };
+}
+
+export interface ProjectSummary {
+  id: string;
+  title: string;
+  platform: string;
+  part: number | null;
+  location: string;
+  created_at: string;
 }

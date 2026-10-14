@@ -98,17 +98,7 @@ class UrlParser:
         address = f"{parsed_url.scheme}://{domain}{parsed_url.path}"
         if address.endswith('/'):
             address = address[:-1]
-        if platform == '好看视频':
-            query_params = parse_qs(parsed_url.query)
-            vid = query_params.get('vid', [None])[0]  # 使用 get 方法避免 KeyError
-            if vid:
-                address = f"{address}?vid={vid}"
-        elif platform == "微视":
-            query_params = parse_qs(parsed_url.query)
-            vid = query_params.get('id', [None])[0]  # 使用 get 方法避免 KeyError
-            if vid:
-                address = f"{address}?id={vid}"
-        elif platform == "小红书":
+        if platform == "小红书":
             query_params = parse_qs(parsed_url.query)
             xsec_token = query_params.get('xsec_token', [None])[0]
             xsec_source = query_params.get('xsec_source', [None])[0]
@@ -119,8 +109,6 @@ class UrlParser:
                 params.append(f"xsec_source={xsec_source}")
             if params:
                 address = f"{address}?{'&'.join(params)}"
-        elif platform == "快手":
-            address = address.replace('http://', 'https://')
         return address
 
     @staticmethod
@@ -152,12 +140,8 @@ class UrlParser:
     def generate_video_url(platform, video_id):
         # 定义映射表
         url_map = {
-            '皮皮搞笑': 'https://h5.pipigx.com/pp/post/',
-            '好看视频': 'https://haokan.hao123.com/v?vid=',
             '哔哩哔哩': 'https://www.bilibili.com/video/',
             '抖音': 'https://www.iesdouyin.com/share/video/',
-            '快手': 'https://www.kuaishou.com/short-video/',
-            '梨视频': 'https://www.pearvideo.com/'
         }
         # 检查platform是否在映射表中
         if platform not in url_map:
@@ -175,5 +159,5 @@ if __name__ == '__main__':
     #     print(f'重定向后的链接：{redirect_url}')
     # else:
     #     print('未能获取重定向后的链接')
-    video_id1 = UrlParser.get_video_id('https://haokan.hao123.com/v?vid=1770898033348505648')
+    video_id1 = UrlParser.get_video_id('https://www.bilibili.com/video/BV1kKWA6uEyr')
     print(video_id1)

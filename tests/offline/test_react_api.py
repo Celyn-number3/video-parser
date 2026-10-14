@@ -104,6 +104,17 @@ class ReactAPITests(unittest.TestCase):
         self.download_mock.side_effect = retry
         self.assertEqual(self.prepare(data).status_code, 200)
 
+    def test_transcription_sources_list_only_intact_archived_videos(self):
+        sources = lambda: self.client.get('/api/workspace/transcriptions/sources').json()['sources']
+        data = self.parse()
+        self.assertEqual(sources(), [])
+        prepared = self.prepare(data).json()
+        listed = sources()
+        self.assertEqual([(item['project_id'], item['resource']) for item in listed], [(data['project']['id'], prepared['resource'])])
+        self.assertEqual((listed[0]['title'], listed[0]['platform'], listed[0]['duration_seconds'], listed[0]['size_bytes']), ('测试视频', '抖音', 2.0, 18))
+        with (library.get(data['project']['id'])['directory'] / prepared['resource']).open('ab') as video: video.write(b'changed')
+        self.assertEqual(sources(), [])
+
     def test_project_persists_and_same_video_reuses_download(self):
         first = self.parse()
         prepared = self.prepare(first).json()

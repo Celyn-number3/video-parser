@@ -86,7 +86,7 @@ class MediaTests(unittest.TestCase):
             self.cli.download_video(parsed, target)
 
     def test_direct_download_is_verified(self):
-        parsed = self.cli.ParsedVideo({'platform': '快手', 'title': 'fixture'}, {}, [self.base + '/muxed'], [])
+        parsed = self.cli.ParsedVideo({'platform': '小红书', 'title': 'fixture'}, {}, [self.base + '/muxed'], [])
         target = self.root / 'direct.mp4'
         result = self.cli.download_video(parsed, target)
         self.assertAlmostEqual(float(result['media']['format']['duration']), 2, delta=.1)

@@ -1,0 +1,11 @@
+.progress-block { margin:12px 0; min-width:0; }
+.progress-bar { height:7px; overflow:hidden; border-radius:var(--radius-md); background:var(--color-surface-sunken); }
+.progress-fill { height:100%; background:var(--color-fill-primary); }
+.progress-bar:not([aria-valuenow]) .progress-fill { width:100%; opacity:.35; }
+.progress-meta { display:flex; flex-wrap:wrap; gap:4px 12px; margin:6px 0; color:var(--muted,var(--color-text-tertiary)); font-size:12px; overflow-wrap:anywhere; }
+.download-stage { width:100%; min-width:0; box-sizing:border-box; }
+.download-preview-feedback { width:min(440px,100%); min-width:0; text-align:left; }
+.download-preview-heading { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--mint,var(--color-text)); font-size:16px; font-weight:600; }
+.download-preview-heading svg { width:20px; height:20px; flex-shrink:0; }
+.download-preview-feedback .download-preview-message { margin:0; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.download-preview-feedback .progress-block { margin:16px 0 0; }

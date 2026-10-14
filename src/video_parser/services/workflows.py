@@ -79,7 +79,7 @@ def worker(job):
         signature=current
         try:
             row=json.loads(stage.read_text(encoding='utf-8'))
-            if row.get('phase') in {'downloading','validating','archiving','analyzing','extracting'}:
+            if row.get('phase') in {'reading','downloading','merging','validating','archiving','analyzing','extracting'}:
                 task_runtime.progress(row['phase'],row.get('message'),**row.get('progress',{}))
         except (OSError,ValueError):pass
     task_runtime.progress('downloading' if job.kind=='video' else 'analyzing',

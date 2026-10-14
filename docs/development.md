@@ -46,7 +46,7 @@ npm.cmd --prefix frontend run build
 npm.cmd --prefix frontend run build
 
 # 本地浏览器检查：需已安装 Playwright Chromium，按脚本要求准备运行环境
-.\.venv\Scripts\python.exe -m tests.browser.browser_optimization
+.\.venv\Scripts\python.exe -m tests.browser.browser_frontend_layout
 .\.venv\Scripts\python.exe -m tests.browser.browser_settings
 .\.venv\Scripts\python.exe -m tests.browser.browser_transcription
 ```

@@ -1,0 +1,22 @@
+.accounts-panel { margin-top: 0; }
+.accounts-intro { margin: 0 0 8px; max-width: 72ch; color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: var(--line-height-normal); }
+.account-list { margin: 0; padding: 0; list-style: none; }
+.account-list > li { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 16px 0; border-top: 1px solid var(--color-border); }
+.account-list > li:first-child { border-top: 0; }
+.account-list > li.account-focus { margin: 0 -12px; padding-left: 12px; padding-right: 12px; border-radius: var(--radius-md); background: var(--color-surface-sunken); }
+.account-main { min-width: 0; flex: 1; }
+.account-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.account-heading strong { font-size: var(--font-size-md); color: var(--color-text); }
+.account-state { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-full); font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.account-state.state-saved { color: var(--color-on-primary); background: var(--color-fill-primary); border-color: var(--color-fill-primary); }
+.account-state.state-expired { color: var(--color-text); border-style: dashed; }
+.account-benefit, .account-meta, .account-note, .account-progress { margin: 6px 0 0; font-size: var(--font-size-sm); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.account-meta { font-family: var(--font-family-mono); font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
+.account-progress { color: var(--color-text); }
+.account-note { color: var(--color-text); }
+.account-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: var(--font-size-sm); }
+.account-confirm span { margin-right: 4px; }
+.account-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.account-actions button, .account-confirm button { box-shadow: none; }
+.accounts-footnote { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--color-border); color: var(--color-text-tertiary); font-size: var(--font-size-xs); line-height: var(--line-height-normal); }
+@media (max-width: 640px) { .account-list > li { flex-direction: column; gap: 12px; } .account-actions { justify-content: flex-start; } }

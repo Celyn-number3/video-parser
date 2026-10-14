@@ -3,10 +3,11 @@ import type { VideoQuality } from '../../lib/api';
 export type Settings = {
   qualityPreference: 'best' | '1080p' | '720p';
   completionReminder: boolean;
+  reuseTranscriptionModel: boolean;
 };
 
 export const SETTINGS_KEY = 'video-parser:settings';
-export const DEFAULT_SETTINGS: Settings = { qualityPreference: 'best', completionReminder: false };
+export const DEFAULT_SETTINGS: Settings = { qualityPreference: 'best', completionReminder: false, reuseTranscriptionModel: false };
 
 export function normalizeSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...DEFAULT_SETTINGS };
@@ -14,6 +15,7 @@ export function normalizeSettings(value: unknown): Settings {
   return {
     qualityPreference: input.qualityPreference === '1080p' || input.qualityPreference === '720p' ? input.qualityPreference : 'best',
     completionReminder: typeof input.completionReminder === 'boolean' ? input.completionReminder : false,
+    reuseTranscriptionModel: typeof input.reuseTranscriptionModel === 'boolean' ? input.reuseTranscriptionModel : false,
   };
 }
 
