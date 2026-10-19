@@ -47,6 +47,14 @@ class CLITests(unittest.TestCase):
         self.assertEqual(self.run_cli(*args, "--overwrite"), 0)
 
     @patch("video_parser.integrations.whisper.cli.load_model")
+    def test_progress_file_reports_audio_position(self, load):
+        load.return_value = self.model
+        progress = self.root / "progress.json"
+        self.assertEqual(self.run_cli("transcribe", str(self.source), "--output-dir", str(self.out), "--progress-file", str(progress)), 0)
+        self.assertEqual(json.loads(progress.read_text(encoding="utf-8")), {"done": 5.0, "total": 5.0})
+        self.assertFalse(progress.with_name("progress.json.tmp").exists())
+
+    @patch("video_parser.integrations.whisper.cli.load_model")
     def test_missing_and_colliding_inputs(self, load):
         self.assertEqual(self.run_cli("transcribe", str(self.root / "missing.wav")), 1)
         self.assertEqual(self.run_cli("transcribe", str(self.source), str(self.source), "--output-dir", str(self.out)), 1)

@@ -9,6 +9,14 @@ export const formatBytes = (value: number): string => {
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 };
 
+// A position on a media timeline, e.g. 7:05 or 1:02:05.
+export const formatClock = (seconds: number): string => {
+  const s = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), rest = s % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(rest)}` : `${m}:${pad(rest)}`;
+};
+
 export const formatRate = (bytesPerSecond: number): string => {
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '';
   return `${formatBytes(bytesPerSecond)}/s`;

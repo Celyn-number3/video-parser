@@ -2,6 +2,7 @@ import { isActive } from '../../lib/jobs';
 import { saveFiles } from '../../lib/download';
 import Icon from '../../components/Icon';
 import Panel from '../../components/Panel';
+import TimeProgress from '../../components/TimeProgress';
 import { useEffect, useState } from 'react';
 import { request } from '../../lib/api';
 import type { ArchivedSubtitles, Configuration } from '../../lib/api';
@@ -186,6 +187,9 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     <div className={'inset subtitle-status ' + (error || shownJob?.state === 'failed' ? 'status-error' : '')} role="status" aria-live="polite">
       {statusText}
     </div>
+    {/* Outside the live region: the bar updates every second and must not be read out each time. */}
+    {shownJob && (shownJob.state === 'queued' || shownJob.state === 'running') &&
+      <TimeProgress progress={shownJob.phase === 'transcribing' ? shownJob.progress : undefined} label="转写进度" />}
     {job && isActive(job.state) && <div className="task-inline-actions"><button type="button" disabled={cancelling || job.state === 'cancelling'} aria-busy={cancelling} onClick={() => { void cancel(); }}>取消转录任务</button></div>}
     {error && hasJob && <button type="button" className="subtitle-refresh" disabled={busy} onClick={refresh}>重新读取转录状态</button>}
     {shownJob && mode === 'upload' && <p className="subtitle-title">本次任务：<span translate="no">{shownJob.title}</span></p>}

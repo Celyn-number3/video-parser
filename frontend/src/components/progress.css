@@ -2,6 +2,9 @@
 .progress-bar { height:7px; overflow:hidden; border-radius:var(--radius-md); background:var(--color-surface-sunken); }
 .progress-fill { height:100%; background:var(--color-fill-primary); }
 .progress-bar:not([aria-valuenow]) .progress-fill { width:100%; opacity:.35; }
+.progress-bar.is-pending .progress-fill { animation:progress-pending 1.6s ease-in-out infinite; }
+@keyframes progress-pending { 0%, 100% { opacity:.15; } 50% { opacity:.45; } }
+@media (prefers-reduced-motion: reduce) { .progress-bar.is-pending .progress-fill { animation:none; } }
 .progress-meta { display:flex; flex-wrap:wrap; gap:4px 12px; margin:6px 0; color:var(--muted,var(--color-text-tertiary)); font-size:12px; overflow-wrap:anywhere; }
 .download-stage { width:100%; min-width:0; box-sizing:border-box; }
 .download-preview-feedback { width:min(440px,100%); min-width:0; text-align:left; }

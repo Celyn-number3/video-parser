@@ -2,6 +2,7 @@
 from video_parser import cli as cli_entry
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -261,6 +262,36 @@ class TranscriptionTests(unittest.TestCase):
         self.t.jobs[result['id']].files['txt'] = {'path': secret, 'sha256': library.digest(secret), 'relative': None}
         self.assertEqual(self.client.get(result['files'][0]['url']).status_code, 404)
 
+
+    def test_progress_reader_reports_position_and_measured_eta(self):
+        path = self.root / 'progress.json'
+        reader = self.t.ProgressReader(path)
+        with patch.object(self.t.task_runtime, 'progress') as report:
+            reader()  # no file yet: nothing to report
+            path.write_text('{"done": 0, "total": 600}', encoding='utf-8')
+            reader()
+            started, _ = reader.start
+            reader.start, reader.emitted = (started - 10, 0.0), 0.0  # pretend 10 s have passed
+            path.write_text('{"done": 60, "total": 600}', encoding='utf-8')
+            os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 1_000_000))
+            reader()
+        self.assertEqual(report.call_count, 2)
+        first, last = report.call_args_list[0].kwargs, report.call_args_list[1].kwargs
+        self.assertEqual((first['done'], first['total']), (0, 600))
+        self.assertNotIn('eta_seconds', first)
+        self.assertEqual((last['done'], last['total']), (60, 600))
+        self.assertAlmostEqual(last['eta_seconds'], 90.0, delta=1)  # 60 s of audio per 10 s, 540 s left
+
+    def test_bundled_worker_gets_a_progress_file(self):
+        patch.object(self.t, 'TOOL_ROOT', self.t.BUNDLED_ROOT).start()
+        patch.object(self.t, 'available', return_value=True).start()
+        patch.object(self.t, 'CACHE_DIR', self.root / 'cache').start()
+        patch('video_parser.services.whisper_pool.close').start()
+        self.t.transcribe(self.source, 'zh', self.root / 'bundled')
+        command = self.process.call_args.args[0]
+        self.assertIn('--progress-file', command)
+        self.assertIsInstance(self.process.call_args.kwargs['progress'], self.t.ProgressReader)
+        self.assertFalse(Path(command[command.index('--progress-file') + 1]).exists())
 
     def test_timeout_stops_the_owned_windows_process_tree(self):
         process = MagicMock()

@@ -38,7 +38,7 @@ def close():
 atexit.register(close)
 
 
-def run(command):
+def run(command, progress=None):
     global _process,_responses,_log
     from video_parser.services import transcription
     with _lock:
@@ -58,6 +58,7 @@ def run(command):
             process.stdin.write(json.dumps({'id':identifier,'arguments':command[4:]},ensure_ascii=False)+'\n');process.stdin.flush()
             while True:
                 task_runtime.checkpoint()
+                if progress:progress()
                 if time.monotonic()>deadline:raise subprocess.TimeoutExpired(command,7200)
                 try:result=_responses.get(timeout=.25)
                 except Empty:continue

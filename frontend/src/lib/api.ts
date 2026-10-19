@@ -223,6 +223,9 @@ export interface TranscriptionJob {
   source_project_id?: string | null;
   source_resource?: string | null;
   saved_to?: { type: 'project' | 'folder' | 'default'; location: string; project_id?: string; title?: string };
+  /** While transcribing: done/total are seconds of audio, eta_seconds is measured from the actual speed. */
+  phase?: string;
+  progress?: { done?: number; total?: number; eta_seconds?: number; sampled_at?: number };
 }
 
 export interface ProjectSummary {

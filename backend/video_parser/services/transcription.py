@@ -84,10 +84,44 @@ def validated_outputs(source, directory):
 
 
 
-def run_whisper(command):
+class ProgressReader:
+    """Turns the worker's progress file into task progress: audio seconds done / total, plus a measured ETA."""
+
+    def __init__(self, path):
+        self.path = path
+        self.stamp = None
+        self.start = None
+        self.emitted = 0.0
+
+    def __call__(self):
+        try:
+            stamp = self.path.stat().st_mtime_ns
+            if stamp == self.stamp:
+                return
+            data = json.loads(self.path.read_text(encoding='utf-8'))
+            done, total = float(data['done']), float(data['total'])
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        self.stamp = stamp
+        if not (math.isfinite(total) and total > 0 and math.isfinite(done)):
+            return
+        now = time.monotonic()
+        if self.start is None:
+            self.start = (now, done)
+        if now - self.emitted < 1 and done < total:
+            return
+        self.emitted = now
+        numbers = {'done': min(max(done, 0.0), total), 'total': total, 'sampled_at': time.time()}
+        elapsed, gained = now - self.start[0], done - self.start[1]
+        if elapsed >= 5 and gained > 0:
+            numbers['eta_seconds'] = (total - done) * elapsed / gained
+        task_runtime.progress('transcribing', '正在转写…', **numbers)
+
+
+def run_whisper(command, progress=None):
     with subprocess.Popen(command, cwd=TOOL_ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                           text=True, encoding='utf-8', errors='replace') as process:
-        _,log=task_runtime.communicate(process,7200)
+        _,log=task_runtime.communicate(process,7200,event_reader=progress)
         return subprocess.CompletedProcess(command,process.returncode,stderr=log)
 
 
@@ -107,21 +141,33 @@ def transcribe(source, language='auto', output_dir=None, timestamps=False, reuse
     command = [str(runtime_python()), '-X', 'utf8', str(TOOL_ROOT / 'cli.py'),
                'transcribe', str(source), '--language', language, '--format', 'txt,srt,json',
                '--output-dir', str(directory), *(['--timestamps'] if timestamps else [])]
+    # Only the bundled worker knows --progress-file; an external WHISPER_ROOT tool keeps its old arguments.
+    progress_file = CACHE_DIR / 'whisper' / f'progress-{uuid4().hex}.json' if TOOL_ROOT == BUNDLED_ROOT else None
+    reader = None
+    if progress_file:
+        progress_file.parent.mkdir(parents=True, exist_ok=True)
+        command += ['--progress-file', str(progress_file)]
+        reader = ProgressReader(progress_file)
     # OS file locks serialize CLI and web invocations, and release even after a crash.
     try:
         with library.file_lock((CACHE_DIR / 'whisper/.transcription.lock') if TOOL_ROOT == BUNDLED_ROOT else (TOOL_ROOT / 'work/.video-parser-transcription.lock'), timeout=7200):
             if reuse_model and TOOL_ROOT==BUNDLED_ROOT:
                 from video_parser.services import whisper_pool
-                process=whisper_pool.run(command)
+                process=whisper_pool.run(command,progress=reader)
             else:
                 if TOOL_ROOT==BUNDLED_ROOT:
                     from video_parser.services import whisper_pool
                     whisper_pool.close()
-                process=run_whisper(command)
+                process=run_whisper(command,**({'progress':reader} if reader else {}))
     except subprocess.TimeoutExpired:
         raise RuntimeError('Whisper 转录超时，已停止本次进程；可能保留部分输出，请使用新目录重试。') from None
     except TimeoutError:
         raise RuntimeError('等待本机 Whisper 超时，请稍后重试。') from None
+    finally:
+        if progress_file:
+            for path in (progress_file, progress_file.with_name(progress_file.name + '.tmp')):
+                try: path.unlink(missing_ok=True)
+                except OSError: pass
     log = process.stderr or ''
     with (directory / (source.stem + '.whisper.log')).open('x', encoding='utf-8') as stream:
         stream.write(log)

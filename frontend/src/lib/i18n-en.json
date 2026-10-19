@@ -806,6 +806,8 @@
   "正在准备二维码，大约需要 10 秒…": "Preparing the QR code, about 10 seconds…",
   "正在准备分析材料…": "Preparing analysis materials…",
   "正在加载模型…": "Loading the model…",
+  "正在转写…": "Transcribing…",
+  "转写进度": "Transcription progress",
   "正在加载模型并转录；完成后校验归档…": "Loading the model and transcribing; results are verified and archived afterwards…",
   "正在加载模型，请稍候；离开此页不会中断加载。": "Loading the model, please wait; leaving this page won't interrupt it.",
   "正在发送追问…": "Sending the question…",

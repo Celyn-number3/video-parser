@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -39,6 +40,8 @@ def parser() -> argparse.ArgumentParser:
     transcribe.add_argument("--timestamps", action="store_true", help="在终端和 TXT 中显示片段起止时间")
     transcribe.add_argument("--no-vad", action="store_true", help="关闭静音过滤")
     transcribe.add_argument("--overwrite", action="store_true", help="允许覆盖已有输出，仍禁止覆盖输入文件")
+    # Internal: the web service reads this file to show a progress bar.
+    transcribe.add_argument("--progress-file", type=Path, help=argparse.SUPPRESS)
     return result
 
 
@@ -68,6 +71,25 @@ def plan_outputs(args):
     return outdir, jobs
 
 
+class Progress:
+    """Writes {done, total} audio seconds for the web service. Best effort: never fails a transcription."""
+
+    def __init__(self, path):
+        self.path = path
+        self.last = 0.0
+
+    def write(self, done, total, force=False):
+        if not self.path or not total or (not force and time.monotonic() - self.last < 0.5):
+            return
+        self.last = time.monotonic()
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        try:
+            temporary.write_text(json.dumps({"done": round(min(max(done, 0.0), total), 2), "total": round(total, 2)}), encoding="utf-8")
+            os.replace(temporary, self.path)
+        except OSError:  # e.g. the reader has the file open on Windows; the next segment retries
+            pass
+
+
 def render(segments, with_timestamps=False):
     lines = []
     for segment in segments:
@@ -95,6 +117,7 @@ def main(argv=None, model=None, initial_load_seconds=0.0):
         load_seconds=initial_load_seconds if provided else time.perf_counter()-started
         print(f"模型加载：{load_seconds:.2f} 秒", file=sys.stderr, flush=True)
         failures=0
+        progress = Progress(args.progress_file)
         for source, outputs in jobs:
             try:
                 print(f"转录：{source}", file=sys.stderr, flush=True)
@@ -105,7 +128,15 @@ def main(argv=None, model=None, initial_load_seconds=0.0):
                     # Auto-detect listens to up to 3 x 30 s of speech, stopping early once a language passes 0.7.
                     language_detection_segments=3, language_detection_threshold=0.7,
                 )
-                segments = list(segments)
+                # Segments arrive as decoding advances; each end time tells how far through the audio we are.
+                total = float(info.duration or 0)
+                progress.write(0.0, total, force=True)
+                collected = []
+                for segment in segments:
+                    collected.append(segment)
+                    progress.write(segment.end, total)
+                segments = collected
+                progress.write(total, total, force=True)
                 elapsed = time.perf_counter() - started
                 text, srt = render(segments, args.timestamps)
                 record = {
