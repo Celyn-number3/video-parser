@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { t } from '../lib/i18n';
 
 // A small, safe Markdown renderer for model output: builds React elements only (no raw HTML).
 // Time stamps such as [03:15] or 1:02:03 become buttons that jump the video to that moment.
@@ -33,7 +34,7 @@ function inline(text: string, onSeek: Seek, maxSeconds: number | undefined, key 
       // Bare "12:30" without brackets is only a time stamp when it has two-digit minutes.
       const bare = !token.startsWith('[');
       const plausible = seconds !== null && (!bare || /^\d{2}:\d{2}|^\d:\d{2}:\d{2}/.test(token)) && (maxSeconds === undefined || maxSeconds <= 0 || seconds <= maxSeconds + 1);
-      if (plausible && onSeek) nodes.push(<button key={id} type="button" className="md-time" title="跳到视频这一刻" onClick={() => onSeek(seconds!)}>{token.replace(/^\[|\]$/g, '')}</button>);
+      if (plausible && onSeek) nodes.push(<button key={id} type="button" className="md-time" title={t('跳到视频这一刻')} onClick={() => onSeek(seconds!)}>{token.replace(/^\[|\]$/g, '')}</button>);
       else nodes.push(token);
     } else if (match[5]) nodes.push(<em key={id}>{token.slice(1, -1)}</em>);
     last = at + token.length;
@@ -110,5 +111,5 @@ export default function Markdown({ text, onSeek, maxSeconds, className = '' }: {
     if (!paragraph.length) paragraph.push(lines[index++].trim());
     blocks.push(<p key={key}>{paragraph.flatMap((item, row) => row ? [<br key={'br' + row} />, ...say(item, key + row)] : say(item, key + row))}</p>);
   }
-  return <div className={'markdown ' + className}>{blocks}</div>;
+  return <div className={'markdown ' + className} translate="no">{blocks}</div>;
 }

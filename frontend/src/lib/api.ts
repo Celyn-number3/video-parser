@@ -10,11 +10,30 @@ export interface Configuration {
 }
 
 export interface AIPreset { name: string; base_url: string; model: string; key_required: boolean; models: string[]; hint: string }
+export interface AILaunchSettings {
+  server_path: string; model_path: string; vision_path: string; port: number;
+  context_size: number; gpu_layers: number; threads: number; parallel: number;
+  show_console: boolean; flash_attention: boolean; image_max_tokens: number; max_output_tokens: number;
+}
+export interface AIRuntimeStatus {
+  state: 'unconfigured' | 'stopped' | 'starting' | 'running' | 'failed' | 'occupied';
+  message: string; owned: boolean; elapsed_seconds: number; model?: string; base_url?: string;
+}
 export interface AISettings {
   provider: string; provider_name: string; base_url: string; model: string;
   key_saved: boolean; key_hint: string; price_input: number | null; price_output: number | null;
   configured: boolean; local: boolean; consented: boolean; source: 'settings' | 'env' | 'none'; storage: string;
   presets: Record<string, AIPreset>;
+  startup?: AILaunchSettings; startup_defaults?: AILaunchSettings; startup_command?: string; startup_error?: string;
+}
+export type AgentEngine = 'api' | 'claude' | 'codex' | 'opencode';
+export interface AgentTarget { engine: AgentEngine; model: string; effort: string }
+export interface AgentModel { id: string; label: string; efforts: string[]; images: boolean | null }
+export interface AgentCommand { name: string; prefix: string; description: string }
+export interface AgentCatalog {
+  engines: { id: Exclude<AgentEngine, 'api'>; name: string; installed: boolean; discovered: boolean;
+    models: AgentModel[]; commands: AgentCommand[]; error: string; updated_at?: number | null }[];
+  permission: string;
 }
 export type AnalysisSource = 'both' | 'transcript' | 'frames';
 export interface AnalysisTemplate { id: string; name: string; description: string; source: AnalysisSource; requires: 'frames' | 'transcript' | null }
@@ -28,13 +47,27 @@ export interface AnalysisRecord {
   id: string; created_at: string | null; template: string; template_name: string; source: AnalysisSource; source_label: string;
   prompt: string; model: string; provider: string; transcript_label: string; transcript_merged: boolean; video_resource: string | null;
   frame_count: number; frames: AnalysisFrame[]; usage: { prompt_tokens?: number | null; completion_tokens?: number | null };
-  text: string; followups: { id: string; question: string; answer: string; created_at: string | null }[]; legacy: boolean;
+  text: string; followups: { id: string; question: string; answer: string; created_at: string | null }[];
+  /** Last follow-up before the user cleared the chat context; later questions resend only what follows it. */
+  context_after?: string | null; legacy: boolean;
 }
 export interface AnalysisBody {
+  agent?: AgentTarget;
   template: string; source: AnalysisSource; transcript_resource: string | null; frame_mode: 'scene' | 'uniform';
   count: number; preview_token: string | null; frames: string[] | null; prompt: string;
 }
-export interface AnalysisResult { text: string; record: AnalysisRecord; mode: 'analyze' | 'ask'; project: VideoProject }
+export interface AnalysisResult { text: string; record?: AnalysisRecord; conversation?: Conversation; mode: 'analyze' | 'ask' | 'conversation'; project: VideoProject }
+
+export interface ConversationMessage {
+  id: string; question: string; answer: string; created_at: string | null; position?: number;
+  context?: { frame_times?: number[]; subtitle_ranges?: number[][]; warning?: string };
+}
+export interface Conversation {
+  agent?: AgentTarget;
+  id: string; title: string; title_generated: boolean; created_at: string | null; updated_at: string | null;
+  origin_record?: string | null; video_resource: string | null; messages: ConversationMessage[];
+}
+export interface ConversationContext { available: boolean; missing: string[] }
 
 export interface ParsedVideo {
   id: string;
@@ -50,6 +83,7 @@ export interface ParsedVideo {
   default_quality_id: string | null;
   bilibili_cookie_status?: string | null;
   duration?: number | null;
+  episodes?: LearningEpisode[];
 }
 
 export interface VideoQuality {
@@ -71,6 +105,15 @@ export interface Media {
   duration: number;
   width: number | null;
   height: number | null;
+}
+
+export interface LearningEpisode {
+  part: number;
+  title: string;
+  duration: number | null;
+  project_id: string | null;
+  archived: boolean;
+  learned: boolean;
 }
 
 export async function request<T>(path: string, signal: AbortSignal, body?: unknown): Promise<T> {
@@ -100,6 +143,8 @@ export interface SubtitleJob {
   downloaded: number;
   existing: number;
   failed: number;
+  /** Episodes not enqueued because verified platform subtitles were already archived locally. */
+  skipped?: number[];
   results: {
     episode: number;
     status: 'downloaded' | 'existing' | 'failed';
@@ -110,15 +155,36 @@ export interface SubtitleJob {
   }[];
 }
 
-export interface VideoProject {
+export interface SubtitleInventory {
+  video_id: string | null; total: number | null; archived: number[]; available?: number[];
+  episodes: { part: number; title: string; subtitles: boolean }[];
+}
+
+/** Lightweight /projects rows deliberately do not contain resource inventories. */
+export interface VideoProjectSummary {
   id: string;
   title: string;
   platform: string;
   part: number | null;
   location: string;
+  created_at: string;
+  video_id?: string;
+  episode_title?: string;
+  archived: boolean;
+}
+
+export interface VideoProject {
+  id: string;
+  video_id?: string;
+  episode_title?: string;
+  title: string;
+  platform: string;
+  part: number | null;
+  location: string;
   identity_status: string;
+  learned?: boolean;
   archive_url: string;
-  resources: { path: string; kind: string; size_bytes: number; url: string }[];
+  resources: { path: string; kind: string; size_bytes: number; url: string; filename?: string; storage_path?: string }[];
 }
 
 export interface TranscriptionSource {
@@ -132,9 +198,19 @@ export interface TranscriptionSource {
   duration_seconds: number | null;
   size_bytes: number;
   archived_at: string;
+  has_subtitles?: boolean;
+  subtitle_count?: number;
+}
+
+export interface ArchivedSubtitles {
+  project_id: string; has_subtitles: boolean; text: string;
+  files: { resource: string; filename: string; kind: string; url: string; language: string }[];
+  selected: { resource: string; filename: string; url: string; language: string } | null;
 }
 
 export interface TranscriptionJob {
+  operation?: 'transcription' | 'translation';
+  translation_target?: 'zh' | 'en';
   id: string;
   state: 'queued' | 'running' | 'cancelling' | 'completed' | 'empty' | 'failed' | 'cancelled' | 'interrupted';
   message: string;

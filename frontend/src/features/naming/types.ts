@@ -1,0 +1,11 @@
+import type { TaskInfo } from '../../lib/jobs';
+export type NamingRow = { project_id: string; number: string; title: string };
+export type NamingEntry = { project_id: string; part: number | null; title: string; number: string; transcript: string | null; transcript_filename?: string | null;
+  files: { resource: string; source: string; filename: string }[] };
+export type NamingMove = { project_id: string; resource: string; source: string; target: string };
+export type NamingPreview = { plan_id: string; preview_token: string; rows: NamingRow[]; moves: NamingMove[]; fingerprint: string };
+export type NamingInventory = { title: string; entries: NamingEntry[]; subtitle_count: number; ready_count: number; max_selected: number;
+  history: { id: string; state: string; created_at: string; job_id?: string; active_job_id?: string; last_error?: string }[] };
+export type NamingPlan = { id: string; project_id: string; title: string; state: string; source?: 'subtitle' | 'manual'; adjusted_from?: string; rows: NamingRow[]; entries: NamingEntry[];
+  job_id?: string; last_error?: string; excerpted?: boolean; preview?: NamingPreview; preview_token?: string };
+export type NamingJob = TaskInfo & { project_id: string; operation: 'plan' | 'apply' | 'restore'; result: { plan_id: string; state?: string } };

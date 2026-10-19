@@ -12,11 +12,6 @@
 
 .task-description { min-width: 0; flex: 1; }
 .task-description p, .task-description small { overflow-wrap: anywhere; }
-.task-duration { font-variant-numeric: tabular-nums; }
-.task-details { margin-top: 6px; color: var(--muted); font-size: 12px; }
-.task-details summary { width: fit-content; cursor: pointer; }
-.task-details p { margin-top: 5px; }
-.task-details code { overflow-wrap: anywhere; }
 .task-actions button, .task-actions .button,
 .task-center > button, .task-inline-actions button { box-shadow: none; }
 .cache-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
@@ -25,3 +20,10 @@ button.danger-button { color: var(--color-text); background: var(--color-bg); bo
 button.danger-button:hover:not(:disabled) { background: var(--color-fill-hover); border-color: var(--color-text); }
 button.danger-button:active:not(:disabled) { background: var(--color-fill-hover); }
 button.danger-button:disabled { color: var(--color-text-disabled); background: var(--color-fill-disabled); border-color: var(--color-border); }
+
+.task-search { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.task-search input { flex: 1 1 240px; min-width: 0; max-width: 420px; }
+.task-result-count { color: var(--color-text-secondary); font-size: var(--font-size-xs, 12px); font-variant-numeric: tabular-nums; }
+.task-filters .chip-count { margin-left: 6px; font-variant-numeric: tabular-nums; }
+.modern-app .task-filters button[aria-pressed=true] .chip-count { color: inherit; opacity: .85; }
+.task-part { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--color-border); border-radius: var(--radius-full, 999px); font-size: 11px; font-weight: 500; color: var(--color-text-secondary); vertical-align: 1px; }

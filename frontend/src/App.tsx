@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { request } from './lib/api';
+import { useLanguage } from './lib/i18n';
 import { cancelTask, isActive, pollJob, remember, remembered, runWorkflow } from './lib/jobs';
 import type { TaskInfo, WorkflowJob } from './lib/jobs';
 import TaskCenter from './features/tasks/TaskCenter';
@@ -9,17 +10,28 @@ import BiliLogin from './features/subtitles/BiliLogin';
 import Transcription from './features/transcription/Transcription';
 import Accounts from './features/accounts/Accounts';
 import ProjectPanel from './features/library/ProjectPanel';
-import SettingsDialog from './features/settings/PreferencesDialog';
+import LearningProgress, { LearningToggle } from './features/library/LearningProgress';
+import PlaybackResume from './features/learning/PlaybackResume';
+import StudySidebar from './features/learning/StudySidebar';
+import LearningProjectPicker from './features/learning/LearningProjectPicker';
+import SubtitleNaming from './features/naming/SubtitleNaming';
+import type { NamingJob } from './features/naming/types';
+import type { LearningChat } from './features/learning/AIChat';
+import MediaStage from './components/MediaStage';
+import SettingsPage from './features/settings/SettingsPage';
 import AnalysisPanel from './features/analysis/AnalysisPanel';
+import ChapterTimeline from './features/analysis/ChapterTimeline';
+import type { AnalysisTimeline } from './features/analysis/chapters';
 import { preferredQualityId } from './features/settings/settings';
 import usePreferences from './features/settings/usePreferences';
 import WorkbenchLayout from './components/WorkbenchLayout';
 import WorkbenchPage from './components/WorkbenchPage';
+import VideoSourceForm from './components/VideoSourceForm';
+import WorkspaceStart from './features/library/WorkspaceStart';
 import Panel, { PanelTitle } from './components/Panel';
 import FormField from './components/FormField';
-import ProgressBar from './components/ProgressBar';
-import type { Page } from './features/navigation/navigation';
-import type { AISettings, AnalysisBody, AnalysisResult, Configuration, Media, ParsedVideo } from './lib/api';
+import { pageFromSearch, type Page } from './features/navigation/navigation';
+import type { AgentTarget, AISettings, AnalysisBody, AnalysisResult, Configuration, LearningEpisode, Media, ParsedVideo, VideoProject } from './lib/api';
 
 // Re-tested 2026-10-14 (docs/mcp-platform-probe-20261014.md). 小红书 needs a login, so it has no example.
 const examples: Record<string, string> = {
@@ -28,15 +40,14 @@ const examples: Record<string, string> = {
   "YouTube": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
 };
 const tabs = [
-  { name: '封面图片', id: 0, icon: 'image' },
-  { name: '视频预览', id: 1, icon: 'circle-play' },
+  { name: '视频', id: 0, icon: 'circle-play' },
   { name: 'AI 分析', id: 2, icon: 'scan-eye' },
 ] as const;
 type Tab = typeof tabs[number]['name'];
 type Operation = 'prepare' | 'analyze';
 // analysisVersion changes when an analysis or follow-up finishes, so the panel reloads its records.
-type ProjectState = { parsed: ParsedVideo; quality: string; status: string; error: boolean; busy: Operation | null; analysisVersion: number; lastRecord?: string; task?: TaskInfo };
-type AnalysisRequest = { kind: 'analyze'; body: AnalysisBody } | { kind: 'ask'; recordId: string; question: string };
+type ProjectState = { parsed: ParsedVideo; quality: string; status: string; error: boolean; busy: Operation | null; analysisVersion: number; lastRecord?: string; task?: TaskInfo; learningPendingPart: number | null; learningError: string };
+type AnalysisRequest = { kind: 'analyze'; body: AnalysisBody } | { kind: 'ask'; recordId: string; question: string; position: number; agent?: AgentTarget };
 // Routine states already shown by the stage, button or quality select; the inspector stays quiet for these.
 const QUIET_STATUS = new Set(['等待解析', '解析完成，请选择画质后归档', '已复用归档视频', '已选择归档视频', '所选画质尚未归档', '所选视频已归档', '分析完成', '追问已回答']);
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value);
@@ -50,7 +61,8 @@ function formatDuration(seconds: number) {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>('workspace');
+  useLanguage(); // Re-render on language switch so t() text and translate="no" zones refresh.
+  const [page, setPage] = useState<Page>(() => pageFromSearch(location.search));
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobile, setMobile] = useState(() => matchMedia('(max-width:760px)').matches);
   const [source, setSource] = useState('');
@@ -65,9 +77,16 @@ export default function App() {
   const media = parsed?.qualities.find(item => item.id === quality)?.media || null;
   const busy = selected?.busy || null;
   const [parsing, setParsing] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [learningNavigationError, setLearningNavigationError] = useState('');
+  const restoringRequest = useRef<AbortController | null>(null);
   const [parseStatus, setParseStatus] = useState('等待解析');
   const [parseError, setParseError] = useState(false);
-  const [tab, setTab] = useState<Tab>('封面图片');
+  const [tab, setTab] = useState<Tab>('视频');
+  // Both entry points share mounted content; the workbench keeps its own selected tab.
+  const activeTab: Tab = page === 'learning' ? 'AI 分析' : tab;
+  const learning = page === 'learning';
+  const managing = !learning && activeTab === 'AI 分析';
   // 生成字幕 → 字幕与转写 with the current video selected; B站 login from the quality notice.
   const [subtitleFocus, setSubtitleFocus] = useState(0);
   const [qualityLogin, setQualityLogin] = useState<'closed' | 'open' | 'done'>('closed');
@@ -77,18 +96,30 @@ export default function App() {
   const [configError, setConfigError] = useState('');
   const { settings, saveStatus: settingsSaveStatus, saveSettings } = usePreferences();
   const settingsRef = useRef(settings); settingsRef.current = settings;
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsReturn = useRef<HTMLButtonElement | null>(null);
+  const [settingsVisited, setSettingsVisited] = useState(page === 'settings');
+  const [settingsFocusRequest, setSettingsFocusRequest] = useState(0);
+  useEffect(() => { if (page === 'settings') setSettingsVisited(true); }, [page]);
   const [archiveReminder, setArchiveReminder] = useState(false);
-  const [settingsFocusAI, setSettingsFocusAI] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [analysisTimeline, setAnalysisTimeline] = useState<AnalysisTimeline | null>(null);
+  const [learningChat, setLearningChat] = useState<LearningChat | null>(null);
+  const pendingSeek = useRef<{ video: HTMLVideoElement; go: () => void } | null>(null);
+  useEffect(() => () => {
+    if (pendingSeek.current) { pendingSeek.current.video.removeEventListener('loadedmetadata', pendingSeek.current.go); pendingSeek.current = null; }
+  }, [parsed?.project.id, media?.resource, media?.preview_url]);
   const [coverError, setCoverError] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [studyCollapsed, setStudyCollapsed] = useState(false);
+  const [namingOpen, setNamingOpen] = useState(false);
+  const [namingTaskId, setNamingTaskId] = useState<string | null>(null);
+  const [libraryVersion, setLibraryVersion] = useState(0);
+  const resumeBar = useRef<HTMLElement>(null);
   const [activeCount, setActiveCount] = useState<number | null>(null);
   const [cancellingTask, setCancellingTask] = useState<string | null>(null);
   const parseEpoch = useRef(0);
   const parsingRequest = useRef<AbortController | null>(null);
   const workflowRequests = useRef(new Map<string, AbortController>());
+  const learningRequests = useRef(new Map<string, AbortController>());
   const restoreRequests = useRef(new Set<AbortController>());
   const projectNavigation = useRef(0);
   const tabButtons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -106,13 +137,21 @@ export default function App() {
   function installProject(result: ParsedVideo, restoring = false) {
     const id = result.project.id;
     const previous = projects.current[id];
+    // An in-flight job owns its parsed session/quality until its result is applied.
+    if (restoring && previous?.busy) return id;
     const chosen = previous?.busy ? previous.quality : restoring ? result.default_quality_id || '' : preferredQualityId(result.qualities, result.default_quality_id, settingsRef.current.qualityPreference);
     const next: ProjectState = {
       parsed: result, quality: chosen, status: previous?.busy ? previous.status : result.warning || (result.qualities.find(item => item.id === chosen)?.media ? '已复用归档视频' : '解析完成，请选择画质后归档'),
       error: false, busy: previous?.busy || null, analysisVersion: previous?.analysisVersion || 0, lastRecord: previous?.lastRecord,
+      learningPendingPart: previous?.learningPendingPart ?? null, learningError: previous?.learningError || '',
     };
     projects.current = { ...projects.current, [id]: next }; setProjectStates(projects.current);
     return id;
+  }
+  // A course rename also applies to its other archived episodes that are open in this page.
+  function renameProject(project: VideoProject, renamed: string[]) {
+    for (const id of new Set([project.id, ...renamed])) updateProject(id, value => ({ ...value,
+      parsed: { ...value.parsed, title: project.title, project: { ...value.parsed.project, title: project.title } } }));
   }
   function selectProject(id: string) {
     const value = projects.current[id]; if (!value) return;
@@ -123,36 +162,67 @@ export default function App() {
   }
   function navigate(next: Page, focus = false) {
     const changed = next !== pageRef.current;
-    setPage(next); setMenuOpen(false);
+    if (changed) {
+      const url = new URL(location.href);
+      if (next === 'workspace') url.searchParams.delete('page');
+      else url.searchParams.set('page', next);
+      history.pushState(null, '', url);
+    }
+    pageRef.current = next; setPage(next); setMenuOpen(false);
     if (changed || focus) requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       if (focus) document.getElementById('page-title-' + next)?.focus({ preventScroll: true });
     });
   }
-  function openSettings(button: HTMLButtonElement, ai = false) { settingsReturn.current = button; setSettingsFocusAI(ai); setMenuOpen(false); setSettingsOpen(true); }
-  function updateAI(ai: AISettings) { setConfig(current => current && { ...current, ai, ai_configured: ai.configured }); }
-  function closeSettings() {
-    setSettingsOpen(false);
-    requestAnimationFrame(() => {
-      if (settingsReturn.current?.getClientRects().length && !settingsReturn.current.closest('[inert]')) settingsReturn.current.focus();
-      else menuButton.current?.focus();
-    });
+  function openSettings(_button: HTMLButtonElement, ai = false) {
+    if (ai) setSettingsFocusRequest(value => value + 1);
+    navigate('settings', true);
   }
+  function updateAI(ai: AISettings) { setConfig(current => current && { ...current, ai, ai_configured: ai.configured }); }
   async function restoreProject(id: string, qualityResource = '', focus = true) {
     if (!validId(id)) return;
+    restoringRequest.current?.abort();
+    if (parsingRequest.current) { ++parseEpoch.current; parsingRequest.current.abort(); parsingRequest.current = null; setParsing(false); }
+    setRestoringId(id); setLearningNavigationError('');
     const version = ++projectNavigation.current;
     const parseVersion = parseEpoch.current;
     const controller = new AbortController(); restoreRequests.current.add(controller);
+    restoringRequest.current = controller;
     try {
       const result = await request<ParsedVideo & { analysis: string }>(`/projects/${id}/resume?quality_id=${encodeURIComponent(qualityResource)}`, controller.signal);
       if (controller.signal.aborted) return;
       const restoredId = installProject(result, true);
       if (version !== projectNavigation.current || parseVersion !== parseEpoch.current) return;
-      // Archived projects open on the playable video; un-archived ones on the cover. Callers may still override the tab.
-      const restoredMedia = result.qualities.find(item => item.id === (result.default_quality_id || ''))?.media;
-      selectProject(restoredId); setTab(restoredMedia ? '视频预览' : '封面图片'); if (focus) navigate('workspace', true);
+      selectProject(restoredId); setTab('视频'); if (focus) navigate('workspace', true);
+      return restoredId;
     } catch (reason) {
-      if (!controller.signal.aborted && focus && version === projectNavigation.current && parseVersion === parseEpoch.current) { setParseStatus(reason instanceof Error ? reason.message : '无法恢复视频项目。'); setParseError(true); navigate('workspace', true); }
+      if (!controller.signal.aborted && version === projectNavigation.current && parseVersion === parseEpoch.current) {
+        const message = reason instanceof Error ? reason.message : '无法恢复视频项目。';
+        if (focus) { setParseStatus(message); setParseError(true); navigate('workspace', true); }
+        else if (pageRef.current === 'learning') setLearningNavigationError(message);
+      }
+    } finally {
+      restoreRequests.current.delete(controller);
+      if (restoringRequest.current === controller) { restoringRequest.current = null; setRestoringId(null); }
+    }
+  }
+
+  async function restoreNamingTask(identifier: string) {
+    const controller = new AbortController(); restoreRequests.current.add(controller);
+    let version = ++projectNavigation.current;
+    const parseVersion = parseEpoch.current; setLearningNavigationError('');
+    try {
+      const job = await request<NamingJob>('/naming/tasks/' + identifier, controller.signal);
+      if (controller.signal.aborted || version !== projectNavigation.current || parseVersion !== parseEpoch.current) return;
+      if (!validId(job.project_id)) throw new Error('命名任务缺少有效的项目关联。');
+      videoRef.current?.pause();
+      ++version;
+      const restored = await restoreProject(job.project_id, '', false);
+      if (controller.signal.aborted || version !== projectNavigation.current) return;
+      if (restored !== job.project_id) throw new Error('无法从本地归档恢复命名任务对应的视频；请检查项目与归档后重试。');
+      setNamingTaskId(identifier); setNamingOpen(true); navigate('learning', true);
+    } catch (reason) {
+      if (!controller.signal.aborted && version === projectNavigation.current) setLearningNavigationError(reason instanceof Error ? reason.message : '无法读取命名任务。');
     } finally { restoreRequests.current.delete(controller); }
   }
 
@@ -179,11 +249,13 @@ export default function App() {
   }
   function applyWorkflowResult(id: string, result: Media | AnalysisResult) {
     if ('text' in result) updateProject(id, value => ({ ...value, analysisVersion: value.analysisVersion + 1, lastRecord: result.record?.id,
-      parsed: result.project ? { ...value.parsed, project: result.project } : value.parsed, status: result.mode === 'ask' ? '追问已回答' : '分析完成', error: false }));
+      parsed: result.project ? { ...value.parsed, project: result.project } : value.parsed, status: result.mode === 'ask' || result.mode === 'conversation' ? '追问已回答' : '分析完成', error: false }));
     else {
-      updateProject(id, value => ({ ...value, parsed: { ...value.parsed, qualities: value.parsed.qualities.map(item => item.id === result.quality_id ? { ...item, media: result } : item) }, status: '所选视频已归档', error: false }));
-      // Once the archive is ready, move from the cover to the playable video.
-      if (selectedRef.current === id) setTab(current => current === '封面图片' ? '视频预览' : current);
+      updateProject(id, value => ({ ...value, parsed: { ...value.parsed,
+        qualities: value.parsed.qualities.map(item => item.id === result.quality_id ? { ...item, media: result } : item),
+        episodes: value.parsed.episodes?.map(episode => episode.part === value.parsed.project.part
+          ? { ...episode, project_id: value.parsed.project.id, archived: true } : episode) }, status: '所选视频已归档', error: false }));
+      // The unified media stage switches from progress to the archived player in place.
     }
   }
   async function restoreWorkflow(identifier: string, explicit: boolean) {
@@ -208,14 +280,14 @@ export default function App() {
             return match ? { ...value, quality: match.id } : value;
           });
         }
-        selectProject(id); setTab(job.kind === 'analysis' ? 'AI 分析' : '视频预览'); navigate('workspace', true);
+        selectProject(id); setTab(job.kind === 'analysis' ? 'AI 分析' : '视频'); navigate('workspace', true);
       }
       if (isActive(job.state)) {
         if (workflowRequests.current.has(id)) return;
         watchWorkflow(job, controller);
       }
       else if (job.state === 'completed' && explicit) applyWorkflowResult(id, job.result);
-      else if (explicit) updateProject(id, value => ({ ...value, error: true, status: job.message }));
+      else if (explicit) updateProject(id, value => ({ ...value, error: true, status: job.message, task: job }));
     } catch (reason) {
       if (!controller.signal.aborted && explicit) { setParseStatus(reason instanceof Error ? reason.message : '无法读取任务结果。'); setParseError(true); }
     } finally { restoreRequests.current.delete(controller); }
@@ -232,6 +304,7 @@ export default function App() {
     for (const kind of ['video', 'analysis']) { const id = remembered(kind); if (id) void restoreWorkflow(id, false); }
     const restore = (event: Event) => {
       const detail = (event as CustomEvent<{ kind?: string; id?: string; projectId?: string }>).detail;
+      if (detail?.kind === 'naming' && validId(detail.id)) { void restoreNamingTask(detail.id); return; }
       if (validId(detail?.projectId)) { void restoreProject(detail.projectId); return; }
       if (!validId(detail?.id)) return;
       if (detail.kind === 'transcriptions') navigate('transcription', true);
@@ -242,9 +315,22 @@ export default function App() {
     return () => {
       controller.abort(); parsingRequest.current?.abort();
       for (const request of workflowRequests.current.values()) request.abort();
+      for (const request of learningRequests.current.values()) request.abort();
       for (const request of restoreRequests.current) request.abort();
       window.removeEventListener('video-parser:restore-task', restore);
     };
+  }, []);
+  useEffect(() => {
+    const restorePage = () => {
+      const next = pageFromSearch(location.search);
+      pageRef.current = next; setPage(next); setMenuOpen(false);
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        document.getElementById('page-title-' + next)?.focus({ preventScroll: true });
+      });
+    };
+    window.addEventListener('popstate', restorePage);
+    return () => window.removeEventListener('popstate', restorePage);
   }, []);
   useEffect(() => {
     const query = matchMedia('(max-width:760px)');
@@ -269,26 +355,73 @@ export default function App() {
     const element = sourceInput.current; if (!element) return;
     element.style.height = 'auto';
     element.style.height = element.scrollHeight + (element.offsetHeight - element.clientHeight) + 'px';
-  }, [source, mobile]);
+  }, [source, mobile, page, activeTab]);
   function clearSource(next = '') {
+    restoringRequest.current?.abort();
     ++parseEpoch.current; ++projectNavigation.current; parsingRequest.current?.abort(); parsingRequest.current = null;
     setParsing(false); setSource(next); setSelectedId(null); selectedRef.current = null;
     setParseError(false); setParseStatus('等待解析'); setArchiveReminder(false); setCoverError(false); setVideoError(false);
     const url = new URL(location.href); url.searchParams.delete('project'); history.replaceState(null, '', url);
     try { localStorage.removeItem('video-parser:last-project'); localStorage.removeItem('video-parser:last-quality'); } catch { /* Optional restore. */ }
   }
-  async function parse() {
-    if (!source.trim() || parsingRequest.current) return;
+  async function parse(text = source, targetTab: Tab = '视频') {
+    if (!text.trim() || parsingRequest.current) return;
+    restoringRequest.current?.abort();
     ++projectNavigation.current; const epoch = ++parseEpoch.current;
     const controller = new AbortController(); parsingRequest.current = controller;
     setParsing(true); setParseError(false); setParseStatus('正在解析链接…');
     try {
-      const result = await request<ParsedVideo>('/parse', controller.signal, { text: source });
+      const result = await request<ParsedVideo>('/parse', controller.signal, { text });
       if (controller.signal.aborted || epoch !== parseEpoch.current) return;
-      const id = installProject(result); selectProject(id); setTab('封面图片'); setParseStatus('');
+      const id = installProject(result); selectProject(id); setTab(targetTab); setParseStatus('');
     } catch (reason) {
       if (!controller.signal.aborted && epoch === parseEpoch.current) { setParseError(true); setParseStatus(reason instanceof Error ? reason.message : '解析失败，请检查链接后重试。'); }
     } finally { if (epoch === parseEpoch.current) { parsingRequest.current = null; setParsing(false); } }
+  }
+  async function openLearningProject(id: string) {
+    if (parsingRequest.current || restoringRequest.current) return;
+    // Flush the old video's pause/progress before changing the media context.
+    videoRef.current?.pause();
+    await restoreProject(id, '', false);
+  }
+  async function selectEpisode(part: number) {
+    const id = selectedRef.current, value = id ? projects.current[id] : undefined;
+    if (!id || !value || parsingRequest.current || restoringRequest.current) return;
+    const episode = value.parsed.episodes?.find(item => item.part === part);
+    if (episode?.archived && validId(episode.project_id)) { await openLearningProject(episode.project_id); return; }
+    videoRef.current?.pause();
+    try {
+      const url = new URL(value.parsed.source_url);
+      url.searchParams.set('p', String(part));
+      await parse(url.toString(), tab);
+    } catch {
+      updateProject(id, current => ({ ...current, learningError: '无法打开这一分集，请重新解析视频后重试。' }));
+    }
+  }
+  async function setEpisodeLearned(part: number, learned: boolean) {
+    const id = selectedRef.current, value = id ? projects.current[id] : undefined;
+    if (!id || !value || value.busy !== null || parsingRequest.current || learningRequests.current.has(id)
+      || !value.parsed.episodes?.some(episode => episode.part === part)) return;
+    const controller = new AbortController();
+    learningRequests.current.set(id, controller);
+    updateProject(id, current => ({ ...current, learningPendingPart: part, learningError: '' }));
+    try {
+      const result = await request<{ episodes: LearningEpisode[] }>(`/projects/${id}/learning`, controller.signal, { part, learned });
+      if (controller.signal.aborted) return;
+      updateProject(id, current => {
+        const episodes = Array.isArray(result.episodes) ? result.episodes : current.parsed.episodes || [];
+        const currentLearned = episodes.find(episode => episode.part === current.parsed.project.part)?.learned;
+        return { ...current, parsed: { ...current.parsed, episodes,
+          project: { ...current.parsed.project, learned: typeof currentLearned === 'boolean' ? currentLearned : current.parsed.project.learned } }, learningError: '' };
+      });
+    } catch (reason) {
+      if (!controller.signal.aborted) updateProject(id, current => ({ ...current, learningError: reason instanceof Error ? reason.message : '学习进度保存失败，请重试。' }));
+    } finally {
+      if (learningRequests.current.get(id) === controller) {
+        learningRequests.current.delete(id);
+        if (!controller.signal.aborted) updateProject(id, current => ({ ...current, learningPendingPart: null }));
+      }
+    }
   }
   function chooseQuality(key: string) {
     if (!selectedId || busy) return;
@@ -304,12 +437,11 @@ export default function App() {
     if (operation === 'prepare' && archived) return true;
     if (operation === 'analyze' && (!archived || !analysis)) return false;
     const controller = new AbortController(); workflowRequests.current.set(id, controller);
-    // Download progress is drawn in the video stage, so leave the cover when archiving starts there.
-    if (operation === 'prepare') setTab(current => current === '封面图片' ? '视频预览' : current);
+    // Keep the current content tab; its shared media stage owns cover/download/player states.
     const path = operation === 'prepare' ? `/videos/${parsedId}/prepare-task`
-      : analysis!.kind === 'ask' ? `/projects/${value.parsed.project.id}/analyses/${analysis!.recordId}/ask-task` : `/videos/${parsedId}/analyze-task`;
+      : analysis!.kind === 'ask' ? `/projects/${value.parsed.project.id}/conversations/${analysis!.recordId}/ask-task` : `/videos/${parsedId}/analyze-task`;
     const body = operation === 'prepare' ? { quality_id: selectedQuality }
-      : analysis!.kind === 'ask' ? { consent: true, question: analysis!.question } : { ...analysis!.body, consent: true, quality_id: selectedQuality };
+      : analysis!.kind === 'ask' ? { consent: true, question: analysis!.question, position: analysis!.position, resource: archived!.resource, agent: analysis!.agent } : { ...analysis!.body, consent: true, quality_id: selectedQuality };
     updateProject(id, current => ({ ...current, busy: operation, task: undefined, error: false,
       status: operation === 'prepare' ? '正在下载所选画质并归档…' : analysis!.kind === 'ask' ? '正在发送追问…' : '正在准备分析材料…' }));
     try {
@@ -332,16 +464,20 @@ export default function App() {
       if (workflowRequests.current.get(id) === controller) { workflowRequests.current.delete(id); updateProject(id, current => ({ ...current, busy: null })); }
     }
   }
-  async function archiveAndAnalyze(body: AnalysisBody) {
-    if (!config?.ai_configured) return;
-    if (await run('prepare')) { setTab('AI 分析'); await run('analyze', { kind: 'analyze', body }); }
-  }
   function seekVideo(seconds: number) {
-    setTab('视频预览');
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    const video = videoRef.current; if (!video) return;
+    const sourceURL = video.getAttribute('src');
     requestAnimationFrame(() => {
-      const video = videoRef.current; if (!video) return;
-      const go = () => { video.currentTime = seconds; void video.play().catch(() => undefined); };
-      if (video.readyState >= 1) go(); else { video.addEventListener('loadedmetadata', go, { once: true }); video.load(); }
+      if (video !== videoRef.current || video.getAttribute('src') !== sourceURL) return;
+      if (pendingSeek.current) pendingSeek.current.video.removeEventListener('loadedmetadata', pendingSeek.current.go);
+      const go = () => {
+        if (video !== videoRef.current || video.getAttribute('src') !== sourceURL) return;
+        pendingSeek.current = null;
+        video.currentTime = Number.isFinite(video.duration) ? Math.min(seconds, Math.max(0, video.duration - .01)) : seconds;
+        void video.play().catch(() => undefined);
+      };
+      if (video.readyState >= 1) go(); else { pendingSeek.current = { video, go }; video.addEventListener('loadedmetadata', go, { once: true }); video.load(); }
       document.getElementById('video-stage')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }
@@ -354,106 +490,135 @@ export default function App() {
     catch (reason) { updateProject(id, value => ({ ...value, error: true, status: reason instanceof Error ? reason.message : '取消请求失败，请重试。' })); }
     finally { setCancellingTask(null); }
   }
-  const status = parsing || parseError ? parseStatus : selected?.status || parseStatus;
   // Parse progress/errors are shown once under the link box, not again in the inspector.
   const inspectorStatus = parsing || parseError ? '' : selected?.status || '';
   const showStatus = !!inspectorStatus && (!!selected?.error || busy !== null || !QUIET_STATUS.has(inspectorStatus));
   const cancelDisabled = !selected?.task || !isActive(selected.task.state) || selected.task.state === 'cancelling' || cancellingTask !== null;
-  // Cover and video share the full inspector: quality choice and archiving live next to both.
-  const fullInspector = tab === '封面图片' || tab === '视频预览';
-  const aiPrerequisite = tab === 'AI 分析' && !media;
-  const contextNote = aiPrerequisite && parsed ? '分析需要先归档所选视频。' : '';
+  const fullInspector = !learning && activeTab === '视频';
+  const archiveProblem = !!selected?.error && !media && busy !== 'analyze';
+  const currentTimeline = analysisTimeline?.projectId === parsed?.project.id ? analysisTimeline : null;
+  const currentChat = learningChat?.projectId === parsed?.project.id && learningChat?.resource === media?.resource ? learningChat : null;
+  const timelineEnabled = !!media && !!currentTimeline && (currentTimeline.videoResource
+    ? currentTimeline.videoResource === media.resource : (parsed?.episodes?.length || 0) <= 1);
+  function openPreparation() { setTab('视频'); navigate('workspace', true); }
+  function openAnalysis() { setTab('AI 分析'); navigate('workspace', true); }
+  function openLearning() { navigate('learning', true); }
   // Short side, so a 480x852 portrait stream also counts as limited.
   const maxShortSide = Math.max(0, ...(parsed?.qualities.map(item => item.width && item.height ? Math.min(item.width, item.height) : item.height || 0) || []));
   const qualityLimited = maxShortSide > 0 && maxShortSide < 720;
   const parseNeedsLogin = parseError && parseStatus.includes('账号与登录');
   const platformDuration = typeof parsed?.duration === 'number' && parsed.duration > 0 ? parsed.duration : null;
+  const currentEpisode = parsed?.episodes?.find(episode => episode.part === parsed.project.part);
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
     if (next === null) return; event.preventDefault(); setTab(tabs[next].name); tabButtons.current[next]?.focus();
   }
 
+  const sourceEntry = <VideoSourceForm value={source} parsing={parsing} inputRef={sourceInput} onChange={setSource}
+    onParse={() => { void parse(); }} onClear={() => { clearSource(); sourceInput.current?.focus(); }} />;
+  const episodeToggle = currentEpisode && <LearningToggle episode={currentEpisode} placement="player"
+    disabled={parsing || !!restoringId || busy !== null || (selected?.learningPendingPart !== null && selected?.learningPendingPart !== undefined)}
+    onChange={learned => { void setEpisodeLearned(currentEpisode.part, learned); }} />;
   return <WorkbenchLayout page={page} mobile={mobile} menuOpen={menuOpen} activeCount={activeCount}
-    sidebarRef={sidebar} menuButtonRef={menuButton} onNavigate={navigate} onSettings={openSettings}
+    sidebarRef={sidebar} menuButtonRef={menuButton} onNavigate={navigate}
     onOpenMenu={() => setMenuOpen(true)}
     onCloseMenu={() => { setMenuOpen(false); requestAnimationFrame(() => menuButton.current?.focus()); }}
     overlays={<>
-      {settingsOpen && <SettingsDialog settings={settings} onChange={saveSettings} config={config} configError={configError} saveStatus={settingsSaveStatus} activeCount={activeCount} onClose={closeSettings} onAIChange={updateAI} focusAI={settingsFocusAI} />}
+      {namingOpen && parsed && <SubtitleNaming key={parsed.project.id} projectId={parsed.project.id} config={config} initialTaskId={namingTaskId}
+        onClose={() => setNamingOpen(false)} onOpenSettings={button => openSettings(button, true)} onBeforeApply={() => videoRef.current?.pause()}
+        onChanged={async () => { setLibraryVersion(value => value + 1); const id = selectedRef.current; if (id) await restoreProject(id, media?.resource || '', false); }} />}
       {archiveReminder && <div className="archive-reminder" role="status" aria-live="polite">视频已归档<button type="button" aria-label="关闭归档提醒" onClick={() => setArchiveReminder(false)}>×</button></div>}
     </>}>
         {configError && <p className="error-text configuration-error" role="alert">{configError}</p>}
-        <WorkbenchPage page="workspace" activePage={page}>
-        {page === 'workspace' && config && !config.media_ready && <p className="error-text media-setup-error" role="alert">未检测到 ffmpeg 或 ffprobe，请安装并加入 PATH 后重启服务。</p>}
-          <Panel className="source-panel" aria-labelledby="source-label">
-          <form onSubmit={event => { event.preventDefault(); void parse(); }}>
-          <label id="source-label" htmlFor="source" className="sr-only">视频链接或分享文本</label>
-          <div className="source-row">
-          <Icon name="link-2" />
-          <textarea ref={sourceInput} id="source" value={source} maxLength={8192} rows={1} placeholder="粘贴视频链接，或带链接的分享文本…" onChange={event => setSource(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void parse(); } }} />
-          {source && <button className="clear-button" type="button" aria-label="清空链接" onClick={() => { clearSource(); sourceInput.current?.focus(); }}>
-          <Icon name="x" />
-          </button>}
-          <button className="primary parse-button" type="submit" aria-busy={parsing} disabled={!source.trim() || parsing}>{parsing ? <>
-          <Icon name="loader-circle" className="spinner" />解析中…</> : <>
-          <Icon name="link-2" />解析视频</>}
-          </button>
-          </div>
-          </form>
-          </Panel>
-          {!source && !parsed && <div className="examples-row">
-          <div className="examples">
-          <span>试试示例</span>{Object.entries(examples).map(([name, url]) => <button key={name} className="chip" type="button" onClick={() => { setSource(url); sourceInput.current?.focus(); }}>{name}
-          </button>)}
-          </div>
-          </div>}
-          {(parsing || parseError) && <p className={parseError ? 'error-text' : 'notice'} role="status">{parseStatus}
-          {parseNeedsLogin && <button type="button" className="link-button" onClick={() => openAccounts(parseLoginPlatform(parseStatus, source))}>去登录</button>}
-          </p>}
-              <div className="tabs" role="tablist" aria-label="内容类型">{tabs.map((item, index) => <button key={item.id} ref={element => { tabButtons.current[index] = element; }} id={'tab-' + item.id} role="tab" aria-selected={tab === item.name} aria-controls={'tabpanel-' + item.id} tabIndex={tab === item.name ? 0 : -1} onClick={() => setTab(item.name)} onKeyDown={event => moveTab(event, index)}>
+        {!learning && learningNavigationError && <p className="error-text configuration-error" role="alert">{learningNavigationError}</p>}
+        <WorkbenchPage page={page === 'learning' ? 'learning' : 'workspace'} activePage={page}>
+        {(page === 'workspace' || page === 'learning') && config && !config.media_ready && <p className="error-text media-setup-error" role="alert">未检测到 ffmpeg 或 ffprobe，请安装并加入 PATH 后重启服务。</p>}
+              <div className="tabs" hidden={page === 'learning' || !parsed} role="tablist" aria-label="内容类型">{tabs.map((item, index) => <button key={item.id} ref={element => { tabButtons.current[index] = element; }} id={'tab-' + item.id} role="tab" aria-selected={tab === item.name} aria-controls="workpanel" tabIndex={tab === item.name ? 0 : -1} onClick={() => setTab(item.name)} onKeyDown={event => moveTab(event, index)}>
           <Icon name={item.icon} />{item.name}
           </button>)}
           </div>
-          <div className={'work-grid' + (!fullInspector ? ' compact-context' : '')}>
-            <section className="preview-panel" aria-labelledby="content-heading">
-          <h2 id="content-heading" className="sr-only">项目内容</h2>
-              <div id="tabpanel-1" role="tabpanel" aria-labelledby="tab-1" hidden={tab !== '视频预览'}>
-          <div className="media-stage" id="video-stage">{media ? <video ref={videoRef} key={media.preview_url} controls playsInline preload="metadata" poster={coverError ? undefined : parsed?.cover_url || undefined} src={media.preview_url} onError={() => setVideoError(true)} aria-label="视频播放器" /> : <div className={'empty-stage' + (busy === 'prepare' ? ' download-stage' : '')}>
-          {busy === 'prepare' ? <div className="download-preview-feedback">
-            <div className="download-preview-heading"><Icon name="loader-circle" className="spinner" /><span>视频下载与归档</span></div>
-            <p className="download-preview-message" role="status" aria-live="polite" aria-atomic="true">{status}</p>
-            {selected?.task?.phase === 'downloading' && selected.task.progress && <ProgressBar progress={selected.task.progress} />}
-          </div> : <>
-            <Icon name="circle-play" className="film-icon" />
-            <p>{parsed ? '选择画质并下载归档后预览' : '先解析链接，再选择画质归档'}</p>
-          </>}
+          {!learning && !parsed && <WorkspaceStart onContinue={openLearning}>
+            <Panel className="source-panel" aria-labelledby="source-label">{sourceEntry}</Panel>
+            {!source && <div className="examples-row"><div className="examples"><span>试试示例</span>
+              {Object.entries(examples).map(([name, url]) => <button key={name} className="chip" type="button" onClick={() => { setSource(url); sourceInput.current?.focus(); }}>{name}</button>)}
+            </div></div>}
+          </WorkspaceStart>}
+          {fullInspector && parsed && <Panel className="source-panel" aria-labelledby="source-label">{sourceEntry}</Panel>}
+          {(parsing || parseError) && <p className={parseError ? 'error-text' : 'notice'} role="status">{parseStatus}
+          {parseNeedsLogin && <button type="button" className="link-button" onClick={() => openAccounts(parseLoginPlatform(parseStatus, source))}>去登录</button>}
+          </p>}
+          <div className={learning ? `learning-context-header${!parsed ? ' is-empty' : ''}` : 'workspace-context-header'}>
+          {learning && <LearningProjectPicker compact={!!parsed} current={parsed?.project || null} version={libraryVersion} disabled={parsing || !!restoringId}
+            loading={!!restoringId} onSelect={id => { void openLearningProject(id); }} />}
+          {learning && learningNavigationError && <p className="error-text" role="alert">{learningNavigationError} 当前视频与学习数据保持不变。</p>}
+          {parsed && (learning || managing) && <div className="video-context-heading">
+            <div><strong translate="no" title={parsed.project.episode_title || parsed.title}>{parsed.project.episode_title || parsed.title}</strong>
+              {learning ? <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', parsed.project.episode_title ? parsed.title : currentEpisode?.title].filter(Boolean).join(' · ')}</span>
+                : <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', parsed.project.episode_title && parsed.title !== parsed.project.episode_title ? parsed.title : ''].filter(Boolean).join(' · ')}</span>}</div>
+            <div className="video-context-actions">{learning ? <>
+              <details className="video-context-more" onKeyDown={event => {
+                if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); }
+              }}><summary>更多学习操作</summary><div onClick={event => {
+                if ((event.target as Element).closest('button')) event.currentTarget.closest('details')?.removeAttribute('open');
+              }}>
+                <button type="button" disabled={!!restoringId} onClick={() => { setNamingTaskId(null); setNamingOpen(true); }}>字幕层级命名</button>
+                <button type="button" disabled={!!restoringId} onClick={generateSubtitles}>生成字幕</button>
+                <button type="button" onClick={openPreparation}>返回视频准备</button>
+              </div></details>
+            </> : <>
+              <button type="button" disabled={!!restoringId} onClick={() => { setNamingTaskId(null); setNamingOpen(true); }}>字幕层级命名</button>
+              {media && <button type="button" onClick={openLearning}>返回学习</button>}
+            </>}</div>
           </div>}
-          </div>{videoError && <p className="error-text" role="alert">浏览器无法播放，请在归档目录中用本地播放器打开。</p>}
           </div>
-              <div id="tabpanel-0" role="tabpanel" aria-labelledby="tab-0" hidden={tab !== '封面图片'}>
-          <div className="media-stage cover-stage">{parsed?.cover_url && !coverError ? <img src={parsed.cover_url} alt={`${parsed.title}的封面`} onError={() => setCoverError(true)} /> : <div className="empty-stage">
-          <Icon name="image" className="empty-glyph" />
-          <p>{parsed ? '暂无可用封面' : '解析后查看封面'}
-          </p>
-          </div>}
-          </div>
-          </div>
-              <div id="tabpanel-2" role="tabpanel" aria-labelledby="tab-2" hidden={tab !== 'AI 分析'}>
-          <AnalysisPanel parsed={parsed} media={media} qualityId={quality} config={config} busy={busy} status={selected?.status || ''} error={!!selected?.error}
-            task={selected?.task} version={selected?.analysisVersion || 0} lastRecord={selected?.lastRecord} cancelDisabled={cancelDisabled}
-            onCancel={() => { void cancelWorkflow(); }} onAnalyze={body => { void run('analyze', { kind: 'analyze', body }); }}
-            onArchiveAndAnalyze={body => { void archiveAndAnalyze(body); }} onAsk={(recordId, question) => { void run('analyze', { kind: 'ask', recordId, question }); }}
-            onSeek={media ? seekVideo : undefined} onOpenSettings={button => openSettings(button, true)} onGenerateSubtitles={generateSubtitles} />
-          </div>
-            </section>
-            <Panel as="aside" className={'details-panel' + (!fullInspector ? ' compact-inspector' : '')} aria-labelledby="details-heading">
-          <PanelTitle secondary id="details-heading">{fullInspector ? '项目与归档' : '当前项目'}</PanelTitle>
-          <div className="inspector-identity">
-          <h3 className="info-title">{parsed?.title || '尚未选择视频'}
+          <div key="workpanel" id="workpanel" hidden={!parsed && !learning} role={page === 'learning' ? 'region' : 'tabpanel'} aria-labelledby={page === 'learning' ? 'page-title-learning' : 'tab-' + tabs.find(item => item.name === tab)?.id} className={`work-grid study-workspace${!fullInspector ? ' compact-context' : ''}${learning && media && studyCollapsed ? ' study-workspace-collapsed' : ''}${managing || (learning && !parsed) ? ' study-single-column' : ''}`}>
+            <div className="study-main-column">
+              <section className="preview-panel" aria-labelledby="content-heading" hidden={managing || !parsed}>
+                <h2 id="content-heading" className="sr-only">项目内容</h2>
+                <MediaStage projectId={parsed?.project.id} title={parsed?.title} coverURL={parsed?.cover_url}
+                  media={media} videoRef={videoRef} coverError={coverError} onCoverError={() => setCoverError(true)}
+                  onVideoError={() => setVideoError(true)} preparing={busy === 'prepare'} failed={archiveProblem}
+                  message={selected?.status || ''} task={selected?.task} cancelDisabled={cancelDisabled}
+                  retryDisabled={busy !== null || !quality} onCancel={() => { void cancelWorkflow(); }} onRetry={() => { void run('prepare'); }} />
+                {videoError && <p className="error-text" role="alert">浏览器无法播放，请在归档目录中用本地播放器打开。</p>}
+                <div hidden={!learning}>
+                {parsed && media && <PlaybackResume key={`${parsed.project.id}:${media.resource}`}
+                  projectId={parsed.project.id} media={media} videoRef={videoRef} onSeek={seekVideo} anchorRef={resumeBar}>
+                  {episodeToggle}
+                </PlaybackResume>}
+                {media && currentTimeline && <ChapterTimeline timeline={currentTimeline} view="player" compact
+                  videoRef={videoRef} mediaKey={`${parsed?.project.id}:${media.preview_url}`} duration={media.duration}
+                  enabled={timelineEnabled} onSeek={seekVideo} />}
+                {!media && episodeToggle}
+                </div>
+                {fullInspector && parsed && media && <div className="study-start-bar"><strong>视频已归档，可以开始学习</strong>
+                  <button type="button" className="primary" onClick={openLearning}>开始学习</button></div>}
+              </section>
+              <section className="learning-notes-panel" aria-label={learning ? 'AI 学习材料' : 'AI 分析与材料管理'} hidden={activeTab !== 'AI 分析'}>
+                <AnalysisPanel learning={learning} onManage={openAnalysis} onPrepare={openPreparation} onUseForLearning={openLearning} onTimelineChange={setAnalysisTimeline} onChatChange={setLearningChat} parsed={parsed} media={media} qualityId={quality} config={config} busy={busy} status={selected?.status || ''} error={!!selected?.error}
+                  task={selected?.task} version={selected?.analysisVersion || 0} lastRecord={selected?.lastRecord} cancelDisabled={cancelDisabled}
+                  onCancel={() => { void cancelWorkflow(); }} onAnalyze={body => { void run('analyze', { kind: 'analyze', body }); }}
+                  onAsk={(recordId, question, position, agent) => { void run('analyze', { kind: 'ask', recordId, question, position, agent }); }}
+                  onSeek={media ? seekVideo : undefined} onOpenSettings={button => openSettings(button, true)} onGenerateSubtitles={generateSubtitles} />
+              </section>
+            </div>
+            <div className="study-context-rail" hidden={managing || (learning && !parsed)}>
+              <div hidden={!learning}>
+              {parsed && media && <StudySidebar projectId={parsed.project.id} media={media} videoRef={videoRef}
+                timeline={currentTimeline} enabled={timelineEnabled} collapsed={studyCollapsed}
+                alignTo={resumeBar} active={learning}
+                onToggle={() => setStudyCollapsed(value => !value)} onSeek={seekVideo}
+                assistant={{ chat: currentChat, busy, status: selected?.status || '', error: !!selected?.error, task: selected?.task, cancelDisabled,
+                  onAsk: (recordId, question, position, agent) => { void run('analyze', { kind: 'ask', recordId, question, position, agent }); },
+                  onCancel: () => { void cancelWorkflow(); }, onOpenSettings: button => openSettings(button, true), onManage: openAnalysis, onGenerateSubtitles: generateSubtitles }} />}
+              </div>
+            <Panel as="aside" id="project-context" hidden={!parsed || (learning && ((!!media && studyCollapsed) || (parsed?.episodes?.length || 0) <= 1))} className={'details-panel' + (!fullInspector ? ' compact-inspector' : '')} aria-labelledby={learning ? undefined : 'details-heading'} aria-label={learning ? '分集学习上下文' : undefined}>
+          {!learning && <div className="project-context-heading"><PanelTitle secondary id="details-heading">{fullInspector ? '项目与归档' : '当前项目'}</PanelTitle></div>}
+          <div className="inspector-identity" hidden={learning}>
+          <h3 className="info-title" translate={parsed?.title ? 'no' : undefined}>{parsed?.title || '尚未选择视频'}
           </h3>{parsed && <div className="identity-meta"><span className="platform-mark">{parsed.platform}{!fullInspector && parsed.project.part ? ` · P${parsed.project.part}` : ''}
           </span><a className="source-link" href={parsed.source_url} target="_blank" rel="noreferrer" aria-label="打开原始链接" title="打开原始链接"><Icon name="external-link" /></a></div>}
           </div>
-              {contextNote && <p className="context-note">{contextNote}
-          </p>}
               {fullInspector && parsed && <>
           <dl className="media-meta">
           <div>
@@ -485,25 +650,30 @@ export default function App() {
           </select>
           </FormField>
           </>}
-              {(fullInspector || aiPrerequisite) && <>
-          {parsed && !media && <button className="primary download-button" type="button" aria-busy={busy === 'prepare'} disabled={!parsed || !quality || busy !== null} onClick={() => { void run('prepare'); }}>
-          <Icon name={busy === 'prepare' ? 'loader-circle' : 'download'} className={busy === 'prepare' ? 'spinner' : ''} />{busy === 'prepare' ? '下载归档中…' : fullInspector ? '下载并归档' : '先归档视频'}
+              {fullInspector && <>
+          {parsed && !media && busy !== 'prepare' && !archiveProblem && <button className="primary download-button" type="button" disabled={!quality || busy !== null} onClick={() => { void run('prepare'); }}>
+          <Icon name="download" />{fullInspector ? '下载并归档' : '先归档视频'}
           </button>}
-          {(busy !== 'prepare' || tab !== '视频预览') && <div className={`status inset ${selected?.error ? 'status-error' : ''}`} role="status" aria-live="polite" aria-atomic="true">{showStatus ? inspectorStatus : ''}</div>}
-          {busy === 'prepare' && <button type="button" className="task-entry-link" disabled={cancelDisabled} aria-busy={cancellingTask !== null} onClick={() => { void cancelWorkflow(); }}>取消下载</button>}
+          {busy !== 'prepare' && !archiveProblem && <div className={`status inset ${selected?.error ? 'status-error' : ''}`} role="status" aria-live="polite" aria-atomic="true">{showStatus ? inspectorStatus : ''}</div>}
           </>}
               {fullInspector && parsed && <>
-          <ProjectPanel key={parsed.project.id} project={parsed.project} />
+          <ProjectPanel key={parsed.project.id} project={parsed.project} onRenamed={renameProject} />
           <button type="button" className="subtitle-entry" onClick={generateSubtitles}><Icon name="captions" />生成字幕</button>
           {qualityLimited && ['missing', 'missing_session', 'expired', 'invalid'].includes(parsed.bilibili_cookie_status || '') && <p className="notice quality-login">{qualityLogin === 'done' ? '已登录 B站，请重新解析链接以获取更高画质。' : <>画质受限：没有登录 B站，最高只有 480p。<button type="button" className="link-button" onClick={() => setQualityLogin('open')}>扫码登录</button><button type="button" className="link-button" onClick={() => openAccounts('bilibili')}>账号与登录</button></>}</p>}
           {qualityLogin === 'open' && <BiliLogin onClose={() => setQualityLogin('closed')} onSuccess={() => setQualityLogin('done')} />}
           </>}
+              {learning && parsed && parsed.episodes && parsed.episodes.length > 1 && <LearningProgress key={parsed.project.id}
+                project={parsed.project} episodes={parsed.episodes} disabled={parsing || !!restoringId || busy !== null}
+                savingPart={selected?.learningPendingPart ?? null} error={selected?.learningError || ''}
+                onSelectEpisode={part => { void selectEpisode(part); }}
+                onSetLearned={(part, learned) => { void setEpisodeLearned(part, learned); }} />}
             </Panel>
+            </div>
           </div>
         </WorkbenchPage>
         <WorkbenchPage page="transcription" activePage={page}>
           <div className="transcription-layout">
-          <Transcription projectId={parsed?.project.id} media={media} ready={config?.transcription_ready} subtitlesReady={config?.subtitles_ready}
+          <Transcription config={config} onOpenSettings={button => openSettings(button, true)} projectId={parsed?.project.id} media={media} ready={config?.transcription_ready} subtitlesReady={config?.subtitles_ready}
             uploadLimit={config?.transcription_upload_limit} reuseModel={settings.reuseTranscriptionModel} focusRequest={subtitleFocus}
             pending={parsed && parsed.platform === '哔哩哔哩' ? { source_url: parsed.source_url, title: parsed.title, platform: parsed.platform, part: parsed.project.part ?? null, project_id: parsed.project.id } : null} />
           </div>
@@ -514,5 +684,10 @@ export default function App() {
         <WorkbenchPage page="accounts" activePage={page}>
           <Accounts visible={page === 'accounts'} focusPlatform={accountFocus} />
           </WorkbenchPage>
+        <WorkbenchPage page="settings" activePage={page}>
+          {(page === 'settings' || settingsVisited) && <SettingsPage settings={settings} onChange={saveSettings} config={config}
+            configError={configError} saveStatus={settingsSaveStatus} activeCount={activeCount} onAIChange={updateAI}
+            visible={page === 'settings'} focusAIRequest={settingsFocusRequest} />}
+        </WorkbenchPage>
   </WorkbenchLayout>;
 }

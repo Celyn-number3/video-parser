@@ -1,0 +1,55 @@
+/* One stable media column and one optional learning rail; video DOM never moves between modes. */
+.modern-app .study-workspace { grid-template-columns: minmax(0,1fr) 336px; gap: 20px; align-items: start; }
+.study-main-column, .study-context-rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.modern-app .study-workspace .preview-panel { position: static; margin: 0; padding: 0; }
+.modern-app .study-workspace .learning-notes-panel, .modern-app .study-workspace .details-panel { margin: 0; min-width: 0; }
+.modern-app .study-workspace-collapsed { grid-template-columns: minmax(0,1fr) 48px; }
+.study-sidebar { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-raised); overflow: hidden; }
+.study-sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; }
+.study-sidebar-heading h2 { margin: 0; font-size: 14px; }
+.modern-app .study-sidebar-toggle { flex: none; min-height: 32px; width: 32px; padding: 6px; }
+.study-sidebar.is-collapsed .study-sidebar-heading { padding: 7px; }
+.study-sidebar.is-collapsed .study-sidebar-heading h2 { display: none; }
+.study-sidebar-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; margin: 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--color-border); }
+.modern-app .study-sidebar-tabs button { min-height: 36px; font-size: 12px; }
+.modern-app .study-sidebar-tabs button[aria-selected=true] { background: var(--color-fill-hover); border-color: var(--color-border-strong); font-weight: 600; }
+.study-sidebar-body { max-height: min(72dvh,780px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* Wide screens: the sidebar's bottom lines up with the bar under the player (height measured in StudySidebar). */
+.study-sidebar[data-aligned]:not(.is-collapsed) { display: flex; flex-direction: column; height: var(--study-sidebar-height); min-height: 360px; box-sizing: border-box; }
+.study-sidebar[data-aligned]:not(.is-collapsed) #learning-sidebar-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.study-sidebar[data-aligned]:not(.is-collapsed) .study-sidebar-body { flex: 1; min-height: 0; max-height: none; }
+.study-sidebar-empty { padding: 16px; margin: 0; font-size: 12px; line-height: 1.8; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.study-sidebar .chapter-timeline { margin: 0; padding: 12px; border: 0; border-radius: 0; }
+/* The sidebar body owns directory scrolling; do not nest a second scroll viewport. */
+.study-sidebar .chapter-timeline-list { max-height: none; overflow: visible; }
+.study-sidebar .timestamp-notes { margin: 0; padding: 12px; border: 0; border-radius: 0; }
+.timestamp-notes-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.timestamp-notes-heading button { min-height: 36px; }
+#study-panel-chat > .ai-chat:first-child { border-top: 0; }
+/* The question box stays at the bottom of the sidebar while the Q&A above it scrolls. */
+.study-sidebar .ai-chat-form { position: sticky; bottom: 0; z-index: 1; margin: 10px -12px -12px; padding: 8px 12px 12px; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); }
+.study-sidebar .timestamp-note-editor-actions { justify-content: flex-start; }
+.study-sidebar .timestamp-note-meta { gap: 5px; }
+.study-sidebar .timestamp-note-meta > button { padding-inline: 8px; font-size: 12px; }
+/* A single fixed frame for cover -> download/merge/archive -> player. Tiny screens retain readable progress. */
+.modern-app .unified-media-stage { position: relative; min-height: 240px; box-sizing: border-box; }
+.unified-media-stage > video, .unified-media-stage > img { position: absolute; inset: 0; }
+.unified-media-stage > .empty-stage { position: absolute; inset: 0; width: 100%; box-sizing: border-box; overflow-y: auto; padding: 16px; align-content: center; }
+.media-feedback-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.media-phase { margin: 0 0 8px; color: var(--color-text-secondary); font-size: 11px; }
+.media-stage-failure .download-preview-heading { color: var(--color-text); }
+@media(max-width:1170px) {
+  .modern-app .study-workspace, .modern-app .study-workspace-collapsed { grid-template-columns: minmax(0,1fr); }
+  /* Flatten only layout boxes, not React/DOM: keep the sidebar before the long AI analysis on narrow screens. */
+  .study-main-column { display: contents; }
+  .modern-app .study-workspace .preview-panel { grid-column: 1; grid-row: 1; }
+  .modern-app .study-workspace .study-context-rail { grid-column: 1; grid-row: 2; }
+  .modern-app .study-workspace .learning-notes-panel { grid-column: 1; grid-row: 3; }
+  .study-sidebar.is-collapsed .study-sidebar-heading { padding: 10px 12px; }
+  .study-sidebar.is-collapsed .study-sidebar-heading h2 { display: block; }
+  .study-sidebar-body { max-height: 65dvh; }
+}
+@media(prefers-reduced-motion:reduce) { .unified-media-stage .spinner { animation: none; } }
+
+/* Explicitly retain the native hidden contract when flex layout rules also apply. */
+.study-sidebar [hidden] { display: none !important; }

@@ -1,19 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '../../lib/api';
-import type { AISettings, AnalysisBody, AnalysisContext, AnalysisFrame, AnalysisRecord, AnalysisSource, Configuration, Media, ParsedVideo } from '../../lib/api';
+import type { AgentTarget, AISettings, AnalysisBody, AnalysisContext, AnalysisFrame, AnalysisRecord, AnalysisSource, Configuration, Media, ParsedVideo } from '../../lib/api';
 import { phases } from '../../lib/jobs';
 import type { TaskInfo } from '../../lib/jobs';
 import Icon from '../../components/Icon';
 import Panel, { PanelTitle } from '../../components/Panel';
 import Markdown from '../../components/Markdown';
 import './analysis.css';
+import { extractChapters } from './chapters';
+import type { AnalysisTimeline } from './chapters';
+import AIChat from '../learning/AIChat';
+import type { LearningChat } from '../learning/AIChat';
+import useConversations from '../learning/useConversations';
+import useAgentModels from '../learning/useAgentModels';
+import AgentModelPicker from '../learning/AgentModelPicker';
+import { chapterMaterial, matchesLearningMedia, readChapterChoice, readMaterialChoice, saveChapterChoice, saveMaterialChoice } from './learningMaterials';
 
 type Props = {
+  learning: boolean; onManage: () => void; onPrepare: () => void; onUseForLearning: () => void;
   parsed: ParsedVideo | null; media: Media | null; qualityId: string; config: Configuration | null;
   busy: 'prepare' | 'analyze' | null; status: string; error: boolean; task?: TaskInfo;
   version: number; lastRecord?: string; cancelDisabled: boolean;
-  onCancel: () => void; onAnalyze: (body: AnalysisBody) => void; onArchiveAndAnalyze: (body: AnalysisBody) => void;
-  onAsk: (recordId: string, question: string) => void; onSeek?: (seconds: number) => void;
+  onCancel: () => void; onAnalyze: (body: AnalysisBody) => void;
+  onAsk: (conversationId: string, question: string, position: number, agent?: AgentTarget) => void; onSeek?: (seconds: number) => void;
+  onTimelineChange: (timeline: AnalysisTimeline | null) => void; onChatChange?: (chat: LearningChat | null) => void;
   onOpenSettings: (button: HTMLButtonElement) => void; onGenerateSubtitles: () => void;
 };
 type Preview = { token: string; frames: (AnalysisFrame & { name: string })[] };
@@ -22,8 +32,8 @@ const SOURCES: [AnalysisSource, string][] = [['both', '字幕 + 画面'], ['tran
 const COUNTS = [4, 6, 8, 12, 16];
 const PLACEHOLDERS: Record<string, string> = {
   custom: '写下你想让模型做什么，例如：列出视频里出现的所有产品和价格',
-  notes: '选填，例如：只整理和特征值有关的部分',
-  breakdown: '选填，例如：重点分析前 10 秒',
+  notes: '例如：只整理和特征值有关的部分',
+  breakdown: '例如：重点分析前 10 秒',
 };
 const autoCount = (duration: number) => Math.max(4, Math.min(16, Math.round(4 + duration / 60)));
 const tokens = (value: number) => value >= 10000 ? `${(value / 10000).toFixed(1)} 万` : value.toLocaleString('zh-CN');
@@ -37,13 +47,18 @@ function when(iso: string | null) {
 function hostOf(url: string) { try { return new URL(url).host; } catch { return url; } }
 
 export default function AnalysisPanel(props: Props) {
-  const { parsed, media, qualityId, config, busy, status, error, task, version, lastRecord, onSeek } = props;
+  const { learning, parsed, media, qualityId, config, busy, status, error, task, version, lastRecord, onSeek } = props;
+  const reading = useRef(learning); reading.current = learning;
   const projectId = parsed?.project.id || '';
   const resource = media?.resource || '';
   const [context, setContext] = useState<AnalysisContext | null>(null);
   const [loadError, setLoadError] = useState('');
   const [records, setRecords] = useState<AnalysisRecord[]>([]);
+  const [recordsFor, setRecordsFor] = useState({ project: '', resource: '' });
   const [active, setActive] = useState<string | null>(null);
+  const [learningRecord, setLearningRecord] = useState<string | null>(null);
+  const [chapterChoice, setChapterChoice] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const [template, setTemplate] = useState('summary');
   const [source, setSource] = useState<AnalysisSource>('both');
   const [transcript, setTranscript] = useState('');
@@ -55,18 +70,17 @@ export default function AnalysisPanel(props: Props) {
   const [kept, setKept] = useState<Set<string>>(new Set());
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  const [question, setQuestion] = useState('');
   const [notice, setNotice] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const previewRequest = useRef<AbortController | null>(null);
-  const shown = useRef({ project: '', version: 0 });
-  // Model settings: from the latest context load, or from the settings dialog when it saves.
+  const shown = useRef({ project: '', resource: '', version: 0 });
+  // Model settings: from the latest context load, or from the settings page when it saves.
   const [ai, setAI] = useState<AISettings | null>(null);
   useEffect(() => { if (context?.ai) setAI(context.ai); }, [context]);
   useEffect(() => { if (config?.ai) setAI(config.ai); }, [config?.ai]);
 
   useEffect(() => {
-    setConsent(false); setQuestion(''); setNotice(''); setConfirmDelete(false);
+    setConsent(false); setNotice(''); setConfirmDelete(false);
     if (!projectId) { setContext(null); setRecords([]); setActive(null); return; }
     const controller = new AbortController();
     setLoadError('');
@@ -74,23 +88,37 @@ export default function AnalysisPanel(props: Props) {
       request<AnalysisContext>(`/projects/${projectId}/analysis/context?resource=${encodeURIComponent(resource)}`, controller.signal),
       request<{ records: AnalysisRecord[] }>(`/projects/${projectId}/analyses`, controller.signal),
     ]).then(([nextContext, list]) => {
+      if (controller.signal.aborted) return;
+      setRecordsFor({ project: projectId, resource });
       setContext(nextContext);
       setRecords(list.records);
+      const preferred = readMaterialChoice(projectId, resource);
+      const eligible = list.records.filter(item => matchesLearningMedia(item, media, parsed?.episodes?.length || 0));
+      setLearningRecord(eligible.find(item => item.id === preferred)?.id || eligible[0]?.id || null);
+      setChapterChoice(readChapterChoice(projectId, resource));
       // A just-finished analysis or follow-up: bring the result into view.
-      if (shown.current.project === projectId && version > shown.current.version && lastRecord) requestAnimationFrame(() => document.querySelector('.analysis-records')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
-      shown.current = { project: projectId, version };
+      if (!reading.current && shown.current.project === projectId && version > shown.current.version && lastRecord) requestAnimationFrame(() => {
+        const panel = document.querySelector('.analysis-records');
+        if (!reading.current && panel?.getClientRects().length) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+      const sameVideo = shown.current.project === projectId && shown.current.resource === resource;
+      shown.current = { project: projectId, resource, version };
       setActive(current => lastRecord && list.records.some(item => item.id === lastRecord) ? lastRecord
-        : current && list.records.some(item => item.id === current) ? current : list.records[0]?.id || null);
+        : sameVideo && current && list.records.some(item => item.id === current) ? current
+        : list.records.find(item => item.video_resource === resource)?.id || list.records[0]?.id || null);
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setLoadError(reason instanceof Error ? reason.message : '无法读取分析信息。'); });
     return () => controller.abort();
-  }, [projectId, resource, version, lastRecord]);
+  }, [projectId, resource, version, lastRecord, reload]);
   // New frames are needed whenever the video or the way frames are picked changes.
   useEffect(() => { previewRequest.current?.abort(); setPreview(null); setKept(new Set()); setPreviewError(''); setPreviewing(false); }, [projectId, resource, frameMode, count]);
   useEffect(() => () => previewRequest.current?.abort(), []);
   useEffect(() => { setConfirmDelete(false); setNotice(''); }, [active]);
+  useEffect(() => { setConfirmDelete(false); }, [learning]);
 
-  const configured = ai ? ai.configured : !!config?.ai_configured;
-  const needsConsent = !!ai && !ai.consented;
+  const models = useAgentModels(ai, !!config?.ai_configured);
+  const configured = models.configured;
+  const needsConsent = models.native || (!!ai && !ai.consented);
+  useEffect(() => { setConsent(false); }, [models.key]);
   const templates = context?.templates || [];
   const spec = templates.find(item => item.id === template);
   const transcripts = context?.transcripts || [];
@@ -103,7 +131,46 @@ export default function AnalysisPanel(props: Props) {
   const frameTotal = usesFrames ? (preview ? kept.size : count || automatic) : 0;
   const running = busy === 'analyze';
   const working = busy !== null;
-  const record = records.find(item => item.id === active) || null;
+  const recordsReady = recordsFor.project === projectId && recordsFor.resource === resource;
+  const eligibleRecords = records.filter(item => matchesLearningMedia(item, media, parsed?.episodes?.length || 0));
+  const visibleRecords = recordsReady ? (learning ? eligibleRecords : records) : [];
+  const record = learning ? visibleRecords.find(item => item.id === learningRecord) || visibleRecords[0] || null
+    : visibleRecords.find(item => item.id === active) || null;
+  const recordMatches = !!record && matchesLearningMedia(record, media, parsed?.episodes?.length || 0);
+  // Management is a material editor, not another player. Only the learning reader can seek.
+  const recordSeek = learning && recordMatches ? onSeek : undefined;
+  function chooseLearningMaterial(id: string) {
+    const chosenRecord = eligibleRecords.find(item => item.id === id);
+    if (!chosenRecord) return;
+    setLearningRecord(id); saveMaterialChoice(projectId, resource, id);
+    if (extractChapters(chosenRecord.text, duration).length) {
+      setChapterChoice(id); saveChapterChoice(projectId, resource, id);
+    }
+  }
+  function useForLearning() {
+    if (!record || !recordMatches) return;
+    chooseLearningMaterial(record.id); props.onUseForLearning();
+  }
+  const timeline = useMemo(() => recordsReady ? chapterMaterial(records, media, parsed?.episodes?.length || 0, duration, chapterChoice) : null,
+    [recordsReady, records, media, parsed?.episodes?.length, duration, chapterChoice]);
+  useEffect(() => {
+    props.onTimelineChange(timeline ? { projectId, videoResource: timeline.record.video_resource,
+      recordId: timeline.record.id, label: timeline.record.template_name, chapters: timeline.chapters } : null);
+  }, [timeline, projectId, props.onTimelineChange]);
+  const conversation = useConversations(projectId, resource, version, working);
+  const provider = models.name, host = !models.native && ai ? hostOf(ai.base_url) : '';
+  const chat = useMemo<LearningChat>(() => ({ ...conversation, configured, needsConsent, provider, host, models }),
+    [conversation, configured, needsConsent, provider, host, models]);
+  const shownConversation = useRef('');
+  useEffect(() => {
+    const session = conversation.session;
+    const key = projectId + ':' + (session?.id || '');
+    if (!session || shownConversation.current === key) return;
+    shownConversation.current = key;
+    models.select(session.agent || { engine: 'api', model: '', effort: '' });
+  }, [projectId, conversation.session, models.select]);
+  useEffect(() => { props.onChatChange?.(projectId ? chat : null); }, [projectId, chat, props.onChatChange]);
+
 
   const inputTokens = (context?.prompt_tokens || 700) + (usesTranscript && chosen ? chosen.tokens : 0) + frameTotal * (context?.image_tokens || 800) + Math.ceil(prompt.length * 0.7);
   const outputTokens = context?.output_tokens || 1500;
@@ -115,7 +182,7 @@ export default function AnalysisPanel(props: Props) {
     : missingTranscript ? '这个视频还没有字幕，先生成字幕再分析。'
     : template === 'custom' && !prompt.trim() ? '自定义分析需要写下分析要求。'
     : usesFrames && preview && !kept.size ? '至少保留一张画面。'
-    : !configured ? '尚未配置 AI 模型。'
+    : !configured ? (models.native ? '未找到所选本地 agent，请检查安装后刷新。' : '尚未配置 AI 模型。')
     : needsConsent && !consent ? '请先勾选同意发送。' : '';
 
   function chooseTemplate(id: string) {
@@ -125,7 +192,7 @@ export default function AnalysisPanel(props: Props) {
   }
   function body(): AnalysisBody {
     return {
-      template, source: effective, transcript_resource: usesTranscript ? chosen?.resource || null : null, frame_mode: frameMode,
+      agent: models.selected, template, source: effective, transcript_resource: usesTranscript ? chosen?.resource || null : null, frame_mode: frameMode,
       count: usesFrames ? count : 0, preview_token: usesFrames && preview ? preview.token : null,
       frames: usesFrames && preview ? preview.frames.filter(frame => kept.has(frame.name)).map(frame => frame.name) : null, prompt: prompt.trim(),
     };
@@ -164,22 +231,25 @@ export default function AnalysisPanel(props: Props) {
       setRecords(result.records); setActive(result.records[0]?.id || null);
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : '删除失败，请重试。'); setConfirmDelete(false); }
   }
-  function submitQuestion() {
-    if (!record || !question.trim() || working || !configured || (needsConsent && !consent)) return;
-    props.onAsk(record.id, question.trim()); setQuestion('');
-  }
+
 
   const estimate = !parsed || !context ? '' : `预计发送约 ${tokens(inputTokens)} tokens`
     + `（${[usesTranscript && chosen ? `字幕约 ${tokens(chosen.tokens)}` : '', usesFrames ? `画面 ${frameTotal} 张` : ''].filter(Boolean).join(' · ')}），输出约 ${tokens(outputTokens)}`;
-  const price = !ai ? '' : ai.local ? '本机模型，不产生调用费用。' : cost !== null ? `按设置的单价约 ¥${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}。` : '未填写单价，无法估算费用（可在设置 → AI 模型填写）。';
+  const price = models.native ? '费用由所选 agent 的模型服务计算。' : !ai ? '' : ai.local ? '本机模型，不产生调用费用。' : cost !== null ? `按设置的单价约 ¥${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}。` : '未填写单价，无法估算费用（可在设置 → AI 模型填写）。';
   const phase = task?.phase && phases[task.phase] ? phases[task.phase] + ' · ' : '';
 
-  if (!parsed) return <Panel className="analysis-form"><PanelTitle>AI 分析</PanelTitle><p className="analysis-empty">先解析视频链接，再用字幕和画面让模型总结、做笔记或拆解。</p></Panel>;
+  if (!parsed) return <Panel className={learning ? 'learning-materials' : 'analysis-form'}>
+    <PanelTitle>{learning ? '还没有选择学习视频' : 'AI 学习材料管理'}</PanelTitle>
+    <p className="analysis-empty">先在视频工作台解析并归档视频，再开始学习或制作 AI 学习材料。</p>
+    <button type="button" onClick={props.onPrepare}>去准备视频</button></Panel>;
 
   return <>
-    <Panel className="analysis-form" aria-labelledby="analysis-title">
-      <PanelTitle id="analysis-title">AI 分析</PanelTitle>
-      {!configured && <p className="notice analysis-setup" role="note">尚未配置 AI 模型，填写密钥后无需重启。
+    <Panel className="analysis-form" hidden={learning} aria-labelledby="analysis-title">
+      <PanelTitle id="analysis-title">生成 AI 学习材料</PanelTitle>
+      {loadError && <p className="error-text" role="alert">{loadError}<button type="button" onClick={() => setReload(value => value+1)}>重新载入材料</button></p>}
+      {!media && <p className="notice">请先归档所选视频，再生成学习材料。<button type="button" className="link-button" onClick={props.onPrepare}>去准备视频</button></p>}
+      <AgentModelPicker state={models} disabled={working} onManage={props.onOpenSettings} />
+      {!configured && !models.native && <p className="notice analysis-setup" role="note">尚未配置 AI 模型，填写密钥后无需重启。
         <button type="button" className="link-button" onClick={event => props.onOpenSettings(event.currentTarget)}>打开设置</button></p>}
 
       <div className="analysis-block">
@@ -236,38 +306,45 @@ export default function AnalysisPanel(props: Props) {
 
       <div className="analysis-block">
         <label className="analysis-label" htmlFor="prompt">{template === 'custom' ? '分析要求' : <>补充要求 <span className="optional">（选填）</span></>}</label>
-        <textarea id="prompt" disabled={running} value={prompt} maxLength={4000} rows={2} placeholder={PLACEHOLDERS[template] || '选填，例如：用英文输出 / 重点关注配色'} onChange={event => setPrompt(event.target.value)} />
+        <textarea id="prompt" disabled={running} value={prompt} maxLength={4000} rows={2} placeholder={PLACEHOLDERS[template] || '例如：用英文输出 / 重点关注配色'} onChange={event => setPrompt(event.target.value)} />
       </div>
 
       {estimate && <p className="analysis-estimate">{estimate}。{price}</p>}
-      {configured && needsConsent && ai && <label className="consent">
+      {configured && needsConsent && <label className="consent">
         <input type="checkbox" disabled={running} checked={consent} onChange={event => setConsent(event.target.checked)} />
-        <span>同意把{usesTranscript && usesFrames ? '字幕和画面' : usesTranscript ? '字幕' : '画面'}发送到 {ai.provider_name}（{hostOf(ai.base_url)}），可能产生费用，发送后无法撤销。同意一次后，对这个服务不再询问。</span>
+        <span>{models.native ? '同意由本地 agent 的模型处理课程内容，可能联网并产生费用。' : <>{usesTranscript && usesFrames ? '同意把字幕和画面发送到 ' : usesTranscript ? '同意把字幕发送到 ' : '同意把画面发送到 '}{ai?.provider_name}（{ai ? hostOf(ai.base_url) : ''}），可能产生费用，发送后无法撤销。同意一次后，对这个服务不再询问。</>}</span>
       </label>}
       <div className="analysis-actions">
-        <button className="primary operation-button" type="button" aria-busy={running || busy === 'prepare'} disabled={!!blocker || working}
-          onClick={() => media ? props.onAnalyze(body()) : props.onArchiveAndAnalyze(body())}>
+        <button className="primary operation-button" type="button" aria-busy={running || busy === 'prepare'} disabled={!media || !!blocker || working}
+          onClick={() => { if (media) props.onAnalyze(body()); }}>
           {working ? <><Icon name="loader-circle" className="spinner" />{busy === 'prepare' ? '归档中…' : '分析中…'}</>
-            : <><Icon name={media ? 'scan-eye' : 'download'} />{media ? '开始分析' : '归档并分析'}</>}
+            : <><Icon name={media ? 'scan-eye' : 'download'} />开始分析</>}
         </button>
         {running && <button type="button" disabled={props.cancelDisabled} onClick={props.onCancel}>取消分析</button>}
+        {busy === 'prepare' && <button type="button" onClick={props.onPrepare}>查看下载进度</button>}
         {!working && blocker && parsed && context && <span className="analysis-hint">{blocker}</span>}
       </div>
       {(working || (error && status)) && <p className={error ? 'error-text' : 'analysis-status'} role="status" aria-live="polite">{working ? phase : ''}{status}</p>}
     </Panel>
 
-    {records.length > 0 && <Panel className="analysis-records" aria-labelledby="analysis-records-title">
+    {(learning || visibleRecords.length > 0) && <Panel className={'analysis-records' + (learning ? ' learning-materials' : '')} aria-labelledby="analysis-records-title">
       <div className="analysis-record-bar">
-        <PanelTitle id="analysis-records-title">分析记录</PanelTitle>
-        <select aria-label="选择分析记录" value={active || ''} onChange={event => setActive(event.target.value)}>
-          {records.map(item => <option key={item.id} value={item.id}>{item.template_name} · {when(item.created_at)}{item.followups.length ? ` · 追问 ${item.followups.length}` : ''}</option>)}
-        </select>
+        <PanelTitle id="analysis-records-title">{learning ? 'AI 学习材料' : '分析记录'}</PanelTitle>
+        {learning && <button type="button" className="learning-manage-materials" aria-label="生成/管理 AI 学习材料" title="生成/管理 AI 学习材料" onClick={props.onManage}>管理材料</button>}
+        {visibleRecords.length > 0 && <select aria-label={learning ? '选择学习材料' : '选择分析记录'} value={record?.id || ''}
+          onChange={event => learning ? chooseLearningMaterial(event.target.value) : setActive(event.target.value)}>
+          {visibleRecords.map(item => <option key={item.id} value={item.id}>{item.template_name} · {when(item.created_at)}</option>)}
+        </select>}
       </div>
+      {learning && loadError && <p className="error-text" role="alert">{learning && loadError}<button type="button" onClick={() => setReload(value => value+1)}>重新载入材料</button></p>}
+      {learning && !record && !loadError && <p className="analysis-empty">{!recordsReady ? '正在读取学习材料…' : !media ? '先归档视频，再生成学习材料。' : '还没有当前视频的 AI 学习材料，可按需生成摘要、知识点或章节讲解。'}</p>}
       {record && <article className="analysis-record" aria-label={`${record.template_name}结果`}>
-        <p className="analysis-meta">{[record.source_label + (record.transcript_label ? `（${record.transcript_label}）` : ''), record.frame_count ? `${record.frame_count} 张画面` : '',
-          record.model, record.usage.prompt_tokens ? `用量 ${tokens(record.usage.prompt_tokens)} + ${tokens(record.usage.completion_tokens || 0)} tokens` : ''].filter(Boolean).join(' · ')}</p>
-        {record.prompt && <p className="analysis-meta">要求：{record.prompt}</p>}
-        <div className="analysis-record-actions">
+        {!learning && <p className="analysis-meta">{[record.source_label + (record.transcript_label ? `（${record.transcript_label}）` : ''), record.frame_count ? `${record.frame_count} 张画面` : '',
+          record.model, record.usage.prompt_tokens ? `用量 ${tokens(record.usage.prompt_tokens)} + ${tokens(record.usage.completion_tokens || 0)} tokens` : ''].filter(Boolean).join(' · ')}</p>}
+        {!learning && record.prompt && <p className="analysis-meta">要求：{record.prompt}</p>}
+        <div className="analysis-record-actions" hidden={learning}>
+          <button type="button" className="primary" disabled={!recordMatches} onClick={useForLearning}
+            title={recordMatches ? '在学习视图中使用这份材料' : '这份记录不是当前归档视频的材料'}>用于当前学习</button>
           <button type="button" onClick={() => { void copyRecord(); }}><Icon name="copy" />复制</button>
           <a className="button" href={`/api/workspace/projects/${projectId}/analyses/${record.id}/export?format=md`} download><Icon name="file-down" />导出 Markdown</a>
           <a className="button" href={`/api/workspace/projects/${projectId}/analyses/${record.id}/export?format=docx`} download><Icon name="file-down" />导出 Word</a>
@@ -275,25 +352,20 @@ export default function AnalysisPanel(props: Props) {
             <button type="button" disabled={working} onClick={() => { void deleteRecord(); }}>删除</button><button type="button" onClick={() => setConfirmDelete(false)}>取消</button></span>
             : <button type="button" className="analysis-delete" disabled={working} onClick={() => setConfirmDelete(true)}><Icon name="trash-2" />删除</button>}
         </div>
-        {notice && <p className="analysis-hint" role="status">{notice}</p>}
-        {record.frames.length > 0 && <ul className="analysis-frames" aria-label="这次分析用到的画面">
-          {record.frames.map(frame => <li key={frame.url}><button type="button" disabled={!onSeek} title={onSeek ? `跳到 ${frame.label}` : '归档视频后可跳转'} onClick={() => onSeek?.(frame.time)}>
+        {!learning && !recordMatches && <p className="notice">这份记录未绑定当前归档视频，不能用于当前学习。</p>}
+        {!learning && notice && <p className="analysis-hint" role="status">{notice}</p>}
+        {!learning && record.frames.length > 0 && <ul className="analysis-frames" aria-label="这次分析用到的画面">
+          {record.frames.map(frame => <li key={frame.url}><button type="button" disabled={!recordSeek} title={recordSeek ? `跳到 ${frame.label}` : '请在学习视图中回看画面'} onClick={() => recordSeek?.(frame.time)}>
             <img src={frame.url} alt={`画面 ${frame.label}`} loading="lazy" /><span>{frame.label}</span></button></li>)}
         </ul>}
-        <Markdown text={record.text} onSeek={onSeek} maxSeconds={duration} className="analysis-markdown" />
-        {record.followups.map(item => <section className="analysis-followup" key={item.id} aria-label={'追问：' + item.question}>
-          <p className="analysis-question"><span>追问</span>{item.question}</p>
-          <Markdown text={item.answer} onSeek={onSeek} maxSeconds={duration} className="analysis-markdown" />
-        </section>)}
-        <form className="analysis-ask" onSubmit={event => { event.preventDefault(); submitQuestion(); }}>
-          <label htmlFor="analysis-question" className="sr-only">追问这次分析</label>
-          <textarea id="analysis-question" rows={2} maxLength={2000} value={question} disabled={working} placeholder="接着问，例如：第二部分再展开讲讲"
-            onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); submitQuestion(); } }} />
-          <button type="submit" disabled={!question.trim() || working || !configured || (needsConsent && !consent)} aria-busy={running}>
-            <Icon name={running ? 'loader-circle' : 'send'} className={running ? 'spinner' : ''} />追问</button>
-        </form>
-        <p className="analysis-hint">追问会带上这次的字幕、画面和之前的问答一起发送。{needsConsent ? '需要先在上方勾选同意发送。' : ''}</p>
+        <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" />
+
       </article>}
+    </Panel>}
+    {!learning && media && <Panel className="independent-conversations"><PanelTitle>AI 对话</PanelTitle>
+      <AIChat chat={chat} busy={busy} status={status} error={error} task={task} cancelDisabled={props.cancelDisabled}
+        onAsk={props.onAsk} onCancel={props.onCancel} onOpenSettings={props.onOpenSettings} onManage={props.onManage}
+        onGenerateSubtitles={props.onGenerateSubtitles} duration={duration} visible={!learning} />
     </Panel>}
   </>;
 }

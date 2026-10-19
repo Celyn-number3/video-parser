@@ -25,6 +25,8 @@ export default function Accounts({ visible, focusPlatform, onChange }: { visible
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [qrOpen, setQrOpen] = useState<string | null>(null);
   const [confirmLogout, setConfirmLogout] = useState<string | null>(null);
+  // Logged-in rows show one 重新登录; it expands into the two ways to log in only when asked.
+  const [relogin, setRelogin] = useState<string | null>(null);
   const changed = useRef(onChange); changed.current = onChange;
   const previous = useRef<Record<string, string>>({});
 
@@ -68,8 +70,6 @@ export default function Accounts({ visible, focusPlatform, onChange }: { visible
   }
 
   return <Panel className="accounts-panel" aria-labelledby="page-title-accounts">
-    <p className="accounts-intro">登录后，工作台会用对应平台的登录状态去解析和下载：B站可以拿到 1080p 及以上画质，抖音、小红书更不容易被风控拦下。
-      登录信息只保存在本机{storage ? `（${storage.split('（')[0]}）` : ''}，页面上不会显示 Cookie 内容。</p>
     {error && <p className="error-text" role="alert">{error}</p>}
     <ul className="account-list">{accounts.map(item => {
       // QR sessions run inside their own dialog; only window logins show progress in the row.
@@ -98,17 +98,24 @@ export default function Accounts({ visible, focusPlatform, onChange }: { visible
             <button type="button" className="primary" disabled={busy !== null || session.state !== 'waiting'} onClick={() => { void act(item.id, 'login/finish'); }}>完成登录</button>
             <button type="button" disabled={busy !== null} onClick={() => { void act(item.id, 'login/cancel'); }}>取消</button>
           </> : <>
-            {item.qr_login && <button type="button" className={item.state === 'saved' ? undefined : 'primary'} disabled={busy !== null || other} onClick={() => setQrOpen(item.id)}>扫码登录</button>}
-            <button type="button" className={item.state === 'saved' || item.qr_login ? undefined : 'primary'} disabled={busy !== null || other} aria-busy={busy === item.id + 'login'}
-              onClick={() => { void act(item.id, 'login'); }}>{item.state === 'saved' ? '重新登录' : item.qr_login ? '浏览器登录' : '打开登录窗口'}</button>
-            {item.state === 'saved' && <button type="button" disabled={busy !== null} aria-busy={busy === item.id + 'check'} onClick={() => { void act(item.id, 'check'); }}>检查</button>}
-            {item.state !== 'missing' && <button type="button" disabled={busy !== null} onClick={() => setConfirmLogout(item.id)}>退出登录</button>}
+            {item.state === 'saved' && relogin !== item.id ? <>
+              <button type="button" disabled={busy !== null} aria-busy={busy === item.id + 'check'} onClick={() => { void act(item.id, 'check'); }}>检查</button>
+              <button type="button" disabled={busy !== null || other} aria-busy={busy === item.id + 'login'}
+                onClick={() => { if (item.qr_login) setRelogin(item.id); else void act(item.id, 'login'); }}>重新登录</button>
+            </> : <>
+              {item.qr_login && <button type="button" className="primary" disabled={busy !== null || other} onClick={() => { setRelogin(null); setQrOpen(item.id); }}>扫码登录</button>}
+              <button type="button" className={item.qr_login ? undefined : 'primary'} disabled={busy !== null || other} aria-busy={busy === item.id + 'login'}
+                title={item.qr_login ? '扫码后平台要求短信验证时使用：在本机弹出浏览器窗口登录，完成后自动保存' : undefined}
+                onClick={() => { setRelogin(null); void act(item.id, 'login'); }}>{item.qr_login ? '浏览器登录' : '打开登录窗口'}</button>
+              {relogin === item.id && <button type="button" onClick={() => setRelogin(null)}>取消</button>}
+            </>}
+            {item.state !== 'missing' && relogin !== item.id && <button type="button" disabled={busy !== null} onClick={() => setConfirmLogout(item.id)}>退出登录</button>}
           </>}
         </div>
       </li>;
     })}</ul>
     {!accounts.length && !error && <p className="notice">正在读取登录状态…</p>}
-    <p className="accounts-footnote">推荐用手机 App 扫码登录。扫码后如果平台要求短信验证，请改用“浏览器登录”：它会在本机弹出一个独立的浏览器窗口，在里面完成登录后自动保存（小红书需要手动点“完成登录”）。YouTube 不需要登录。</p>
+    <p className="accounts-footnote">登录信息只保存在本机{storage ? `（${storage.split('（')[0]}）` : ''}。YouTube 不需要登录。</p>
     {qrOpen === 'bilibili' && <BiliLogin onClose={() => setQrOpen(null)} onSuccess={() => { setQrOpen(null); setNotes(value => ({ ...value, bilibili: 'B站扫码登录成功，已保存到本机。' })); void load(new AbortController().signal); changed.current?.(); }} />}
     {qrOpen && qrOpen !== 'bilibili' && (() => {
       const account = accounts.find(item => item.id === qrOpen);

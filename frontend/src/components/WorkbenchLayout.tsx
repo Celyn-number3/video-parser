@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
 import Icon from './Icon';
+import ThemeMorphIcon from './ThemeMorphIcon';
 import { useTheme } from '../lib/theme';
 import { pageIcons, pageNames, type Page } from '../features/navigation/navigation';
 
@@ -8,14 +9,13 @@ type Props = {
   sidebarRef: RefObject<HTMLElement | null>;
   menuButtonRef: RefObject<HTMLButtonElement | null>;
   onNavigate: (page: Page, focus?: boolean) => void;
-  onSettings: (button: HTMLButtonElement) => void;
   onOpenMenu: () => void; onCloseMenu: () => void;
   children: ReactNode; overlays: ReactNode;
 };
 
 // Presentation only. Page and task state stay with their existing owners.
 export default function WorkbenchLayout({ page, mobile, menuOpen, activeCount,
-  sidebarRef, menuButtonRef, onNavigate, onSettings, onOpenMenu, onCloseMenu,
+  sidebarRef, menuButtonRef, onNavigate, onOpenMenu, onCloseMenu,
   children, overlays }: Props) {
   const { theme, toggleTheme } = useTheme();
   const running = activeCount ?? 0;
@@ -25,10 +25,12 @@ export default function WorkbenchLayout({ page, mobile, menuOpen, activeCount,
       aria-label="主导航" inert={mobile && !menuOpen}
       role={menuOpen ? 'dialog' : undefined} aria-modal={menuOpen || undefined}>
       <div className="brand"><span className="brand-mark"><Icon name="clapperboard" /></span><strong>Video Parser</strong></div>
-      <nav>{(Object.keys(pageNames) as Page[]).map(name => <button key={name}
+      <nav>{(Object.keys(pageNames) as Page[]).filter(name => name !== 'settings').map(name => <button key={name}
         className="nav-button" type="button" aria-current={page === name ? 'page' : undefined}
         onClick={() => onNavigate(name, mobile)}><Icon name={pageIcons[name]} />{pageNames[name]}
         {name === 'tasks' && running > 0 && <b className="nav-count">{running}<span className="sr-only"> 项进行中</span></b>}</button>)}</nav>
+      <nav className="sidebar-settings" aria-label="应用设置"><button className="nav-button" type="button" title="设置"
+        aria-current={page === 'settings' ? 'page' : undefined} onClick={() => onNavigate('settings', mobile)}><Icon name="settings" />设置</button></nav>
     </aside>
     <div className="app-shell" inert={menuOpen}>
       <header className="app-topbar">
@@ -40,11 +42,9 @@ export default function WorkbenchLayout({ page, mobile, menuOpen, activeCount,
           {mobile && running > 0 && <button className="global-task-badge" type="button"
             aria-label={`运行任务 ${running} 项，打开任务中心`}
             onClick={() => onNavigate('tasks')}><span className="status-dot" /><b>{running}</b></button>}
-          <button className="theme-toggle" type="button" aria-label="设置" title="设置"
-            onClick={event => onSettings(event.currentTarget)}><Icon name="settings" /></button>
           <button className="theme-toggle" type="button" onClick={toggleTheme}
             aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
-            title={theme === 'dark' ? '浅色主题' : '深色主题'}><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></button>
+            title={theme === 'dark' ? '浅色主题' : '深色主题'}><ThemeMorphIcon theme={theme} /></button>
         </div>
       </header>
       <main className="workspace modern-main" aria-labelledby={'page-title-' + page}>{children}</main>

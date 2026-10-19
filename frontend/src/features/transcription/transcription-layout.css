@@ -1,0 +1,82 @@
+/* 字幕与转写 layout (see docs/mcp-subtitle-view-review.md).
+   Wide screens: compact video list | details of the selected video. Narrow: stacked. */
+.subtitle-split { display: grid; gap: 16px; align-items: start; }
+.subtitle-split > *, .transcription-detail { min-width: 0; }
+@media (min-width: 1080px) {
+  .subtitle-split { grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 20px; }
+  .subtitle-split .source-list { max-height: min(620px, calc(100vh - 240px)); }
+}
+
+/* Two-line rows: title + one meta line; only "无字幕" gets a marker. */
+.modern-app .subtitle-split .source-option { gap: 10px; padding: 7px 12px; }
+.subtitle-split .source-option > span { flex: 1 1 auto; }
+.subtitle-split .source-option strong,
+.subtitle-split .source-option small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.subtitle-missing { flex: none; padding: 1px 7px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-secondary); font-size: 11px; line-height: 1.5; }
+
+/* Detail column */
+.transcription-detail > :first-child { margin-top: 0; }
+.detail-empty { margin: 0; padding: 24px 16px; border: 1px dashed var(--color-border); border-radius: 8px; color: var(--color-text-secondary); font-size: var(--font-size-sm); text-align: center; }
+.transcription-detail .archived-subtitles { margin: 0 0 4px; }
+.transcription-detail .archived-subtitles.is-missing { padding: 0; border: 0; }
+.archived-subtitles.is-missing > .subtitle-note { margin: 0; }
+.archive-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; }
+.archive-status .subtitle-badge { margin: 0; }
+.archive-meta { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.modern-app .archive-status select { width: auto; max-width: min(440px, 60%); min-height: 30px; margin-left: auto; font-size: var(--font-size-xs); }
+.acquire-section[hidden] { display: none !important; }
+/* Unfolded re-fetch controls read as part of the selected video, under a divider. */
+.archived-subtitles:not(.is-missing) + .acquire-section { margin-top: 12px; padding-top: 2px; border-top: 1px dashed var(--color-border); }
+.transcription-detail .acquire-section > .option-row:first-child { margin-top: 12px; }
+
+.modern-app .subtitle-embedded .subtitle-controls { align-items: flex-end; }
+.modern-app .subtitle-embedded .subtitle-controls > div { flex: 0 0 auto; min-width: 9.5em; }
+.modern-app .subtitle-embedded .subtitle-controls > .subtitle-episodes { flex: 1 1 200px; max-width: 320px; }
+.modern-app .subtitle-embedded .subtitle-controls > button,
+.subtitle-done-hint { margin-left: auto; }
+.subtitle-done-hint { align-self: center; margin-top: 0; margin-bottom: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+@media (max-width: 560px) {
+  .modern-app .subtitle-embedded .subtitle-controls > div { width: 100%; max-width: none; }
+  .modern-app .subtitle-embedded .subtitle-controls > button, .subtitle-done-hint { margin-left: 0; }
+}
+
+/* Header: source tabs, then 字幕来源 right next to them (explanations are tooltips). */
+.transcription-panel .transcription-head { justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 10px 20px; }
+.method-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; padding-left: 20px; border-left: 1px solid var(--color-border); }
+.method-picker .option-label { color: var(--color-text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
+@media (max-width: 760px) { .method-picker { padding-left: 0; border-left: 0; } }
+/* Wide two-column view: the header uses the same columns as the list | detail split below,
+   so 字幕来源 starts exactly at the detail card's left edge. */
+@media (min-width: 1080px) {
+  .transcription-panel.is-video .transcription-head { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 20px; }
+  .transcription-panel.is-video .transcription-head > * { justify-self: start; }
+  .transcription-panel.is-video .method-picker { padding-left: 0; border-left: 0; }
+}
+
+/* Saved location row (existing subtitles, transcription, translation): path left, real buttons right. */
+.saved-location { margin-top: 12px; }
+.saved-location-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.saved-location-text { display: flex; flex: 1 1 240px; align-items: center; gap: 8px; min-width: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
+.saved-location-text code { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-text); font-size: var(--font-size-xs); }
+.saved-location-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; max-width: 100%; align-items: center; gap: 8px; margin-left: auto; }
+.modern-app .saved-location-actions button { gap: 6px; min-height: 36px; padding: 5px 14px; font-size: var(--font-size-sm); }
+.saved-location > .notice { margin: 8px 0 0; }
+.archived-subtitles > .saved-location-row { margin-top: 12px; }
+.translation-status { margin: 8px 0 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+
+/* Acquisition section: a titled block whose rows share one grid — label | controls | primary button. */
+.acquire-title { margin: 14px 0 0; font-size: var(--font-size-sm); font-weight: 600; }
+.acquire-section .option-row.save-target { grid-template-columns: 72px minmax(0, 1fr) auto; margin-top: 10px; }
+.save-target .row-action { grid-column: 3; grid-row: 1; }
+.save-target .option-hint { grid-column: 2 / 4; overflow: hidden; overflow-wrap: normal; text-overflow: ellipsis; white-space: nowrap; }
+.acquire-section .subtitle-embedded { margin-top: 10px; }
+.modern-app .subtitle-embedded .subtitle-controls { align-items: center; gap: 10px 16px; }
+.modern-app .subtitle-embedded .subtitle-controls > .form-field { display: flex; align-items: center; gap: 12px; }
+.modern-app .subtitle-embedded .subtitle-controls > .form-field > label { flex: none; width: 72px; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.modern-app .subtitle-embedded .subtitle-controls > .subtitle-episodes > label { width: auto; }
+@media (max-width: 560px) {
+  .acquire-section .option-row.save-target { grid-template-columns: 1fr; }
+  .save-target .row-action, .save-target .option-hint { grid-column: 1; grid-row: auto; }
+  .save-target .row-action .operation-button { width: 100%; }
+  .saved-location-actions { margin-left: 0; }
+}

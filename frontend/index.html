@@ -12,6 +12,8 @@
         try { t = localStorage.getItem('vp-theme'); } catch (e) {}
         if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', t);
+        // 界面语言（与 src/lib/i18n.ts 同一存储键）；文字在 React 首次绘制前由 i18n.ts 替换
+        try { if (localStorage.getItem('vp-language') === 'en') document.documentElement.setAttribute('lang', 'en'); } catch (e) {}
       })();
     </script>
     <meta name="referrer" content="no-referrer" />

@@ -90,6 +90,7 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
     const match = sources.find(item => item.project_id === job.source_project_id && item.resource === job.source_resource);
     if (match) {
       chooseSource(sourceKey(match));
+      keepPlatform.current = true; setMethod('transcribe');
       lastSubmission.current = { kind: 'video', project_id: match.project_id, resource: match.resource, title: match.title };
       setCanRetry(true);
     }
@@ -105,13 +106,29 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
     const controller = new AbortController();
     setSourcesError('');
     request<{ sources: TranscriptionSource[] }>('/transcriptions/sources', controller.signal).then(data => {
+      if (controller.signal.aborted) return;
       setSources(data.sources);
-      setSelectedKey(current => data.sources.some(item => sourceKey(item) === current) ? current
-        : projectId && media && data.sources.some(item => item.project_id === projectId && item.resource === media.resource) ? projectId + '|' + media.resource : '');
+      setSelectedKey(current => {
+        if (data.sources.some(item => sourceKey(item) === current)) return current;
+        const exact = projectId && media ? data.sources.find(item => item.project_id === projectId && item.resource === media.resource) : undefined;
+        if (exact) return sourceKey(exact);
+        if (pending && current === PENDING_PREFIX + pending.source_url) {
+          const archivedPending = data.sources.find(item => item.project_id === pending.project_id);
+          return archivedPending ? sourceKey(archivedPending) : current;
+        }
+        return '';
+      });
     }).catch((reason: unknown) => { if (!controller.signal.aborted) { setSources([]); setSourcesError(reason instanceof Error ? reason.message : '服务没有响应'); } });
     return () => controller.abort();
-  }, [mode, projectId, media, sourcesVersion]);
+  }, [mode, projectId, media, sourcesVersion, pending?.project_id, pending?.source_url]);
   const reloadSources = () => { setSources(null); setSourcesVersion(value => value + 1); };
+  const completedKey = job?.state === 'completed' ? job.id : '';
+  useEffect(() => { if (completedKey) setSourcesVersion(value => value + 1); }, [completedKey]);
+  useEffect(() => {
+    const refresh = () => setSourcesVersion(value => value + 1);
+    window.addEventListener('video-parser:subtitles-changed', refresh);
+    return () => window.removeEventListener('video-parser:subtitles-changed', refresh);
+  }, []);
   const pendingKey = pending ? PENDING_PREFIX + pending.source_url : '';
   // An archived copy wins over the not-yet-archived workbench entry.
   const showPending = !!pending && !(sources || []).some(item => item.project_id === pending.project_id);

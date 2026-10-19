@@ -3,6 +3,12 @@ import { request } from '../../lib/api';
 import { cancelTask, isActive, type TaskInfo } from '../../lib/jobs';
 import useTaskHistory from './useTaskHistory';
 
+export const STATUSES = ['all','active','completed','unfinished'] as const;
+export function hasStatus(job: TaskInfo, key: string) {
+  return key === 'all' || key === 'active' && isActive(job.state) || key === 'completed' && ['completed','empty'].includes(job.state)
+    || key === 'unfinished' && ['failed','cancelled','interrupted','partial','login_required'].includes(job.state);
+}
+
 export default function useTaskCenter(onActivityChange?: (count: number | null) => void) {
   const { jobs: polled, error, loaded } = useTaskHistory(onActivityChange);
   // Records removed by "清理" are hidden at once instead of waiting for the next 2 s poll.
@@ -14,6 +20,7 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
   const [filter,setFilter] = useState('all');
   // Type filter (video / subtitles / transcriptions / analysis), combined with the status filter.
   const [kind,setKind] = useState('all');
+  const [query,setQuery] = useState('');
   const [retrying,setRetrying] = useState<string[]>([]);
   const retries = useRef(new Set<string>());
   const [pendingCancels, setPendingCancels] = useState<string[]>([]);
@@ -34,7 +41,14 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
       if (!controller.signal.aborted) setPendingCancels(current => current.filter(id => id !== job.id));
     }
   }
-  const visible = jobs.filter(job => kind === 'all' || job.kind === kind).filter(job => filter === 'all' || filter === 'active' && isActive(job.state) || filter === 'completed' && ['completed','empty'].includes(job.state) || filter === 'unfinished' && ['failed','cancelled','interrupted','partial','login_required'].includes(job.state));
+  // Each facet's counts apply the search and the other facet, so a count always equals what clicking it shows.
+  const needle = query.trim().toLowerCase();
+  const searched = needle ? jobs.filter(job => [job.project_title, job.title, job.part ? 'P' + job.part : '', job.id, job.message]
+    .some(value => !!value && value.toLowerCase().includes(needle))) : jobs;
+  const ofKind = (job: TaskInfo, key: string) => key === 'all' || job.kind === key;
+  const visible = searched.filter(job => ofKind(job, kind) && hasStatus(job, filter));
+  const statusCounts = Object.fromEntries(STATUSES.map(key => [key, searched.filter(job => ofKind(job, kind) && hasStatus(job, key)).length]));
+  const kindCount = (key: string) => searched.filter(job => ofKind(job, key) && hasStatus(job, filter)).length;
   async function clearDead() {
     if (clearing) return;
     const ids = dead.map(job => job.id);
@@ -55,6 +69,6 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : '重试失败，请检查后再试。'); }
     finally { retries.current.delete(job.id);setRetrying(current => current.filter(id => id !== job.id)); }
   }
-  return { jobs, error, loaded, notice, filter, setFilter, kind, setKind, retrying,
+  return { jobs, error, loaded, notice, filter, setFilter, kind, setKind, query, setQuery, statusCounts, kindCount, retrying,
     pendingCancels, visible, cancel, retry, deadCount: dead.length, clearing, clearDead };
 }

@@ -1,0 +1,60 @@
+/* Sidebar Q&A about the chosen learning material; it lives under the timestamp notes. */
+.ai-chat { min-width: 0; padding: 12px; border-top: 1px solid var(--color-border); }
+.ai-chat-heading h3 { margin: 0; font-size: 13px; }
+.ai-chat-context, .ai-chat-hint { margin: 6px 0 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-chat-context strong { color: var(--color-text); }
+.ai-chat-empty { margin: 10px 0 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.ai-chat-empty p { margin: 0 0 8px; }
+.ai-chat-log { list-style: none; display: flex; flex-direction: column; gap: 12px; margin: 10px 0 0; padding: 0; }
+.ai-chat-log:empty { display: none; }
+.ai-chat-log li { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ai-chat-log .ai-chat-reset { flex-direction: row; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 11px; }
+.ai-chat-reset::before, .ai-chat-reset::after { content: ''; flex: 1; border-top: 1px dashed var(--color-border); }
+.ai-chat-question { align-self: flex-end; max-width: 92%; min-width: 0; padding: 7px 10px; border-radius: var(--radius-md); background: var(--color-fill-hover); }
+.ai-chat-answer { min-width: 0; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.ai-chat-log .markdown { font-size: 13px; line-height: 1.7; }
+.ai-chat-log .markdown h3 { font-size: 14px; }
+.ai-chat-log .markdown h4 { font-size: 13px; }
+.ai-chat-thinking { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-chat-thinking .icon { flex: none; }
+.ai-chat-failure { margin: 10px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.ai-chat .notice { margin: 10px 0 0; font-size: 12px; line-height: 1.7; }
+.ai-chat-form { margin-top: 10px; }
+.ai-chat-input { position: relative; }
+/* Floats over the page (out of flow) so opening it never pushes the composer or the log. */
+.slash-command-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 40; min-width: 0; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface-raised); box-shadow: 0 10px 36px #0006; }
+.slash-command-menu.is-below { top: calc(100% + 6px); bottom: auto; }
+.slash-command-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 6px; font-size: 12px; }
+.slash-command-heading small, .slash-command-menu > p { color: var(--color-text-secondary); font-size: 11px; margin: 0; }
+.slash-command-list { max-height: min(190px, 32dvh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.modern-app .slash-command-list [role=option] { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; justify-items: start; gap: 3px; width: 100%; min-width: 0; padding: 8px; min-height: 36px; text-align: left; white-space: normal; background: transparent; border: 1px solid transparent; box-shadow: none; }
+.modern-app .slash-command-list [role=option][aria-selected=true] { background: var(--color-fill-hover); border-color: var(--color-border); }
+.slash-command-list code { font-size: 12px; overflow-wrap: anywhere; }
+.slash-command-list span { font-size: 11px; color: var(--color-text-secondary); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ai-chat-form textarea { display: block; width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; font-size: 13px; line-height: 1.6; }
+.ai-chat-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.ai-chat-actions small { margin-right: auto; color: var(--color-text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.modern-app .ai-chat-actions button { min-height: 32px; padding-inline: 10px; font-size: 12px; }
+.ai-chat-consent { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0 0; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-chat-consent input { flex: none; margin-top: 3px; }
+.ai-chat-consent code { font-size: 10px; }
+
+/* Minimal independent-conversation controls; the player and material layout stay untouched. */
+.ai-chat-session-heading { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; min-height: 24px; }
+.ai-chat-session-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-weight: 500; }
+.ai-chat-session-heading button { flex: none; font-size: 11px; }
+.modern-app .conversation-ball, .conversation-ball { position: fixed; right: 22px; bottom: 24px; z-index: 65; width: 48px; height: 48px; min-height: 48px; padding: 12px; border-radius: 50%; border: 1px solid var(--color-border-strong); background: var(--color-text); color: var(--color-surface); box-shadow: 0 4px 18px #0005; display: grid; place-items: center; }
+.conversation-ball .icon { width: 22px; height: 22px; }
+.conversation-picker { position: fixed; right: 22px; bottom: 84px; z-index: 66; width: min(292px, calc(100vw - 32px)); max-height: min(440px, calc(100dvh - 110px)); padding: 12px; overflow-y: auto; background: var(--color-surface-raised); color: var(--color-text); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); box-shadow: 0 10px 36px #0006; }
+.conversation-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 10px; }
+.conversation-picker-heading button { width: 28px; height: 28px; padding: 4px; display: grid; place-items: center; }
+.conversation-new { display: block; width: 100%; text-align: left; font-size: 12px; margin-bottom: 8px; }
+.conversation-list { display: flex; flex-direction: column; gap: 4px; }
+.conversation-list button { text-align: left; font-size: 12px; padding: 8px 10px; min-width: 0; background: transparent; border: 1px solid transparent; }
+.conversation-list button[aria-pressed=true] { background: var(--color-fill-hover); border-color: var(--color-border-strong); }
+.conversation-list button > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-list small { color: var(--color-text-secondary); font-size: 10px; }
+.conversation-inline-picker { padding: 10px 0; }
+.independent-conversations .ai-chat { border-top: 0; padding: 0; }
+.independent-conversations .ai-chat-log { max-height: 450px; overflow-y: auto; }
+@media(max-width:600px) { .conversation-ball { right: 16px; bottom: 18px; } .conversation-picker { right: 16px; bottom: 78px; } }

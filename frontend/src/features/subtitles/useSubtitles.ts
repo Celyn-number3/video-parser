@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from '../../lib/api';
 import { isActive, pollJob, remember, remembered, cancelTask } from '../../lib/jobs';
-import type { SubtitleJob } from '../../lib/api';
+import type { SubtitleInventory, SubtitleJob } from '../../lib/api';
+
+/** Episode number in a pasted Bilibili link (?p=N), 1 when absent. */
+export const linkPart = (source: string) => Number(/[?&]p=(\d{1,5})(?:&|#|$)/.exec(source)?.[1] || 1);
 
 export default function useSubtitles(source: string) {
   const [loginOpen, setLoginOpen] = useState(false);
@@ -18,6 +21,19 @@ export default function useSubtitles(source: string) {
   const cancellation = useRef<AbortController | null>(null);
   const active = useRef<AbortController | null>(null);
   const lastJob = useRef<string | null>(null);
+  // Which episodes already have verified platform subtitles in the local library (read offline, no platform probe).
+  const [inventory, setInventory] = useState<{ source: string; data: SubtitleInventory } | null>(null);
+  const settled = job && !isActive(job.state) ? job.id + ':' + job.state : '';
+  useEffect(() => {
+    if (!/BV[A-Za-z0-9]{10}/.test(source)) return;
+    const controller = new AbortController();
+    request<SubtitleInventory>('/subtitles/inventory', controller.signal, { text: source })
+      .then(data => { if (!controller.signal.aborted) setInventory({ source, data }); })
+      .catch(() => { /* Only a hint: the server skips archived episodes on its own. */ });
+    return () => controller.abort();
+  }, [source, settled]);
+
+  useEffect(() => { if (settled) window.dispatchEvent(new Event('video-parser:subtitles-changed')); }, [settled]);
 
   useEffect(() => {
     function resume(identifier: string) {
@@ -115,7 +131,7 @@ export default function useSubtitles(source: string) {
     setLoginOpen(false); requestAnimationFrame(() => downloadButton.current?.focus());
     void start(true);
   }
-  return { loginOpen, checkingLogin, scope, setScope, episodes, setEpisodes, job,
+  return { inventory: inventory?.source === source ? inventory.data : null, loginOpen, checkingLogin, scope, setScope, episodes, setEpisodes, job,
     busy, error, cancelling, downloadButton, detached, hasJob: !!lastJob.current,
     matchesCurrentSource: jobSource !== null && jobSource === source,
     start, retryFailed, cancel, refresh, closeLogin, completeLogin };

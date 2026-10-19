@@ -1,0 +1,155 @@
+.learning-progress {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid var(--color-border);
+}
+.learning-progress-heading,
+.learning-progress-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.learning-progress-heading h3 {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+.learning-count,
+.learning-progress-summary,
+.learning-episode-meta {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+.learning-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--color-surface-sunken);
+}
+.learning-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-fill-primary);
+  transition: width .15s ease;
+}
+.learning-progress-summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.modern-app .learning-progress .learning-continue,
+.modern-app .learning-list-toggle {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  box-shadow: none;
+}
+.learning-list-toggle { display: none; }
+.learning-error {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+}
+.learning-episode-list {
+  display: grid;
+  gap: 3px;
+  max-height: 340px;
+  overflow: auto;
+  margin: 0;
+  padding: 0 3px 0 0;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+.learning-episode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 4px;
+  border-radius: var(--radius-md);
+}
+.learning-episode-row.is-current {
+  background: var(--color-surface-sunken);
+}
+.learning-episode-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  white-space: normal;
+  box-shadow: none;
+}
+.learning-episode-open:hover:not(:disabled) { background: var(--color-fill-hover); }
+.learning-episode-open:disabled { opacity: 1; cursor: default; }
+.learning-episode-number {
+  padding-top: 1px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+.learning-episode-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.learning-episode-title {
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+.learning-episode-meta { font-size: 10px; }
+.learning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.learning-toggle input { flex: none; margin: 0; accent-color: var(--color-fill-primary); }
+.learning-toggle.is-disabled { cursor: not-allowed; }
+.learning-player-toggle {
+  width: fit-content;
+  margin: 10px 0 0;
+  color: var(--color-text);
+}
+.learning-episode-toggle { padding: 4px 2px; }
+
+@media (max-width: 1360px) {
+  .learning-list-toggle { display: inline-flex; justify-self: start; align-items: center; }
+  .learning-episode-list[hidden] { display: none !important; }
+}
+@media (max-width: 560px) {
+  .learning-progress { gap: 9px; }
+  .learning-episode-list { max-height: 260px; }
+  .learning-episode-row { gap: 2px; }
+  .learning-episode-open { gap: 6px; }
+  .learning-count { white-space: nowrap; }
+}
+
+.learning-episode-search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; min-width: 0; }
+.learning-episode-search input { flex: 1 1 130px; width: 100%; min-width: 0; }
+.learning-episode-search button { min-height: 32px; padding: 4px 8px; font-size: var(--font-size-xs); }
+.learning-episode-search p { flex-basis: 100%; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-xs); }

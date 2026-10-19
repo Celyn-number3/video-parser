@@ -1,0 +1,18 @@
+.subtitle-inventory { margin-top: 10px; font-size: 12px; }
+.subtitle-inventory summary { width: fit-content; cursor: pointer; color: var(--color-text-secondary); }
+.subtitle-inventory ul { display: flex; flex-wrap: wrap; gap: 4px; max-height: 120px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
+.subtitle-inventory li { padding: 1px 7px; border: 1px solid var(--color-border); border-radius: var(--radius-full, 999px); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.subtitle-inventory li.has-subtitles, .subtitle-badge { color: #166534; border: 1px solid #318852; background: rgba(36, 143, 80, .14); font-weight: 600; }
+[data-theme="dark"] .subtitle-inventory li.has-subtitles, [data-theme="dark"] .subtitle-badge { color: #65d997; }
+.subtitle-badge { display: inline-block; width: fit-content; max-width: 100%; border-radius: 999px; padding: 2px 9px; font-size: 12px; margin: 3px 0; }
+.archived-subtitles, .subtitle-translation { border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; margin: 12px 0; min-width: 0; }
+.archived-subtitles textarea, .subtitle-translation textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.archived-subtitles select, .subtitle-translation select { max-width: 100%; }
+.translation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.subtitle-translation button, .archived-subtitles button { white-space: normal; }
+.subtitle-translation .naming-consent { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.source-option strong { overflow-wrap: anywhere; }
+.translation-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
+.subtitle-translation .translation-heading > label { margin: 0; }
+.archived-subtitles > .subtitle-translation, .transcription-result > .subtitle-translation { border: 0; padding: 0; }
+.transcription-result > .subtitle-translation { margin: 0; }

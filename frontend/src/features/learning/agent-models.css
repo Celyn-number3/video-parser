@@ -1,0 +1,16 @@
+.agent-controls { min-width: 0; margin-top: 6px; container-type: inline-size; }
+.agent-model-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-width: 0; }
+.modern-app .agent-model-row select, .modern-app .agent-model-row button, .modern-app .agent-model-row input { min-height: 28px; height: 28px; padding: 3px 6px; font-size: 11px; max-width: 100%; }
+.agent-model-row > select:first-child { flex: 1 1 140px; min-width: 120px; width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.agent-model-row .agent-effort { flex: 0 1 74px; min-width: 60px; }
+.agent-model-row .agent-command { flex: 0 1 92px; min-width: 78px; }
+.agent-model-row > button { flex: none; min-width: 28px; }
+.agent-mode { color: var(--color-text-secondary); font-size: 10px; white-space: nowrap; }
+.agent-error { font-size: 11px; color: var(--color-danger, var(--color-text)); margin: 4px 0 0; overflow-wrap: anywhere; }
+.agent-custom { font-size: 11px; min-width: 0; }
+.agent-custom summary { cursor: pointer; color: var(--color-text-secondary); min-width: 22px; text-align: center; list-style: none; font-size: 16px; }
+.agent-custom .agent-command { width: 100%; margin-top: 5px; }
+.agent-custom[open] { flex-basis: 100%; }
+.agent-custom > div { display: flex; gap: 5px; padding-top: 5px; }
+.agent-custom input { flex: 1; min-width: 0; }
+@container (max-width: 390px) { .agent-mode { display: none; } }

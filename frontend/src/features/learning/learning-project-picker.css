@@ -1,0 +1,26 @@
+.learning-project-picker { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; margin-bottom: 1rem; min-width: 0; }
+.learning-project-select { display: flex; flex: 1 1 22rem; flex-direction: column; gap: .35rem; min-width: 0; }
+.learning-project-select select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.learning-project-search { flex: 1 1 12rem; min-width: 0; }
+.learning-project-picker > p { flex-basis: 100%; margin: 0; font-size: .875rem; }
+@media (max-width: 760px) {
+  .learning-project-picker > button { max-width: 100%; white-space: normal; }
+  .learning-project-search { width: 100%; }
+  .video-context-actions { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+}
+
+.learning-project-tools { min-width: 0; flex: 0 1 auto; }
+.learning-project-tools summary { cursor: pointer; padding: 9px 0; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.learning-project-tools > div { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0; min-width: 0; }
+.learning-project-tools input { width: 100%; }
+.video-context-more { position: relative; }
+.video-context-more > summary { cursor: pointer; padding: 8px 12px; min-height: 36px; box-sizing: border-box; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--font-size-xs); }
+.video-context-more > div { position: absolute; top: calc(100% + 6px); right: 0; z-index: 8; display: grid; gap: 6px; min-width: 180px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); box-shadow: var(--shadow-md); }
+.video-context-more summary:focus-visible, .learning-project-tools summary:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 3px; }
+@media(max-width:560px) {
+  .learning-project-select { flex-basis: 100%; }
+  .learning-project-picker { gap: 2px; margin-bottom: 8px; }
+  .learning-project-tools { flex-basis: 100%; }
+  .learning-project-tools summary { padding-block: 6px; }
+  .video-context-heading { padding-block: 6px; margin-bottom: 10px; gap: 8px; }
+}

@@ -1045,3 +1045,29 @@ button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,t
 .progress-fill.indeterminate { width: 40%; animation: progress-slide 1.1s ease-in-out infinite; }
 @keyframes progress-slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 .progress-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+/* Video first: analysis and chapter timeline below it, with project context beside. */
+.learning-work-grid {
+  grid-template-columns:minmax(0,1fr) minmax(250px,288px);
+  gap:20px;
+  align-items:start;
+}
+.learning-work-grid .preview-panel,
+.learning-work-grid .learning-notes-panel { min-width:0; }
+.learning-work-grid .preview-panel {
+  grid-column:1; grid-row:1; position:static; align-self:start;
+}
+.learning-notes-panel > .panel { min-width:0; }
+.learning-work-grid .learning-notes-panel { grid-column:1; grid-row:2; }
+.learning-work-grid .details-panel { grid-column:2; grid-row:1 / span 2; }
+@media(max-width:1170px) {
+  .learning-work-grid { grid-template-columns:minmax(0,1fr) minmax(240px,288px); }
+  .learning-work-grid .preview-panel { grid-column:1; grid-row:1; position:static; }
+  .learning-work-grid .details-panel { grid-column:2; grid-row:1 / span 2; }
+  .learning-work-grid .learning-notes-panel { grid-column:1; grid-row:2; }
+}
+@media(max-width:1000px) {
+  .learning-work-grid { grid-template-columns:minmax(0,1fr); }
+  .learning-work-grid .details-panel { grid-column:1; grid-row:3; }
+  .learning-work-grid .preview-panel { grid-column:1; grid-row:1; }
+  .learning-work-grid .learning-notes-panel { grid-column:1; grid-row:2; }
+}

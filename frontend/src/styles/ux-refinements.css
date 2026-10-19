@@ -1,0 +1,92 @@
+/* Task-first presentation; state and operation owners remain unchanged. */
+.modern-app .workspace-start { max-width: 960px; margin: 28px auto 0; }
+.workspace-start-intro { max-width: 660px; margin-bottom: 24px; }
+.workspace-start-intro h2 { margin: 10px 0 12px; font-size: clamp(24px, 3vw, 32px); line-height: 1.3; letter-spacing: -.02em; }
+.modern-app .workspace-start .source-panel { margin: 0; }
+.modern-app .workspace-start .examples-row { margin: 12px 0 0; }
+.workspace-continue { margin-top: 28px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; padding: 24px 0; border-top: 1px solid var(--color-border); }
+
+.workspace-continue h3 { flex: 1 1 250px; min-width: 0; margin: 0; font-size: 15px; }
+.modern-app .workspace-continue > button { flex: none; min-height: 40px; }
+.workspace-source-editor { margin: 0 0 16px; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.workspace-source-editor > summary { display: flex; align-items: center; gap: 10px; padding: 10px 14px; min-width: 0; cursor: pointer; color: var(--color-text-secondary); font-size: 12px; }
+.workspace-source-editor > summary > svg { flex: none; width: 16px; height: 16px; }
+.workspace-source-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-source-action { flex: none; color: var(--color-text); }
+.modern-app .workspace-source-editor > .source-panel { margin: 0; border: 0; border-top: 1px solid var(--color-border); border-radius: 0; background: transparent; }
+.workspace-source-editor > summary:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 3px; }
+
+.learning-context-header { display: grid; grid-template-columns: minmax(0, 1fr) 336px; align-items: center; gap: 10px 20px; margin: 0 0 16px; min-width: 0; }
+.learning-context-header > .video-context-heading { grid-column: 1; grid-row: 1; margin: 0; padding: 0; }
+.learning-context-header .video-context-heading > div:first-child { flex-basis: 150px; }
+.learning-context-header .video-context-heading strong { font-size: 16px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.learning-context-header .video-context-heading span { margin-top: 3px; font-size: 12px; }
+.learning-context-header > .learning-project-picker { grid-column: 2; grid-row: 1; margin: 0; }
+.learning-context-header > .error-text { grid-column: 1 / -1; margin: 0; }
+.learning-context-header.is-empty { grid-template-columns: minmax(0, 1fr); }
+.learning-context-header.is-empty > .learning-project-picker { grid-column: 1; }
+.learning-project-picker.is-compact { position: relative; align-items: center; flex-wrap: wrap; gap: 8px; }
+.learning-project-picker.is-compact .learning-project-select { flex: 1 1 160px; }
+.learning-project-picker.is-compact .learning-project-select select { min-height: 38px; font-size: 12px; }
+.learning-project-picker.is-compact .learning-project-tools { position: relative; flex: 0 0 auto; }
+.learning-project-picker.is-compact .learning-project-tools > summary { padding: 9px 6px; font-size: 12px; }
+.learning-project-picker.is-compact .learning-project-tools[open] > div { position: absolute; z-index: 20; top: 100%; right: 0; width: min(330px, calc(100vw - 48px)); box-sizing: border-box; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); box-shadow: var(--shadow-md); }
+.learning-project-picker.is-compact > p { font-size: 12px; }
+
+.modern-app .playback-resume { padding: 8px 0; margin: 0; border: 0; border-radius: 0; background: transparent; }
+.modern-app .playback-resume .learning-player-toggle { margin: 0; }
+.modern-app .chapter-timeline-player.is-compact { margin-top: 6px; padding: 10px 12px; border: 0; border-radius: var(--radius-md); }
+.chapter-timeline-player.is-compact .chapter-timeline-heading { margin-bottom: 0; }
+.chapter-timeline-player.is-compact .chapter-timeline-heading h3 { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); }
+.chapter-timeline-player.is-compact .chapter-timeline-track { height: 32px; }
+.chapter-timeline-player.is-compact .chapter-timeline-track .chapter-timeline-marker { top: 0; }
+.chapter-timeline-player.is-compact .chapter-timeline-intro { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 12px; padding: 0; margin: 0; border: 0; background: transparent; }
+.chapter-timeline-player.is-compact .chapter-timeline-intro-meta { flex: 1 1 170px; font-size: 11px; }
+.chapter-timeline-player.is-compact .chapter-timeline-intro h4 { flex: 1 1 170px; margin: 0; font-size: 13px; line-height: 1.5; }
+.chapter-timeline-description { flex-basis: 100%; min-width: 0; }
+.chapter-timeline-description > summary { cursor: pointer; font-size: 12px; color: var(--color-text-secondary); padding-block: 4px; }
+.chapter-timeline-description[open] .chapter-timeline-intro-body { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--color-border); }
+.modern-app .study-sidebar-heading { padding: 0; position: relative; }
+.modern-app .study-sidebar:not(.is-collapsed) .study-sidebar-toggle { position: absolute; z-index: 2; top: 10px; right: 10px; }
+.modern-app .study-sidebar-tabs { margin: 0; padding: 10px 50px 10px 10px; gap: 4px; }
+.modern-app .study-sidebar-tabs button { padding-inline: 5px; }
+.modern-app .study-sidebar.is-collapsed .study-sidebar-heading { padding: 7px; min-height: 38px; justify-content: center; }
+.modern-app .study-sidebar.is-collapsed .study-sidebar-heading h2 { display: none; }
+.modern-app .study-sidebar .chapter-timeline-hint { margin: 0; }
+.modern-app .learning-materials .analysis-record { font-size: 16px; line-height: 1.75; }
+.modern-app .learning-materials .analysis-record :is(p, li) { line-height: 1.75; }
+.modern-app .learning-materials .analysis-markdown { max-width: 72ch; font-size: 16px; }
+.modern-app .learning-materials .analysis-markdown :is(p, li) { font-size: inherit; }
+.modern-app .learning-materials .analysis-record-bar > .learning-manage-materials { min-height: 30px; padding: 4px 6px; border-color: transparent; background: transparent; color: var(--color-text-secondary); font-size: 12px; font-weight: 400; }
+@media (max-width: 640px) {
+  .modern-app .learning-materials .analysis-record-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+  .modern-app .learning-materials .analysis-record-bar > h2 { min-width: 0; margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .modern-app .learning-materials .analysis-record-bar > .learning-manage-materials { width: auto; }
+  .modern-app .learning-materials .analysis-record-bar > select { grid-column: 1 / -1; width: 100%; }
+}
+
+@media (max-width: 1170px) {
+  .learning-context-header { grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); }
+  .modern-app .study-sidebar.is-collapsed .study-sidebar-heading { justify-content: space-between; padding: 8px 12px; }
+  .modern-app .study-sidebar.is-collapsed .study-sidebar-heading h2 { display: block; }
+  .modern-app .study-sidebar:not([data-aligned]) .study-sidebar-body { max-height: 320px; }
+}
+@media (max-width: 760px) {
+  .learning-context-header { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 12px; }
+  .learning-context-header > .video-context-heading { order: 0; }
+  .learning-context-header .video-context-heading > div:first-child { flex-basis: 120px; }
+  .learning-context-header .video-context-actions { width: auto; flex: none; }
+  .learning-context-header > .learning-project-picker { order: 1; }
+  .learning-context-header > .error-text { order: 2; }
+  .learning-project-picker.is-compact .learning-project-select { flex-basis: 160px; }
+  .learning-project-picker.is-compact .learning-project-tools { flex-basis: auto; }
+  .workspace-source-editor > summary { padding-inline: 10px; gap: 6px; }
+  .workspace-source-action { max-width: 112px; font-size: 11px; }
+  .workspace-start-intro { margin-bottom: 18px; }
+  .modern-app .workspace-start { margin-top: 12px; }
+}
+@media (max-width: 420px) {
+  .workspace-continue { gap: 12px; padding-top: 18px; }
+  .workspace-continue > button { width: 100%; }
+  .chapter-timeline-player.is-compact .chapter-timeline-intro-meta { flex-basis: 100%; }
+}

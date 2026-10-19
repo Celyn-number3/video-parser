@@ -1,6 +1,7 @@
 // Approved Lucide SVGs from Iconify; license is preserved in public/assets/lucide.LICENSE.txt.
 // Kept local so rendering never needs an icon API request.
 const shapes = {
+  'messages-square': <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 17h8l4 4v-4a2 2 0 0 0 2-2"/></g>,
   'clapperboard': <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m12.296 3.464l3.02 3.956M20.2 6L3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3zM3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zm3.18-5.724l3.1 3.899" />,
   'link-2': <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17H7A5 5 0 0 1 7 7h2m6 0h2a5 5 0 1 1 0 10h-2m-7-5h8" />,
   'circle-play': <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z" /><circle cx="12" cy="12" r="10" /></g>,
@@ -15,6 +16,7 @@ const shapes = {
   'settings': <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0a2.34 2.34 0 0 0 3.319 1.915a2.34 2.34 0 0 1 2.33 4.033a2.34 2.34 0 0 0 0 3.831a2.34 2.34 0 0 1-2.33 4.033a2.34 2.34 0 0 0-3.319 1.915a2.34 2.34 0 0 1-4.659 0a2.34 2.34 0 0 0-3.32-1.915a2.34 2.34 0 0 1-2.33-4.033a2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></g>,
   'menu': <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />,
   'x': <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="m6 6 12 12M6 18 18 6" />,
+  'book-open': <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 7v14m-9-3a1 1 0 0 0 1 1h3a5 5 0 0 1 5 2a5 5 0 0 1 5-2h3a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-3a5 5 0 0 0-5 2a5 5 0 0 0-5-2H4a1 1 0 0 0-1 1z" /></g>,
   'captions': <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="4" width="20" height="16" rx="3" /><path d="M6 10h3m-3 4h3m6-4h3m-3 4h3" /></g>,
   'audio-lines': <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M3 10v4m4-7v10m5-14v18m5-15v12m4-8v4" />,
   'list-checks': <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="m3 6 2 2 3-4m4 2h9M3 13h5m4 0h9M3 20h5m4 0h9" />,
