@@ -38,7 +38,8 @@ def call(messages, settings, value, directory, *, purpose='material', workspace=
     value = target(value)
     if value['engine'] == 'api':
         from video_parser.services.ai_analysis import call_model
-        text, usage = call_model(messages, settings, max_tokens=max_tokens)
+        # Only translation batches set an output budget; other callers keep the provider default.
+        text, usage = call_model(messages, settings, **({'max_tokens': max_tokens} if max_tokens else {}))
         return Result(text, usage=usage, model=settings['model'])
     return local_agents.complete(messages, value, Path(directory) / ('agent-' + purpose),
         workspace=workspace, session_id=session_id, rebuild_messages=rebuild_messages,

@@ -1152,7 +1152,7 @@
   "重新登录": "Sign in again",
   "重新读取": "Reload",
   "重新读取转录状态": "Reload transcription status",
-  "重新转写": " again",
+  "重新转写": "Transcribe again",
   "重新载入材料": "Reload materials",
   "重新载入笔记": "Reload notes",
   "重试保存位置": "Retry saving position",
@@ -1321,7 +1321,38 @@
   "验证并预览最终文件名": "Validate and preview final filenames",
   "（尚未归档）": "(not archived yet)",
   "（未归档视频）": "(video not archived)",
-  "（缺少字幕）": "(subtitles missing)"
+  "（缺少字幕）": "(subtitles missing)",
+  "。YouTube 不需要登录。": ". YouTube does not require sign-in.",
+  "扫码后平台要求短信验证时使用：在本机弹出浏览器窗口登录，完成后自动保存": "Use when the platform asks for SMS verification after scanning: sign in through a browser window on this computer; saved automatically when done",
+  "登录信息只保存在本机": "Sign-in data is stored only on this computer",
+  "例如：只整理和特征值有关的部分": "e.g. only cover the parts about eigenvalues",
+  "例如：用英文输出 / 重点关注配色": "e.g. answer in English / focus on the color palette",
+  "例如：重点分析前 10 秒": "e.g. focus on the first 10 seconds",
+  "暂无章节目录，生成“章节时间轴”后可在这里跳转。": "No chapters yet. Generate a \"Chapter timeline\" to jump from here.",
+  "启动会占用显存，加载可能需要几分钟；只启动本机 llama.cpp，不下载模型": "Starting uses GPU memory and loading may take a few minutes; it only starts the local llama.cpp and downloads no model",
+  "仅恢复常用偏好，不影响 AI 配置和归档数据": "Restores common preferences only; AI settings and archives are not affected",
+  "版本": "Version",
+  "缓存清理不影响已归档内容。": "Clearing the cache does not affect archived content.",
+  "所选分集本地都已有字幕": "All selected episodes already have local subtitles",
+  "无法打开文件夹。": "Could not open the folder.",
+  "我已确认所选模型及接入端单次输出不少于 32K tokens，启用云端大批次（每批最多 20,000 字符／300 条）。不勾选则按兼容档（2,200 字符／24 条）分批。": "I confirm the selected model and endpoint allow at least 32K output tokens per reply; use large cloud batches (up to 20,000 characters / 300 lines each). If unchecked, the compatible tier (2,200 characters / 24 lines) is used.",
+  "本机模型按启动配置的上下文和单次回复上限自动分批。": "Local models are batched automatically from the configured context and reply limit.",
+  "译文已保存到": "Translation saved to",
+  "下载平台字幕": "Download platform subtitles",
+  "从列表中选择一个视频。": "Choose a video from the list.",
+  "先选择一个视频": "Choose a video first",
+  "字幕原文": "Original subtitles",
+  "字幕已保存到": "Subtitles saved to",
+  "收起获取选项": "Hide fetch options",
+  "无字幕": "No subtitles",
+  "本地归档": "Local archive",
+  "本机转写组件未安装（需要 NVIDIA 显卡），可以先用平台字幕。": "Local transcription is not installed (requires an NVIDIA GPU). You can use platform subtitles meanwhile.",
+  "用本机显卡识别语音，音频不上传": "Recognize speech with the local GPU; audio is not uploaded",
+  "直接下载 B站的字幕，快且准；需要登录，部分视频没有字幕": "Download Bilibili subtitles directly: fast and accurate; requires sign-in, and some videos have none",
+  "视频所在项目的 subtitles 文件夹": "The subtitles folder of the video's project",
+  "该视频不是带链接的 B站视频，无法下载平台字幕": "This is not a linked Bilibili video, so platform subtitles cannot be downloaded",
+  "转写结果已保存到": "Transcript saved to",
+  "重新下载字幕": "Download subtitles again"
  },
  "patterns": [
   ["当前播放：P(\\d+)", "Now playing: P$1"],
@@ -1740,6 +1771,10 @@
   [
    "(Claude Code|Codex|OpenCode) 正在回答，已接收 (\\d+) 字；可停止。",
    "{1:raw} is answering · {2:raw} characters received · Stop is available."
-  ]
+  ],
+  ["错误码：(.+)", "Error code: {1|raw}"],
+  ["任务 ID：(.+)", "Task ID: {1|raw}"],
+  ["(\\d+) 个字幕文件", "{1|raw} subtitle {1:file|files}"],
+  ["按(.+)重新转写", "Transcribe as $1 again"]
  ]
 }

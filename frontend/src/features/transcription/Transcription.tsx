@@ -192,7 +192,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     {job && !shownJob && !videoTranslation && <p className="subtitle-title">上次任务「<span translate="no">{job.title}</span>」的结果不属于当前选择，可在任务中心查看。</p>}
     {detected && shownJob?.operation !== 'translation' && <p className="detected-language">{forced ? `已按${languageName(asked)}转写` : `识别为：${languageName(detected)}`}
       {canRetry && !locked && <span className="retry-languages">{forced ? '' : '识别错了？'}{retryLanguages.map(code =>
-        <button key={code} type="button" className="link-button" onClick={() => retryAs(code)}>按{languageName(code)}重新转写</button>)}</span>}
+        <button key={code} type="button" className="link-button" onClick={() => retryAs(code)}>{`按${languageName(code)}重新转写`}</button>)}</span>}
     </p>}
     {shownJob?.text && <div className="analysis-result transcription-result">
       {shownJob.state === 'completed' ? <SubtitleTranslation key={shownJob.id} source={{ job_id: shownJob.id }} text={shownJob.text}
