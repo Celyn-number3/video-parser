@@ -62,25 +62,27 @@ logs/
 /cache/react-workspace/
 
 # Persistent personal video library
-/library/
+/outputs/
 
 # Private local Whisper outputs and verification media
 /outputs/transcriptions/
 /outputs/verification-transcription/
 
 # Local download caches, diagnostics and generated personal artifacts
+/var/
 /cache/
 /outputs/
 
 # Local-only unified tool resources (never commit)
 /runtimes/
-/models/
+/runtimes/models/
 /.local/
 
 # Local-only publishing notes, agent context and historical machine reports
 /AGENTS.md
 /codegraph.json
 /docs/mcp-*.md
+/docs/archive/mcp-*.md
 /docs/superpowers/
 /docs/transcription-validation.md
 .env.*

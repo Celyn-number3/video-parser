@@ -1,0 +1,52 @@
+"""Strict same-origin APIs for personal learning state, independent of AI."""
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import BaseModel, ConfigDict, Field
+from video_parser.web.security import local_request
+from video_parser.services import study
+
+router = APIRouter(prefix='/api/workspace', dependencies=[Depends(local_request)])
+Project = Annotated[str, Path(pattern=r'^[a-f0-9]{32}$')]
+NoteId = Annotated[str, Path(pattern=r'^[a-f0-9]{32}$')]
+Resource = Annotated[str, Query(min_length=1, max_length=512)]
+
+class ResourceBody(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    resource: str = Field(min_length=1, max_length=512)
+    expected_revision: int = Field(ge=0, strict=True)
+
+class ProgressBody(ResourceBody):
+    position: float = Field(ge=0, le=study.MAX_TIME, strict=True)
+    duration: float = Field(gt=0, le=study.MAX_TIME, strict=True)
+
+class NoteBody(ResourceBody):
+    time: float = Field(ge=0, le=study.MAX_TIME, strict=True)
+    text: str = Field(min_length=1, max_length=5000)
+
+
+def handled(function, *args):
+    try: return function(*args)
+    except study.Conflict as error: raise HTTPException(409, str(error)) from None
+    except KeyError: raise HTTPException(404, '项目或笔记不存在。') from None
+    except ValueError as error: raise HTTPException(400, str(error)) from None
+    except (OSError, TimeoutError): raise HTTPException(503, '学习数据暂时无法保存，请检查本地磁盘并重试；草稿不会自动丢弃。') from None
+
+@router.get('/projects/{identifier}/study/progress')
+def get_progress(identifier: Project, resource: Resource):
+    return handled(study.load, identifier, resource)['progress']
+
+@router.post('/projects/{identifier}/study/progress')
+def save_progress(identifier: Project, body: ProgressBody):
+    return handled(study.progress, identifier, body.resource, body.position, body.duration, body.expected_revision)
+
+@router.get('/projects/{identifier}/study/notes')
+def get_notes(identifier: Project, resource: Resource):
+    return {'notes': handled(study.notes, identifier, resource)}
+
+@router.post('/projects/{identifier}/study/notes/{note_id}')
+def save_note(identifier: Project, note_id: NoteId, body: NoteBody):
+    return handled(study.save_note, identifier, body.resource, note_id, body.time, body.text, body.expected_revision)
+
+@router.post('/projects/{identifier}/study/notes/{note_id}/delete')
+def delete_note(identifier: Project, note_id: NoteId, body: ResourceBody):
+    return handled(study.delete_note, identifier, body.resource, note_id, body.expected_revision)

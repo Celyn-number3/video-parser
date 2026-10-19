@@ -4,10 +4,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / 'src/video_parser/integrations/whisper/model-manifest.json'
-TARGET = ROOT / 'models/whisper/large-v3-turbo'
+sys.path.insert(0, str(ROOT / "backend"))
+from video_parser.core.paths import CACHE_DIR, LOG_DIR
+MANIFEST = ROOT / 'backend/video_parser/integrations/whisper/model-manifest.json'
+TARGET = ROOT / 'runtimes/models/whisper/large-v3-turbo'
 
 
 def verify(path, item):
@@ -36,12 +39,12 @@ def main():
     if missing:
         if not args.download:
             raise RuntimeError('Model files missing; rerun setup-local-tools.ps1 -DownloadModel')
-        os.environ.setdefault('HF_HOME', str(ROOT / 'cache/huggingface'))
+        os.environ.setdefault('HF_HOME', str(CACHE_DIR / 'huggingface'))
         os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
         from huggingface_hub import snapshot_download
         snapshot_download(repo_id=manifest['repo_id'], revision=manifest['revision'], local_dir=TARGET, allow_patterns=missing)
     rows = [verify(TARGET / item['path'], item) for item in manifest['files']]
-    output = ROOT / 'outputs/tool-setup/model-verification.json'
+    output = ROOT / '.local/work/artifacts/tool-setup/model-verification.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps({'revision':manifest['revision'],'files':rows},indent=2),encoding='utf-8')
     print('Verified all five fixed model files (size + SHA-256).')

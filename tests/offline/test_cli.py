@@ -86,15 +86,17 @@ class LogicTests(unittest.TestCase):
             self.assertEqual(self.cli.resolve_url('https://b23.tv/example')[1], '哔哩哔哩')
 
     def test_shortlink_preserves_bilibili_part_from_redirect(self):
-        response = type('Response', (), {'headers': {'location': 'https://www.bilibili.com/video/BV123?p=2&share=x'}, 'raise_for_status': lambda self: None})()
-        with patch('video_parser.platforms.web_fetcher.requests.get', return_value=response):
+        response = type('Response', (), {'status_code': 302, 'headers': {'location': 'https://www.bilibili.com/video/BV123?p=2&share=x'}, 'raise_for_status': lambda self: None})()
+        with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('93.184.216.34', 443))]), \
+             patch('video_parser.platforms.web_fetcher.requests.get', return_value=response):
             url, platform = self.cli.resolve_url('https://b23.tv/example')
         self.assertEqual(url, 'https://www.bilibili.com/video/BV123?p=2')
 
     def test_existing_web_fetcher_default_normalization_is_unchanged(self):
         from video_parser.platforms.web_fetcher import WebFetcher
-        response = type('Response', (), {'headers': {'location': 'https://www.bilibili.com/video/BV123?p=2&share=x'}, 'raise_for_status': lambda self: None})()
-        with patch('video_parser.platforms.web_fetcher.requests.get', return_value=response):
+        response = type('Response', (), {'status_code': 302, 'headers': {'location': 'https://www.bilibili.com/video/BV123?p=2&share=x'}, 'raise_for_status': lambda self: None})()
+        with patch('socket.getaddrinfo', return_value=[(2, 1, 6, '', ('93.184.216.34', 443))]), \
+             patch('video_parser.platforms.web_fetcher.requests.get', return_value=response):
             self.assertEqual(WebFetcher.fetch_redirect_url('https://b23.tv/example'), 'https://www.bilibili.com/video/BV123')
 
     def test_empty_frame_extraction_removes_temp_directory(self):

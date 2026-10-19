@@ -169,6 +169,50 @@ class SubtitleTests(unittest.TestCase):
         self.assertEqual(restored.json()["state"],"failed")
         self.assertEqual(restored.json()["id"],job.id)
 
+    def archive_subtitle(self, part):
+        project = library.ensure({'platform': '哔哩哔哩', 'video_id': 'BV1TaqYBcEJc', 'title': '本地课程',
+                                  'source_url': f'https://www.bilibili.com/video/BV1TaqYBcEJc?p={part}',
+                                  'episodes': [{'part': number, 'title': f'第{number}节'} for number in range(1, 5)]})
+        source = self.root / f'archived-{part}.srt'
+        source.write_text('1\n00:00:00,000 --> 00:00:01,000\n测试字幕', encoding='utf-8')
+        library.import_file(project['id'], source, f'subtitles/p{part}.平台字幕.srt', 'subtitle')
+        return project
+
+    def test_archived_episodes_are_listed_offline_and_not_enqueued_again(self):
+        self.archive_subtitle(3)
+        inventory = self.client.post('/api/workspace/subtitles/inventory', json={'text': '看这个 https://www.bilibili.com/video/BV1TaqYBcEJc?p=3'})
+        self.assertEqual(inventory.status_code, 200, inventory.text)
+        self.assertEqual((inventory.json()['total'], inventory.json()['archived']), (4, [3]))
+        self.resolve.assert_not_called()
+        self.assertEqual(self.client.post('/api/workspace/subtitles/inventory', json={'text': 'no id'}).json()['archived'], [])
+        with patch.object(subtitles, 'run_cli') as run_cli:
+            response = self.client.post('/api/workspace/subtitles', json={'text': 'https://www.bilibili.com/video/BV1TaqYBcEJc?p=3'})
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertIn('无需重复下载', response.json()['detail'])
+            run_cli.assert_not_called()
+        def cli_result(url, episodes):
+            self.assertEqual(episodes, [1, 2, 4])
+            for number in episodes: self.triplet(number)
+            return 0, 'series: 本地课程  (BV1TaqYBcEJc)\nselected 3/4 episodes: [1,2,4]\n[P1] 第1节'
+        with patch.object(subtitles, 'run_cli', side_effect=cli_result):
+            result = self.finish(self.start(scope='all'))
+        self.assertEqual(result['skipped'], [3])
+        self.assertEqual([row['episode'] for row in result['results']], [1, 2, 4])
+        self.assertIn('已跳过本地已有字幕 1 集', result['message'])
+        self.assertEqual(library.subtitle_inventory('BV1TaqYBcEJc')['archived'], [1, 2, 3, 4])
+
+    def test_all_skip_uses_catalogued_episode_numbers_and_preserves_unknown_range(self):
+        inventory = {'total': 2, 'archived': [3], 'episodes': [{'part': 3}, {'part': 4}]}
+        with patch.object(library, 'subtitle_inventory', return_value=inventory):
+            url = 'https://www.bilibili.com/video/BV1TaqYBcEJc'
+            self.assertEqual(subtitles.skip_archived(url, None), ([4], [3]))
+            self.assertEqual(subtitles.skip_archived(url, [2, 3, 4]), ([2, 4], [3]))
+            inventory['archived'] = [3, 4]
+            with self.assertRaisesRegex(ValueError, '无需重复下载'):
+                subtitles.skip_archived(url, None)
+            inventory.update(total=None, episodes=[])
+            self.assertEqual(subtitles.skip_archived(url, None), (None, []))
+
 
 if __name__ == '__main__':
     unittest.main()

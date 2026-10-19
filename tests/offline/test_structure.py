@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from video_parser.core.paths import ROOT, FRONTEND_DIR, project_root
+from video_parser.core.paths import ROOT, FRONTEND_DIR, CACHE_DIR, LOG_DIR, project_root
 from video_parser.services import videos
 from video_parser import cli
 
@@ -20,7 +20,17 @@ class StructureTests(unittest.TestCase):
         self.assertEqual(videos.ROOT, ROOT)
         from video_parser.services import transcription
         self.assertEqual(transcription.OUTPUT_ROOT, ROOT / 'outputs/transcriptions')
-        self.assertEqual(transcription.UPLOAD_ROOT, ROOT / 'cache/react-workspace/transcription-inputs')
+        self.assertEqual(transcription.UPLOAD_ROOT, CACHE_DIR / 'react-workspace/transcription-inputs')
+
+    def test_consolidated_source_and_data_defaults(self):
+        from video_parser.services import library, ai_startup
+        self.assertTrue(Path(videos.__file__).is_relative_to(ROOT / 'backend'))
+        self.assertEqual(library.LIBRARY_ROOT.resolve(), (ROOT / 'outputs').resolve())
+        self.assertEqual(CACHE_DIR, ROOT / '.local/work/cache')
+        self.assertEqual(LOG_DIR, ROOT / '.local/work/logs')
+        self.assertTrue(ai_startup.DEFAULTS['model_path'].startswith('runtimes/models/'))
+        self.assertTrue(all(path.parent.parent != library.LIBRARY_ROOT / 'transcriptions'
+                            for path in library.manifests()))
 
     def test_root_is_found_by_markers_not_fixed_parent_count(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -28,7 +38,7 @@ class StructureTests(unittest.TestCase):
             (root / 'configs').mkdir()
             (root / 'configs/business_config.json').write_text('{}', encoding='utf-8')
             (root / 'pyproject.toml').write_text('', encoding='utf-8')
-            nested = root / 'src/video_parser/arbitrary/deeper/core'
+            nested = root / 'backend/video_parser/arbitrary/deeper/core'
             nested.mkdir(parents=True)
             self.assertEqual(project_root(nested / 'paths.py'), root.resolve())
             (root / 'pyproject.toml').unlink()
@@ -50,7 +60,7 @@ class StructureTests(unittest.TestCase):
         self.assertIn('YouTube', results[0]['platforms'])
 
     def test_web_and_services_do_not_depend_on_command_adapter(self):
-        source = ROOT / 'src/video_parser'
+        source = ROOT / 'backend/video_parser'
         for scope in ('web', 'services'):
             for path in (source / scope).rglob('*.py'):
                 for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):

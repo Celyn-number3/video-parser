@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-CHECKER = Path(__file__).resolve().parents[2] / 'src/video_parser/integrations/bilibili/checker.py'
+CHECKER = Path(__file__).resolve().parents[2] / 'backend/video_parser/integrations/bilibili/checker.py'
 spec = importlib.util.spec_from_file_location('subtitle_checker', CHECKER)
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)

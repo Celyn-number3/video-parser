@@ -61,6 +61,7 @@ class ReactAPITests(unittest.TestCase):
         self.assertNotIn('cookie', data)
     def test_parse_cover_and_safe_metadata(self):
         data = self.parse()
+        self.assertEqual(data["episodes"], [])
         self.assertEqual(data['title'], '测试视频')
         self.assertNotIn('video_url', data)
         self.assertNotIn('headers', data)
@@ -133,13 +134,21 @@ class ReactAPITests(unittest.TestCase):
 
     def test_open_project_uses_only_registered_controlled_path(self):
         data=self.parse()
-        with patch('video_parser.web.routes.os.startfile', create=True) as open_folder, patch('video_parser.web.routes.sys.platform','win32'):
+        with patch('video_parser.web.routes.desktop.open_folder', return_value=True) as open_folder:
             response=self.client.post('/api/workspace/projects/' + data['project']['id'] + '/open',json={})
             self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json()['message'],'已打开项目文件夹。')
             opened=Path(open_folder.call_args.args[0])
             self.assertTrue(opened.is_relative_to(library.LIBRARY_ROOT))
             self.assertEqual(self.client.post('/api/workspace/projects/missing/open',json={}).status_code,404)
             self.assertEqual(open_folder.call_count,1)
+            # Only the fixed "subtitles" sub-folder may be requested; anything else is rejected.
+            self.assertEqual(self.client.post('/api/workspace/projects/' + data['project']['id'] + '/open',json={'folder':'..'}).status_code,422)
+            open_folder.return_value=False
+            response=self.client.post('/api/workspace/projects/' + data['project']['id'] + '/open',json={'folder':'subtitles'})
+            self.assertEqual(response.status_code,200)
+            self.assertIn('任务栏',response.json()['message'])
+            self.assertTrue(Path(open_folder.call_args.args[0]).is_relative_to(library.LIBRARY_ROOT))
 
     def test_douyin_platform_error_is_visible_without_raw_response(self):
         self.parse_mock.side_effect = workspace.DouyinAccessError()
@@ -259,6 +268,98 @@ class ReactAPITests(unittest.TestCase):
                 response = self.client.post(url, json={'consent': True})
                 self.assertEqual(response.status_code, 502)
                 self.assertNotIn('secret-key', response.text)
+
+    def test_bilibili_learning_list_and_state_round_trip(self):
+        episodes = [
+            {'part': 1, 'title': '开场', 'duration': 75},
+            {'part': 2, 'title': '核心内容', 'duration': 180},
+            {'part': 3, 'title': '总结', 'duration': None},
+        ]
+        self.parsed.metadata.update(platform='哔哩哔哩', video_id='BV1TaqYBcEJc',
+            source_url='https://www.bilibili.com/video/BV1TaqYBcEJc', episodes=episodes)
+        data = self.parse()
+        self.download_mock.assert_not_called()
+        self.assertEqual([item['part'] for item in data['episodes']], [1, 2, 3])
+        self.assertEqual(data['episodes'][0]['project_id'], data['project']['id'])
+        self.assertFalse(data['episodes'][0]['archived'])
+        self.assertFalse(data['episodes'][0]['learned'])
+
+        url = f"/api/workspace/projects/{data['project']['id']}/learning"
+        for body in ({'part': '2', 'learned': True}, {'part': 2, 'learned': 1},
+                     {'part': True, 'learned': True}, {'part': 2}):
+            with self.subTest(body=body):
+                self.assertEqual(self.client.post(url, json=body).status_code, 422)
+        updated = self.client.post(url, json={'part': 2, 'learned': True})
+        self.assertEqual(updated.status_code, 200, updated.text)
+        rows = updated.json()['episodes']
+        self.assertTrue(rows[1]['learned'])
+        self.assertFalse(rows[1]['archived'])
+        episode_id = rows[1]['project_id']
+        self.assertIsNotNone(episode_id)
+        self.assertTrue(library.get(episode_id)['learned'])
+        self.assertEqual(library.get(episode_id)['resources'], {})
+        self.assertEqual(self.client.post(url, json={'part': 99, 'learned': True}).status_code, 400)
+
+        workspace.entries.clear()
+        resumed = self.client.get(f"/api/workspace/projects/{data['project']['id']}/resume")
+        self.assertEqual(resumed.status_code, 200, resumed.text)
+        self.assertTrue(resumed.json()['episodes'][1]['learned'])
+        cleared = self.client.post(url, json={'part': 2, 'learned': False})
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertFalse(cleared.json()['episodes'][1]['learned'])
+
+
+    def test_resume_legacy_episode_keeps_shared_course_list(self):
+        episodes = [{'part': i, 'title': f'第{i}讲', 'duration': 60} for i in range(1, 4)]
+        metadata = {'platform': '哔哩哔哩', 'video_id': 'BV1TaqYBcEJc', 'title': '课程',
+                    'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc?p=1'}
+        library.ensure({**metadata, 'episodes': episodes})
+        legacy = library.ensure({**metadata, 'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc?p=2'})
+        before = (legacy['directory'] / 'project.json').read_bytes()
+        response = self.client.get(f"/api/workspace/projects/{legacy['id']}/resume")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['project']['part'], 2)
+        self.assertEqual([row['part'] for row in response.json()['episodes']], [1, 2, 3])
+        self.assertEqual((legacy['directory'] / 'project.json').read_bytes(), before)
+        response = self.client.post(f"/api/workspace/projects/{legacy['id']}/learning", json={'part': 3, 'learned': True})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()['episodes'][2]['learned'])
+        self.download_mock.assert_not_called()
+
+    def test_project_list_is_a_lightweight_learning_contract(self):
+        entry = self.parse()
+        identifier = entry['project']['id']
+        def row():
+            response = self.client.get('/api/workspace/projects')
+            self.assertEqual(response.status_code, 200)
+            return next(item for item in response.json()['projects'] if item['id'] == identifier)
+        initial = row()
+        self.assertFalse(initial['archived'])
+        self.assertNotIn('resources', initial)
+        self.assertIn('episode_title', initial)
+        self.assertIn('video_id', initial)
+        self.assertEqual(self.prepare(entry).status_code, 200)
+        self.assertTrue(row()['archived'])
+
+    def test_project_list_uses_physical_alias_and_rejects_missing_or_changed_video(self):
+        entry = self.parse()
+        self.assertEqual(self.prepare(entry).status_code, 200)
+        identifier = entry['project']['id']
+        project = library.get(identifier)
+        resource = next(name for name, info in project['resources'].items() if info['kind'] == 'video')
+        source = library.resource(identifier, resource)
+        destination = source.with_name('1.1 Synthetic title.mp4')
+        source.rename(destination)
+        library.update_details(identifier, resource, {'storage_path': destination.relative_to(project['directory']).as_posix()})
+        def archived():
+            response = self.client.get('/api/workspace/projects')
+            self.assertEqual(response.status_code, 200)
+            return next(item for item in response.json()['projects'] if item['id'] == identifier)['archived']
+        self.assertTrue(archived())
+        destination.write_bytes(b'changed')
+        self.assertFalse(archived())
+        destination.unlink()
+        self.assertFalse(archived())
 
 
 if __name__ == '__main__':

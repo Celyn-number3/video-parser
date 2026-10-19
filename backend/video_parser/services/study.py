@@ -1,0 +1,134 @@
+"""Personal playback and notes sidecars, isolated from AI records and media manifests."""
+from datetime import datetime, timezone
+import hashlib
+import json
+import math
+import re
+from video_parser.services import library
+
+MAX_TIME = 31 * 86400
+MAX_NOTES = 1000
+MAX_ENTRIES = 10000
+
+class Conflict(ValueError):
+    pass
+
+
+def seconds(value):
+    if type(value) not in (int, float) or not 0 <= value <= MAX_TIME or not math.isfinite(value):
+        raise ValueError('时间点无效。')
+    return float(value)
+
+
+def context(identifier, resource):
+    project = library.get(identifier)
+    item = project['resources'].get(resource)
+    if not isinstance(item, dict) or item.get('kind') != 'video':
+        raise ValueError('只能为当前项目内已归档的视频保存学习数据。')
+    media = library.resource_path(project, resource)
+    if not media.is_file() or media.stat().st_size != item.get('size_bytes'):
+        raise ValueError('归档视频缺失或已变化，请重新校验。')
+    # The archive manifest pins content; do not rehash multi-GB media on every playback checkpoint.
+    fingerprint = str(item.get('sha256', ''))
+    if not re.fullmatch('[a-f0-9]{64}', fingerprint): raise ValueError('视频缺少内容标识。')
+    name = hashlib.sha256((resource + ':' + fingerprint).encode()).hexdigest()
+    path = library.contained(project['directory'], f'personal-learning/{name}.json')
+    try: duration = float(item['media']['format']['duration'])
+    except (KeyError, TypeError, ValueError, OverflowError): duration = 0
+    if not math.isfinite(duration) or not 0 < duration <= MAX_TIME: duration = 0
+    return project, path, fingerprint, duration
+
+
+def read(path, identifier, resource, fingerprint):
+    if not path.exists():
+        return {'version': 1, 'project_id': identifier, 'resource': resource, 'fingerprint': fingerprint,
+                'progress': {'position': 0, 'duration': 0, 'revision': 0}, 'notes': {}}
+    try:
+        if path.stat().st_size > 8 * 1024 * 1024: raise ValueError()
+        data = json.loads(path.read_text(encoding='utf-8'))
+        assert data['version'] == 1 and data['project_id'] == identifier and data['resource'] == resource and data['fingerprint'] == fingerprint
+        assert isinstance(data['notes'], dict) and len(data['notes']) <= MAX_ENTRIES
+        progress = data['progress']; seconds(progress['position']); seconds(progress['duration'])
+        assert type(progress['revision']) is int and progress['revision'] >= 0
+        for key, note in data['notes'].items():
+            assert re.fullmatch('[a-f0-9]{32}', key) and note['id'] == key
+            assert type(note['revision']) is int and note['revision'] > 0
+            if not note.get('deleted'):
+                seconds(note['time']); assert isinstance(note['text'], str) and 0 < len(note['text']) <= 5000
+        return data
+    except (ValueError, KeyError, TypeError, AssertionError, AttributeError):
+        raise ValueError('学习数据无法读取，原文件已保留；请备份后检查，不会自动覆盖。') from None
+
+
+def load(identifier, resource):
+    _, path, fingerprint, _ = context(identifier, resource)
+    return read(path, identifier, resource, fingerprint)
+
+
+def notes(identifier, resource):
+    data = load(identifier, resource)
+    return sorted((note for note in data['notes'].values() if not note.get('deleted')), key=lambda row: (row['time'], row['id']))
+
+
+def mutate(identifier, resource, operation):
+    project, _, _, _ = context(identifier, resource)
+    lock = library.contained(project['directory'], '.personal-learning.lock')
+    with library.file_lock(lock, timeout=3):
+        _, path, fingerprint, duration = context(identifier, resource)
+        data = read(path, identifier, resource, fingerprint)
+        value = operation(data, duration)
+        path.parent.mkdir(exist_ok=True)
+        library.atomic_json(path, data)
+        return value
+
+
+def revision(value):
+    if type(value) is not int or value < 0: raise ValueError('版本号无效。')
+
+
+def progress(identifier, resource, position, duration, expected_revision):
+    revision(expected_revision)
+    position, duration = seconds(position), seconds(duration)
+    if duration <= 0: raise ValueError('视频时长尚未就绪。')
+    def change(data, actual):
+        previous = data['progress']
+        if previous['revision'] != expected_revision: raise Conflict('播放位置已被其他窗口更新；本地位置已保留，请重试确认覆盖。')
+        length = actual or duration
+        row = {'position': round(min(position, max(0, length - .01)), 3), 'duration': length,
+               'revision': previous['revision'] + 1, 'updated_at': datetime.now(timezone.utc).isoformat()}
+        data['progress'] = row
+        return row
+    return mutate(identifier, resource, change)
+
+
+def save_note(identifier, resource, note_id, at, text, expected_revision):
+    revision(expected_revision)
+    at = seconds(at)
+    if not re.fullmatch('[a-f0-9]{32}', note_id): raise ValueError('笔记编号无效。')
+    if not isinstance(text, str) or not text.strip() or len(text) > 5000: raise ValueError('笔记需为 1～5000 字符。')
+    def change(data, duration):
+        previous = data['notes'].get(note_id)
+        if (previous or {}).get('revision', 0) != expected_revision or (previous and previous.get('deleted')):
+            raise Conflict('这条笔记已被其他窗口修改或删除。草稿已保留，可另存为新笔记。')
+        if duration and at >= duration: raise ValueError('笔记时间超出视频长度。')
+        if not previous and (len(data['notes']) >= MAX_ENTRIES or sum(not n.get('deleted') for n in data['notes'].values()) >= MAX_NOTES):
+            raise ValueError('此视频笔记数量已达上限，请整理后再添加。')
+        now = datetime.now(timezone.utc).isoformat()
+        note = {'id': note_id, 'time': at, 'text': text.strip(), 'revision': expected_revision + 1,
+                'created_at': previous['created_at'] if previous else now, 'updated_at': now}
+        data['notes'][note_id] = note
+        return note
+    return mutate(identifier, resource, change)
+
+
+def delete_note(identifier, resource, note_id, expected_revision):
+    revision(expected_revision)
+    def change(data, _):
+        previous = data['notes'].get(note_id)
+        if not previous: raise KeyError('笔记不存在。')
+        if previous['revision'] != expected_revision or previous.get('deleted'):
+            raise Conflict('笔记已变化，请刷新后再删除。')
+        # Keep only a revision tombstone, never deleted personal text; stale autosaves cannot resurrect it.
+        data['notes'][note_id] = {'id': note_id, 'revision': expected_revision + 1, 'deleted': True}
+        return {'deleted': note_id}
+    return mutate(identifier, resource, change)

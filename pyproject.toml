@@ -34,7 +34,7 @@ test = ["httpx2==2.13.1"]
 video-parser = "video_parser.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["backend"]
 include = ["video_parser*"]
 
 [tool.setuptools.package-data]

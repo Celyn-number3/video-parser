@@ -7,7 +7,7 @@ except ImportError:
     from pip._vendor.packaging.version import Version
 root=Path(__file__).resolve().parents[1]
 newer=[]
-for line in (root/'requirements/windows-main.lock.txt').read_text(encoding='utf-8').splitlines():
+for line in (root/'configs/requirements/windows-main.lock.txt').read_text(encoding='utf-8').splitlines():
     if not line or line.startswith('#'):continue
     name,pinned=line.split('==')
     try:current=md.version(name)

@@ -65,7 +65,7 @@ def main():
             assert states==['interrupted','interrupted'],states
             time.sleep(.5);assert len(calls)==1,'Restart silently replayed a job'
             report={'running_and_queued_after_restart':states,'provider_requests':len(calls),'automatic_resume':False,'actual_process_restart':True}
-            (ROOT/'outputs/optimization-restart.json').write_text(json.dumps(report,indent=2),encoding='utf-8');print(json.dumps(report,indent=2))
+            (ROOT/'.local/work/artifacts/optimization-restart.json').write_text(json.dumps(report,indent=2),encoding='utf-8');print(json.dumps(report,indent=2))
         finally:
             if process:task_runtime.stop_process(process)
             for identifier in owned:

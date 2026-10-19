@@ -206,6 +206,28 @@ class RecordTests(unittest.TestCase):
         self.assertFalse((directory / 'frames').exists())
         self.assertTrue((directory / self.video).is_file())
 
+    def test_clear_context_stops_resending_earlier_follow_ups(self):
+        record = ai_analysis.run(self.pid, self.payload(), self.work)
+        ai_analysis.ask(self.pid, record['id'], '第一个问题', self.work)
+        client = TestClient(app, base_url='http://127.0.0.1:15001', client=('127.0.0.1', 1234))
+        url = f"/api/workspace/projects/{self.pid}/analyses/{record['id']}/clear-context"
+        cleared = client.post(url, json={})
+        self.assertEqual(cleared.status_code, 200)
+        first = cleared.json()['records'][0]
+        self.assertEqual(first['context_after'], first['followups'][0]['id'])
+        ai_analysis.ask(self.pid, record['id'], '第二个问题', self.work)
+        updated = ai_analysis.ask(self.pid, record['id'], '第三个问题', self.work)
+        messages = self.calls[-1]['messages']
+        self.assertEqual([m['role'] for m in messages], ['system', 'user', 'assistant', 'user', 'assistant', 'user'])
+        self.assertEqual([m['content'] for m in messages[3::2]], ['第二个问题', '第三个问题'])
+        self.assertEqual(sum(part['type'] == 'image_url' for part in messages[1]['content']), 3)
+        # Earlier Q&A stays archived and exported; only the model request leaves it out.
+        self.assertEqual([item['question'] for item in updated['followups']], ['第一个问题', '第二个问题', '第三个问题'])
+        self.assertIn('### 问：第一个问题', ai_analysis.export_markdown(self.pid, record['id'])[0])
+        with patch('video_parser.web.analysis_routes.project_busy', return_value=True):
+            self.assertEqual(client.post(url, json={}).status_code, 409)
+        self.assertEqual(client.post(f'/api/workspace/projects/{self.pid}/analyses/bad-id/clear-context', json={}).status_code, 404)
+
     def test_api_records_export_and_validation(self):
         record = ai_analysis.run(self.pid, self.payload(), self.work)
         client = TestClient(app, base_url='http://127.0.0.1:15001', client=('127.0.0.1', 1234))

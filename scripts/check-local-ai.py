@@ -5,6 +5,7 @@ No personal videos are read and no external model endpoint is allowed.
 import io
 import json
 from pathlib import Path
+import sys
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,8 @@ from PIL import Image, ImageDraw, ImageFont
 from video_parser.services import ai_analysis, ai_settings, docx_export, library, task_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend"))
+from video_parser.core.paths import CACHE_DIR, LOG_DIR
 MODEL = 'Qwen3-VL-8B-Instruct-Q4_K_M'
 BASE = 'http://127.0.0.1:8888/v1'
 HTTP = build_opener(ProxyHandler({}))
@@ -55,7 +58,7 @@ def main():
     assert connection.get('ok') is True, connection
     print('PROJECT_CONNECTION_TEST:', json.dumps(connection, ensure_ascii=False), flush=True)
 
-    parent = ROOT / 'cache' / 'local-ai-verification'
+    parent = CACHE_DIR / 'local-ai-verification'
     parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='qwen-', dir=parent) as temporary:
@@ -119,8 +122,8 @@ def main():
                 'frame_count': result['frame_count'], 'usage': result['usage'],
                 'elapsed_seconds': round(time.monotonic() - started, 2), 'reply': text, 'followup_reply': answer,
             }
-    logs = ROOT / 'logs'
-    logs.mkdir(exist_ok=True)
+    logs = LOG_DIR
+    logs.mkdir(parents=True, exist_ok=True)
     (logs / 'local-qwen-verification.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print('REAL_LOCAL_AI_VERIFICATION_PASSED', json.dumps(summary, ensure_ascii=False), flush=True)
 

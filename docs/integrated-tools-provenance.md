@@ -7,7 +7,7 @@
 | Celyn-number2/whisper-desk | `05b4c7a2bd44474e215a49d28c8d9db6917c5c2e` | CLI、CUDA 运行时、固定模型清单、6 项 CLI 测试 |
 | Celyn-number2/bili_substitle_download | `9296830b216bdd477946c8f512d0368ed43fd6ba` | 字幕工作进程、三件套校验器、2 项校验器测试；含本机会话中已实现的无头适配 |
 
-目的路径分别为 `src/video_parser/integrations/whisper/` 和 `src/video_parser/integrations/bilibili/`。新增适配包括项目内资源路径、工作台扫码登录缓存、固定无头执行及主项目服务调用。
+目的路径分别为 `backend/video_parser/integrations/whisper/` 和 `backend/video_parser/integrations/bilibili/`。新增适配包括项目内资源路径、工作台扫码登录缓存、固定无头执行及主项目服务调用。
 
 没有引入两个工具原来的 Gradio / Flask Web 界面、启动器、远程 .git、个人 agent 配置或旧服务端。原 B站工具中针对退休 Flask 服务的测试不属于新的执行路径，因此不移入；新的工作台服务测试和集成测试覆盖实际采用的路径。
 

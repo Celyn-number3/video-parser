@@ -50,6 +50,16 @@ class TaskAPITests(unittest.TestCase):
             self.assertEqual(result.json(),{'removed':3})
             left=sorted(states[path.stem] for path in root.glob('*.json'))
             self.assertEqual(left,['completed','empty','running']);self.assertEqual(sorted(states[key] for key in service.jobs),left)
+    def test_task_rows_show_current_project_title_and_part(self):
+        project={'id':'a'*32,'title':'改过的课程名','part':4}
+        job=SimpleNamespace(id='b'*32,kind='video',project_id=project['id'])
+        service=SimpleNamespace(jobs={job.id:job},lock=Lock(),get=lambda identifier:job,
+            view=lambda item:{'id':item.id,'state':'completed','message':'','title':'平台旧标题','created':1})
+        with patch.object(task_routes,'catalog',return_value={'workflows':(service,Path('missing'))}),\
+             patch.object(task_routes.task_runtime,'recent_ids',return_value=[]),\
+             patch.object(task_routes.library,'get',side_effect=lambda identifier:project if identifier==project['id'] else (_ for _ in ()).throw(KeyError(identifier))):
+            row=self.client.get('/api/workspace/tasks').json()['jobs'][0]
+        self.assertEqual((row['title'],row['project_title'],row['part']),('平台旧标题','改过的课程名',4))
     def test_request_id_and_history_headers(self):
         result=self.client.get('/api/workspace/tasks/'+'0'*32)
         self.assertEqual(result.status_code,404);self.assertRegex(result.headers['X-Request-ID'],'^[a-f0-9]{32}$')

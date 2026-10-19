@@ -17,13 +17,13 @@ class WebLauncherTests(unittest.TestCase):
         self.assertTrue(path.is_file(), '尚无双击启动入口')
         text = path.read_text(encoding='utf-8')
         self.assertIn('cd /d "%~dp0"', text)
-        self.assertIn('-File "%~dp0start-web.ps1" -OpenBrowser', text)
+        self.assertIn('-File "%~dp0scripts\\start-web.ps1" -OpenBrowser', text)
         self.assertIn('-ExecutionPolicy Bypass', text)
         self.assertIn('pause', text)
         self.assertIn('exit /b', text)
 
     def test_existing_powershell_script_reuses_dependencies_and_opens_only_when_healthy(self):
-        text = (ROOT / 'start-web.ps1').read_text(encoding='utf-8')
+        text = (ROOT / 'scripts/start-web.ps1').read_text(encoding='utf-8')
         self.assertIn('[switch]$OpenBrowser', text)
         self.assertIn("node_modules\\.bin\\vite.cmd", text)
         self.assertIn('Start-Job', text)
@@ -45,10 +45,10 @@ if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
             root = Path(directory)
             check = root / 'parse.ps1'
             check.write_text(script, encoding='utf-8-sig')
-            checked = subprocess.run(['powershell.exe', '-NoProfile', '-File', str(check), str(ROOT / 'start-web.ps1')], capture_output=True)
+            checked = subprocess.run(['powershell.exe', '-NoProfile', '-File', str(check), str(ROOT / 'scripts/start-web.ps1')], capture_output=True)
             self.assertEqual(checked.returncode, 0, checked.stderr)
             launcher = root / 'start-web.ps1'
-            shutil.copyfile(ROOT / 'start-web.ps1', launcher)
+            shutil.copyfile(ROOT / 'scripts/start-web.ps1', launcher)
             failed = subprocess.run(['powershell.exe', '-NoProfile', '-File', str(launcher)], capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn(b'Project .venv not found', failed.stderr)
@@ -71,7 +71,7 @@ if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'start-web.ps1'),
+            args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'scripts/start-web.ps1'),
                     '-Port', str(server.server_port)]
             result = subprocess.run(args, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)

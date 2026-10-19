@@ -43,6 +43,6 @@ def main():
     report={'course':'BV1rH4y1N7BW','episode':1,'state':result['state'],'existing':result['existing'],'downloaded':result['downloaded'],
         'validated_library_files':len(files),'automatic_browser_downloads':len(downloads),'refresh_reconnected':True,
         'successful_scratch_removed':True,'job_id':identifier,'scope':'Existing P1 cache only; no full-course download or fresh QR authentication.'}
-    (ROOT/'outputs/optimization-live-subtitle.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report,ensure_ascii=False,indent=2))
+    (ROOT/'.local/work/artifacts/optimization-live-subtitle.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report,ensure_ascii=False,indent=2))
 
 if __name__=='__main__':main()

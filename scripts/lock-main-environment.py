@@ -25,6 +25,6 @@ while pending:
     for text in distribution.requires or []:
         child=Requirement(text)
         if child.marker is None or any(child.marker.evaluate({'extra':extra}) for extra in extras[name]):pending.append(child)
-output=ROOT/'requirements/windows-main.lock.txt'
+output=ROOT/'configs/requirements/windows-main.lock.txt'
 output.write_text('# Tested installed dependency closure. Windows; Python '+sys.version.split()[0]+'\n# Generated without upgrading packages; frontend and isolated Whisper use their own locks.\n'+''.join(f'{name}=={version}\n' for name,version in sorted(locked.items())),encoding='utf-8')
 print(f'Pinned {len(locked)} runtime/test dependencies; no packages installed or changed.')

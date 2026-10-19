@@ -20,7 +20,7 @@ SHARE='7.43 Bgb:/ :5pm 04/01 D@U.lC VibeCoding开发前9个步骤和开发中5�
 
 
 def main():
-    output=ROOT/'outputs/douyin-diagnostics';output.mkdir(parents=True,exist_ok=True)
+    output=ROOT/'.local/work/artifacts/douyin-diagnostics';output.mkdir(parents=True,exist_ok=True)
     report={'video_id':ID,'browser_cookies_exported':False,'paid_services_used':False,'checks':[]}
     started=time.monotonic()
     with sync_playwright() as p:

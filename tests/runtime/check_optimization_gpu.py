@@ -12,9 +12,9 @@ from video_parser.services import library,transcription,whisper_pool,task_runtim
 
 
 def main():
-    source=ROOT/'outputs/external-tools-install/jfk.flac'
+    source=ROOT/'.local/work/artifacts/external-tools-install/jfk.flac'
     if not source.is_file():raise RuntimeError('Public JFK fixture is required; do not substitute personal recordings')
-    before=library.digest(source);directory=ROOT/'outputs/optimization-verification'/uuid4().hex;directory.mkdir(parents=True)
+    before=library.digest(source);directory=ROOT/'.local/work/artifacts/optimization-verification'/uuid4().hex;directory.mkdir(parents=True)
     invalid=directory/'invalid.wav';invalid.write_bytes(b'not an audio file')
     env={**os.environ,'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','PYTHONUTF8':'1'}
     command=[sys.executable,'-X','utf8','-m','video_parser','transcribe-batch',str(source),str(invalid),str(source),
@@ -58,7 +58,7 @@ def main():
         'idle_unload_verified_seconds':2,'production_default_idle_seconds':60,
         'actual_gpu_job_cancelled':True,'owned_process_exited':True,'originals_unchanged':True,
         'offline_mode':True,'outputs':directory.relative_to(ROOT).as_posix()}
-    (ROOT/'outputs/optimization-gpu.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    (ROOT/'.local/work/artifacts/optimization-gpu.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False,indent=2))
 
 if __name__=='__main__':main()

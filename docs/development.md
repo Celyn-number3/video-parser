@@ -21,10 +21,10 @@ npm.cmd --prefix frontend ci --ignore-scripts
 
 # 旧入口仍可用
 .\.venv\Scripts\python.exe cli.py capabilities --json
-.\video-parser.ps1 capabilities --json
+.\scripts\video-parser.ps1 capabilities --json
 
 # Web，或双击 start-web.cmd
-.\start-web.ps1 -OpenBrowser
+.\scripts\start-web.ps1 -OpenBrowser
 
 # 手动构建并启动
 npm.cmd --prefix frontend run build

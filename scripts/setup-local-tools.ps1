@@ -14,7 +14,13 @@ try {
     Get-Command uv -ErrorAction Stop | Out-Null
     $env:UV_PYTHON_INSTALL_DIR = Join-Path $Root 'runtimes/python'
     $env:UV_PYTHON_BIN_DIR = Join-Path $Root 'runtimes/bin'
-    $env:UV_CACHE_DIR = Join-Path $Root 'cache/uv'
+    $LegacyCache = Join-Path $Root 'cache'
+    $OldVarCache = Join-Path $Root 'var/cache'
+    $CurrentCache = Join-Path $Root '.local/work/cache'
+    $ExistingCaches = @(@($LegacyCache, $OldVarCache, $CurrentCache) | Where-Object { Test-Path $_ })
+    if ($ExistingCaches.Count -gt 1) { throw 'Multiple cache trees exist; complete or roll back the directory migration first.' }
+    $CacheRoot = if ($ExistingCaches.Count -eq 1) { $ExistingCaches[0] } else { $CurrentCache }
+    $env:UV_CACHE_DIR = Join-Path $CacheRoot 'uv'
     $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $Root 'runtimes/browsers'
     $env:PLAYWRIGHT_SKIP_BROWSER_GC = '1'
     $Python = Join-Path $Root 'runtimes/python/cpython-3.12-windows-x86_64-none/python.exe'
@@ -32,9 +38,9 @@ try {
     Checked $Main @('-c',"import pathlib,sys; assert pathlib.Path(sys.prefix).resolve()==(pathlib.Path.cwd()/'.venv').resolve(), 'Recreate the moved main venv'")
     Checked $Whisper @('-c',"import pathlib,sys; assert pathlib.Path(sys.base_prefix).resolve().is_relative_to(pathlib.Path.cwd()), 'Recreate the moved Whisper venv'")
     Checked $Main @('-X','utf8','scripts/check-main-lock.py')
-    Checked 'uv' @('pip','install','--python',$Main,'-r','requirements/windows-main.lock.txt','--index-url','https://pypi.org/simple')
+    Checked 'uv' @('pip','install','--python',$Main,'-r','configs/requirements/windows-main.lock.txt','--index-url','https://pypi.org/simple')
     Checked 'uv' @('pip','install','--python',$Main,'--no-deps','-e','.','--index-url','https://pypi.org/simple')
-    Checked 'uv' @('pip','install','--python',$Whisper,'-r','requirements/windows-whisper.lock.txt','--index-url','https://pypi.org/simple')
+    Checked 'uv' @('pip','install','--python',$Whisper,'-r','configs/requirements/windows-whisper.lock.txt','--index-url','https://pypi.org/simple')
     Checked $Main @('-m','playwright','install','chromium')
     $ModelArgs = @('-X','utf8','scripts/verify-whisper-model.py')
     if ($DownloadModel) { $ModelArgs += '--download' }
@@ -45,7 +51,7 @@ try {
         Push-Location (Join-Path $Root 'frontend')
         try { Checked 'npm.cmd' @('ci'); Checked 'npm.cmd' @('run','build') } finally { Pop-Location }
     }
-    Write-Output 'Unified local tools ready. Start with start-web.ps1 or python -m video_parser.'
+    Write-Output 'Unified local tools ready. Start with start-web.cmd or python -m video_parser.'
 } finally {
     Pop-Location
     foreach ($Name in $Names) { [Environment]::SetEnvironmentVariable($Name, $Saved[$Name], 'Process') }

@@ -78,6 +78,131 @@ class LibraryTests(unittest.TestCase):
         self.assertNotEqual(first,second)
         self.assertEqual(store.owner(store.resource(one['id'],first))['id'],one['id'])
 
+    def test_learning_state_is_per_episode_without_automatic_download(self):
+        episodes = [
+            {'part': 1, 'title': '开场', 'duration': 60},
+            {'part': 2, 'title': '核心内容', 'duration': 120},
+            {'part': 3, 'title': '总结', 'duration': 90},
+        ]
+        project = store.ensure({**self.meta, 'episodes': episodes})
+        self.assertIsNone(store.normalize_episodes([{"part": 1, "duration": 10 ** 400}])[0]["duration"])
+        self.assertEqual(project['part'], 3)
+        rows = store.learning_episodes(project['id'])
+        self.assertEqual([row['part'] for row in rows], [1, 2, 3])
+        self.assertEqual(rows[2]['project_id'], project['id'])
+        self.assertFalse(any(row['archived'] or row['learned'] for row in rows))
+
+        # Clearing an uncreated episode must not create a project directory.
+        rows = store.set_learning_state(project['id'], 2, False)
+        self.assertIsNone(rows[1]['project_id'])
+        self.assertEqual(len(store.manifests()), 1)
+
+        video = self.root / 'episode-three.mp4'
+        video.write_bytes(b'archived episode three')
+        store.import_file(project['id'], video, 'video.mp4', 'video')
+        self.assertTrue(store.learning_episodes(project['id'])[2]['archived'])
+
+        rows = store.set_learning_state(project['id'], 2, True)
+        episode_two = rows[1]
+        self.assertTrue(episode_two['learned'])
+        self.assertFalse(episode_two['archived'])
+        self.assertIsNotNone(episode_two['project_id'])
+        saved = store.get(episode_two['project_id'])
+        self.assertTrue(saved['learned'])
+        self.assertEqual(saved['episodes'], episodes)
+        self.assertEqual(saved['resources'], {})
+
+        rows = store.set_learning_state(project['id'], 3, True)
+        self.assertTrue(rows[2]['learned'])
+        rows = store.set_learning_state(project['id'], 2, False)
+        self.assertFalse(rows[1]['learned'])
+        with self.assertRaises(ValueError):
+            store.set_learning_state(project['id'], 4, True)
+
+
+    def test_legacy_part_borrows_full_catalog_without_rewriting_manifests(self):
+        episodes = [{'part': i, 'title': f'第{i}讲', 'duration': 60} for i in range(1, 4)]
+        full = store.ensure({**self.meta, 'episodes': episodes})
+        legacy = store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=2'})
+        before = {p: p.read_bytes() for p in store.manifests()}
+        rows = store.learning_episodes(legacy['id'])
+        self.assertEqual([row['part'] for row in rows], [1, 2, 3])
+        self.assertEqual(rows[1]['project_id'], legacy['id'])
+        self.assertEqual(rows[2]['project_id'], full['id'])
+        self.assertEqual(before, {p: p.read_bytes() for p in store.manifests()})
+        self.assertNotIn('episodes', store.get(legacy['id']))
+
+    def test_legacy_catalog_fallback_keeps_course_and_part_boundaries(self):
+        legacy = store.ensure(self.meta)
+        episodes = [{'part': i, 'title': f'第{i}讲', 'duration': 60} for i in range(1, 4)]
+        store.ensure({**self.meta, 'video_id': 'BV1TaqYBcEJc',
+                      'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc', 'episodes': episodes})
+        self.assertEqual(store.learning_episodes(legacy['id']), [])
+        with self.assertRaises(ValueError): store.set_learning_state(legacy['id'], 2, True)
+        store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=1', 'episodes': episodes})
+        self.assertEqual(len(store.learning_episodes(legacy['id'])), 3)
+        with self.assertRaises(ValueError): store.set_learning_state(legacy['id'], 99, True)
+
+    def test_learning_changes_from_legacy_part_use_shared_catalog(self):
+        episodes = [{'part': i, 'title': f'第{i}讲', 'duration': 60} for i in range(1, 4)]
+        store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=1', 'episodes': episodes})
+        legacy = store.ensure(self.meta)
+        rows = store.set_learning_state(legacy['id'], 2, True)
+        self.assertTrue(rows[1]['learned'])
+        saved = store.get(rows[1]['project_id'])
+        self.assertEqual(saved['resources'], {})
+        self.assertEqual(saved['episodes'], episodes)
+        self.assertNotIn('episodes', store.get(legacy['id']))
+        rows = store.set_learning_state(legacy['id'], 2, False)
+        self.assertFalse(rows[1]['learned'])
+
+    def test_rename_is_display_only_and_shared_by_course_parts(self):
+        episodes = [{'part': 3, 'title': '总结', 'duration': 90}, {'part': 4, 'title': '附录', 'duration': 30}]
+        three = store.ensure({**self.meta, 'episodes': episodes})
+        four = store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=4', 'episodes': episodes})
+        other = store.ensure({**self.meta, 'video_id': 'BV1TaqYBcEJc', 'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc?p=1'})
+        video = self.root / 'part.mp4'
+        video.write_bytes(b'part three')
+        relative = store.import_file(three['id'], video, 'video.mp4', 'video')
+        project, renamed = store.rename(three['id'], '  我的\n 线性代数  ')
+        self.assertEqual(project['title'], '我的 线性代数')
+        self.assertEqual(sorted(renamed), sorted([three['id'], four['id']]))
+        self.assertEqual((project['id'], project['directory']), (three['id'], three['directory']))
+        self.assertEqual(store.resource(three['id'], relative).read_bytes(), b'part three')
+        self.assertEqual(store.get(four['id'])['title'], '我的 线性代数')
+        self.assertEqual(store.get(other['id'])['title'], '原标题')
+        # Re-parsing the same link must not restore the platform title.
+        self.assertEqual(store.ensure({**self.meta, 'title': '平台标题'})['title'], '我的 线性代数')
+        for bad in ['', '   ', 'x' * 201, 'a\x00b', None]:
+            with self.assertRaises(ValueError):
+                store.rename(three['id'], bad)
+        with self.assertRaises(KeyError):
+            store.rename('0' * 32, '标题')
+
+    def test_subtitle_inventory_counts_only_verified_platform_subtitles(self):
+        episodes = [{'part': 3, 'title': '总结', 'duration': 90}, {'part': 4, 'title': '附录', 'duration': 30}]
+        three = store.ensure({**self.meta, 'episodes': episodes})
+        four = store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=4', 'episodes': episodes})
+        self.assertEqual(store.subtitle_inventory('BV16NG96QEmA')['archived'], [])
+        subtitle = self.root / 'p3.srt'
+        subtitle.write_text('1\n00:00:00,000 --> 00:00:01,000\n字幕', encoding='utf-8')
+        store.import_file(three['id'], subtitle, 'subtitles/p3.平台字幕.srt', 'subtitle')
+        transcript = self.root / 'p4.srt'
+        transcript.write_text('1\n00:00:00,000 --> 00:00:01,000\n转写', encoding='utf-8')
+        changed = store.import_file(four['id'], transcript, 'subtitles/p4.转写.srt', 'transcription')
+        inventory = store.subtitle_inventory('BV16NG96QEmA')
+        self.assertEqual((inventory['total'], inventory['archived']), (2, [3]))
+        self.assertEqual([row['subtitles'] for row in inventory['episodes']], [True, True])
+        self.assertEqual(inventory['available'], [3, 4])
+        self.assertEqual([row['platform_subtitles'] for row in inventory['episodes']], [True, False])
+        # A registered file that no longer matches its hash is not counted.
+        (four['directory'] / changed).write_text('changed', encoding='utf-8')
+        store.import_file(four['id'], subtitle, 'subtitles/p4.平台字幕.srt', 'subtitle')
+        (four['directory'] / 'subtitles/p4.平台字幕.srt').write_text('tampered', encoding='utf-8')
+        self.assertEqual(store.subtitle_inventory('BV16NG96QEmA')['archived'], [3])
+        with self.assertRaises(ValueError):
+            store.subtitle_inventory('../BV16NG96QEmA')
+
 
 class CLIProjectTests(unittest.TestCase):
     setUp = LibraryTests.setUp

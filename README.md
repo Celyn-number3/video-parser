@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="Video Parser：视频、字幕与转写，本地有序归档。流程示意：输入素材 → 按需处理 → 保存项目资料或转写结果。">
+  <img src="./docs/assets/readme/hero.svg" width="100%" alt="Video Parser：视频、字幕与转写，本地有序归档。流程示意：输入素材 → 按需处理 → 保存项目资料或转写结果。">
 </p>
 
 <p align="center">
@@ -15,12 +15,24 @@
   <a href="./scripts/setup-local-tools.ps1"><img src="https://shields.io/badge/Setup-Windows-b4f1d7?labelColor=191f1c" alt="提供 Windows 安装脚本"></a>
 </p>
 
+## 项目目录与学习入口
+
+- `backend/video_parser/`：后端源码；`frontend/src/`：按功能组织的前端源码。
+- `frontend/prototypes/`：历史界面原型，与生产入口分开。
+- `tests/`：离线、浏览器与运行环境验证；`scripts/`：安装、启动和维护脚本。
+- `outputs/`：持久项目资料与独立转写/翻译结果，**不是缓存**。
+- `.local/work/cache/`、`.local/work/logs/`：运行时缓存和日志；不手工删除任务记录或可复用字幕。
+- `runtimes/models/`：模型；`runtimes/`：本机工具环境（环境路径未改）；`.local/`：私有配置、任务记录与验证证据。
+- 根部 `start-web.cmd` 等薄入口保持兼容。目录整理与恢复说明见 `docs/mcp-root-consolidation-plan.md`。
+
+在**学习视图**中可直接选择已归档项目并切换分集；阅读摘要不会隐藏当前视频已有的章节目录和时间轴。顶部“字幕层级命名”支持字幕驱动的系列命名建议、手动编辑、真实文件清单预览、单独确认执行与恢复原命名。只有明确同意后才会向所选模型发送字幕选段，不会自动改名真实课程。
+
 ## 应用截图
 
 ### 视频工作台
 
 <p align="center">
-  <img src="./assets/readme/workspace.png" width="100%" alt="Video Parser 视频工作台：链接输入、封面预览、平台时长、归档画质、项目文件夹和生成字幕入口。">
+  <img src="./docs/assets/readme/workspace.png" width="100%" alt="Video Parser 视频工作台：链接输入、封面预览、平台时长、归档画质、项目文件夹和生成字幕入口。">
 </p>
 
 2026-10-14 的真实运行界面：解析 Blender Foundation 的《Big Buck Bunny》（CC BY 3.0）后，尚未下载归档时的样子。封面在前，右侧是平台给出的时长、可选画质、项目文件夹和“生成字幕”入口。
@@ -28,7 +40,7 @@
 ### 字幕与转写
 
 <p align="center">
-  <img src="./assets/readme/transcription.png" width="100%" alt="字幕与转写页面：上传文件 / 已归档视频两种来源、保存位置选择和开始转写按钮。">
+  <img src="./docs/assets/readme/transcription.png" width="100%" alt="字幕与转写页面：上传文件 / 已归档视频两种来源、保存位置选择和开始转写按钮。">
 </p>
 
 来源可以是上传的音视频，也可以直接从资料库里选一个已归档视频。语言自动识别，不需要手动选。截图为未选择文件时的初始状态。
@@ -36,7 +48,7 @@
 ### 账号与登录
 
 <p align="center">
-  <img src="./assets/readme/accounts.png" width="100%" alt="账号与登录页面：哔哩哔哩、抖音、小红书的登录状态，以及扫码登录和浏览器登录按钮。">
+  <img src="./docs/assets/readme/accounts.png" width="100%" alt="账号与登录页面：哔哩哔哩、抖音、小红书的登录状态，以及扫码登录和浏览器登录按钮。">
 </p>
 
 集中查看各平台的登录状态。登录信息只保存在本机，页面不会显示 Cookie 内容。
@@ -48,7 +60,7 @@
 例如，课程字幕和本地转写都归入对应视频项目的 `subtitles/`，文件名标明来源和语言；上传的录音默认保存在 `outputs/transcriptions/`。以下是输出结构示意：
 
 ```text
-library/
+outputs/
 └─ …/视频项目/
    ├─ videos/
    └─ subtitles/
@@ -72,7 +84,7 @@ React 工作台用于交互操作，Python CLI 便于脚本调用，两者共用
 
 粘贴链接或分享文本，解析标题和可用资源，再选择下载。B站支持本次实际可用的画质及音视频合并；不同画质分别保存。下载后可继续预览、抽帧或分析。
 
-支持的平台：**哔哩哔哩、抖音、小红书、YouTube**。小红书需要先在“账号与登录”页登录，登录后可选 720p（H.264）到 4K（H.265）画质（2026-10-14 实测，详见 [平台实测](docs/mcp-platform-probe-20261014.md)）。好看视频、皮皮搞笑、快手、梨视频、微视的解析器已于 2026-10-14 删除。
+支持的平台：**哔哩哔哩、抖音、小红书、YouTube**。小红书需要先在“账号与登录”页登录，登录后可选 720p（H.264）到 4K（H.265）画质（2026-10-14 实测，详见 [平台实测](docs/archive/mcp-platform-probe-20261014.md)）。好看视频、皮皮搞笑、快手、梨视频、微视的解析器已于 2026-10-14 删除。
 
 - B站画质按视频短边标注：竖屏 1080×1920 显示为 1080p。未登录 B站最高约 480p，登录后可下载 1080p 及以上。
 - 下载单个链接失败时会自动重试一次，再换备用链接。
@@ -80,7 +92,7 @@ React 工作台用于交互操作，Python CLI 便于脚本调用，两者共用
 - 下载时显示**当前轨道**的已收字节、可用总大小、实测速率和预计剩余时间；B站音视频分轨分别计量，不把单轨 100% 当成任务完成。
 - 总大小缺失或仅为估计值时显示不确定进度；估计总大小明确标为“约”。样本过期、合并及校验阶段不沿用下载速度和剩余时间。
 - YouTube 使用 yt-dlp，只处理单个视频（watch、短链接、Shorts、embed、live 链接），不批量处理播放列表或频道；默认选择最高 1080p 的 MP4 组合，优先 AVC 视频与 M4A 音频，并使用本机 FFmpeg 合并。实际可用格式及画质以平台返回为准。
-- 本轮公开授权 YouTube 样本使用 Blender Foundation 的《Sintel》（CC BY 3.0），实测范围与限制见 [下载反馈与 YouTube 验收](docs/mcp-download-feedback-youtube.md)。
+- 本轮公开授权 YouTube 样本使用 Blender Foundation 的《Sintel》（CC BY 3.0），实测范围与限制见 [下载反馈与 YouTube 验收](docs/archive/mcp-download-feedback-youtube.md)。
 
 解析不会自动下载完整视频。平台支持受页面变化、登录状态、权限和风控影响，不保证每个链接可用，也不绕过访问权限。浏览器不能播放某种编码时，可打开项目文件夹交给本地播放器。
 
@@ -145,7 +157,7 @@ React 工作台用于交互操作，Python CLI 便于脚本调用，两者共用
 .\.venv\Scripts\python.exe cli.py doctor --deep --json
 
 # 打开本地工作台
-.\start-web.ps1 -OpenBrowser
+.\scripts\start-web.ps1 -OpenBrowser
 ```
 
 访问 **http://127.0.0.1:15001**，粘贴链接开始；也可双击 `start-web.cmd`。保持终端开启，按 `Ctrl+C` 停止。需要换端口时，使用 `-Port 15002`。
@@ -203,7 +215,7 @@ React 工作台用于交互操作，Python CLI 便于脚本调用，两者共用
 | `QWEN_API_BASE_URL` | OpenAI 兼容接口地址 |
 | `QWEN_MODEL_ID` | 视觉模型标识 |
 | `MAX_FRAMES` | AI 分析默认抽样帧数 |
-| `VIDEO_LIBRARY_ROOT` | 资料库路径，默认 `library/` |
+| `VIDEO_LIBRARY_ROOT` | 资料库路径，默认 `outputs/` |
 
 **本地转写不上传音视频；AI 分析会把所选画面和/或字幕文本发送给配置的模型服务（本机模型除外）。** 分析前请确认素材允许上传。AI 分析不读取音轨，需要语音内容时请先生成字幕；取消本地等待无法保证撤销服务端已经产生的计算或费用。
 
@@ -215,7 +227,7 @@ React 工作台用于交互操作，Python CLI 便于脚本调用，两者共用
 <summary><strong>查看目录职责</strong></summary>
 
 ```text
-src/video_parser/
+backend/video_parser/
 ├─ web/              FastAPI 与工作台接口
 ├─ services/         任务、资源库、下载、字幕、转写与分析
 ├─ integrations/     B站字幕与 Whisper 模块
@@ -223,20 +235,21 @@ src/video_parser/
 ├─ core/             路径、配置与日志
 └─ cli.py            CLI 实现
 frontend/            React + TypeScript 工作台
-assets/readme/       README 静态 SVG 视觉资源
+docs/assets/readme/       README 静态 SVG 视觉资源
 scripts/             安装、校验与性能检查
-requirements/        Python 环境锁文件
+configs/requirements/        Python 环境锁文件
 tests/               离线、浏览器、运行时与真实平台测试
 docs/                使用、架构与开发文档
-library/             正式资料库
-outputs/             转写结果与其他本地产物
-cache/               临时文件与可复用缓存
-models/              本地模型
+outputs/             持久项目成果；transcriptions/ 保存独立转写
+.local/work/cache/   临时文件与可复用缓存
+.local/work/logs/    运行日志
+.local/work/artifacts/ 开发验证证据
+runtimes/models/     本地模型
 runtimes/            独立运行环境与浏览器
 .local/              本地凭据与任务记录
 ```
 
-数据与运行目录按安装、使用情况生成。根目录 `cli.py` 是命令行入口，`start-web.ps1` 是工作台启动器。当前支持源码仓库运行，不承诺单独安装 wheel 即可获得完整前端和本机配置。
+数据与运行目录按安装、使用情况生成。根目录 `cli.py` 是命令行入口，`start-web.cmd` 是工作台双击入口，实现在 `scripts/start-web.ps1`。当前支持源码仓库运行，不承诺单独安装 wheel 即可获得完整前端和本机配置。
 
 </details>
 
