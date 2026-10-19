@@ -86,7 +86,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const archiveMeta = archive?.has_subtitles ? ['本地归档', archive.selected?.language ? languageName(archive.selected.language) : '',
     archive.files.length > 1 ? `${archive.files.length} 个字幕文件` : ''].filter(Boolean).join(' · ') : '';
   return <Panel className={'transcription-panel' + (mode === 'video' ? ' is-video' : '')} aria-label="字幕与转写">
-    {ready === false && !platformMode && !selectedSource?.has_subtitles && <p className="error-text" role="alert">未找到项目内 Whisper 环境或模型，请运行 scripts/setup-local-tools.ps1 -DownloadModel 后重启后端。</p>}
+    {ready === false && !platformMode && !selectedSource?.has_subtitles && <p className="error-text" role="alert">本机转写组件未安装（需要 NVIDIA 显卡），可以先用平台字幕。</p>}
     <div className="transcription-head">
       <div className="source-switch" role="group" aria-label="来源">
         <button type="button" aria-pressed={mode === 'upload'} disabled={locked} onClick={() => setMode('upload')}>上传文件</button>

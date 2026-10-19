@@ -1,0 +1,9 @@
+# Optional desktop window for the portable Windows build (video_parser.desktop); not needed for development.
+# Resolved with: uv pip compile -c windows-main.lock.txt --python-version 3.13 --python-platform windows
+bottle==0.13.4
+cffi==2.1.1
+clr-loader==0.3.1
+proxy-tools==0.1.0
+pycparser==3.11
+pythonnet==3.2.1
+pywebview==6.2.1

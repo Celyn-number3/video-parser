@@ -29,6 +29,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["httpx2==2.13.1"]
+# Desktop window for the portable Windows build only; see configs/requirements/windows-desktop.lock.txt.
+desktop = ["pywebview==6.2.1"]
 
 [project.scripts]
 video-parser = "video_parser.cli:main"

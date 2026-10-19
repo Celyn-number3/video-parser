@@ -11,6 +11,8 @@ import re
 from threading import Lock
 from urllib.parse import urlparse
 
+from video_parser.core.browser import launch_chromium
+
 _browser_lock = Lock()
 
 
@@ -107,7 +109,7 @@ def _resolve(identifier, kind):
     browser = None
     with sync_playwright() as playwright:
         try:
-            browser = playwright.chromium.launch(headless=True, timeout=15000)
+            browser = launch_chromium(playwright, headless=True, timeout=15000)
             context = browser.new_context(viewport={'width': 1280, 'height': 800}, locale='zh-CN')
             saved = saved_cookies()
             if saved:

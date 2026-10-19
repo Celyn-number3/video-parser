@@ -6,6 +6,7 @@ export interface Configuration {
   transcription_ready: boolean;
   transcription_upload_limit: number;
   archive_root: string;
+  version?: string;
   ai?: AISettings;
 }
 

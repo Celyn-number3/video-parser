@@ -20,7 +20,7 @@ from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
 from video_parser.core import desktop
-from video_parser.core.paths import CACHE_DIR
+from video_parser.core.paths import CACHE_DIR, ROOT
 from video_parser.services import videos, ai_settings
 from video_parser.services import library as library
 from video_parser.platforms.downloaders.douyin_downloader import DouyinAccessError
@@ -155,6 +155,15 @@ def select_session(entry, quality_id=None):
     return choice
 
 
+def app_version():
+    """Version shown in Settings; read from pyproject so portable builds need no installed metadata."""
+    try:
+        import tomllib
+        return tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
+    except (OSError, KeyError, ValueError):
+        return ''
+
+
 @router.get('/config')
 def configuration():
     return {'platforms': list(videos.CONFIG['PLATFORM_MAP']),
@@ -162,7 +171,7 @@ def configuration():
             'media_ready': bool(shutil.which('ffmpeg') and shutil.which('ffprobe')),
             'subtitles_ready': subtitles.available(), 'transcription_ready': transcription.available(),
             'transcription_upload_limit': transcription.MAX_UPLOAD_BYTES,
-            'archive_root': str(library.LIBRARY_ROOT.resolve())}
+            'archive_root': str(library.LIBRARY_ROOT.resolve()), 'version': app_version()}
 
 
 @router.post('/parse')

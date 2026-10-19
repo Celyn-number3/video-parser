@@ -88,7 +88,7 @@ export default function SettingsPage({ settings, onChange, config, configError, 
           <p className="settings-hint">缓存清理不影响已归档内容。</p>
         </section>
         <section className="settings-card" aria-labelledby="settings-services"><h3 id="settings-services">服务状态</h3>
-          {config ? <ul className="service-status"><li>媒体工具：{config.media_ready ? '就绪' : '未就绪'}</li><li>字幕：{config.subtitles_ready ? '就绪' : '未就绪'}</li><li>转录：{config.transcription_ready ? '就绪' : '未就绪'}</li><li>AI 连接配置：{config.ai_configured ? '已配置' : '未配置'}</li></ul> : <p className="settings-hint">{configError || '正在读取…'}</p>}
+          {config ? <ul className="service-status"><li>媒体工具：{config.media_ready ? '就绪' : '未就绪'}</li><li>字幕：{config.subtitles_ready ? '就绪' : '未就绪'}</li><li>转录：{config.transcription_ready ? '就绪' : '未安装'}</li><li>AI 连接配置：{config.ai_configured ? '已配置' : '未配置'}</li>{config.version && <li>版本：{config.version}</li>}</ul> : <p className="settings-hint">{configError || '正在读取…'}</p>}
         </section>
         <div className="settings-card settings-card-wide"><CacheManager activeCount={activeCount} /></div>
       </div>

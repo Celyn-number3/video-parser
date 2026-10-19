@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from video_parser.core.browser import bundled_chromium_ready, launch_chromium, system_edge
 from video_parser.core.paths import ROOT, CACHE_DIR
 from video_parser.services import library,transcription
 
@@ -33,9 +34,11 @@ def checks(deep=False):
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as manager:
-            browser['ready']=Path(manager.chromium.executable_path).is_file()
+            bundled=bundled_chromium_ready(manager)
+            browser['ready']=bundled or system_edge() is not None
+            browser['engine']='bundled-chromium' if bundled else 'msedge'
             if deep and browser['ready']:
-                instance=manager.chromium.launch(headless=True);instance.close();browser['launch_verified']=True
+                instance=launch_chromium(manager,headless=True);instance.close();browser['launch_verified']=True
     except Exception as error:browser={'ready':False,'error_type':type(error).__name__}
     gpu={'checked':False,'note':'使用 doctor --deep 校验 CUDA 运行时；不切换 CPU。'}
     if deep:

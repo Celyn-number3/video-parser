@@ -11,11 +11,14 @@ if __package__:
     from . import checker
     from .events import emit
 else:
+    # Run as a script. The portable build's embedded Python (._pth) does not put the script folder on sys.path.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     import checker
     from events import emit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+from video_parser.core.browser import launch_chromium
 from video_parser.core.paths import CACHE_DIR
 os.environ['PLAYWRIGHT_BROWSERS_PATH'] = str(PROJECT_ROOT / 'runtimes/browsers')
 COOKIE_FILE = PROJECT_ROOT / ".local/credentials/bilibili-cookies.json"
@@ -248,7 +251,7 @@ def _click_subtitle_in_player(page) -> str | None:
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = launch_chromium(p, headless=True)
         context = browser.new_context(viewport={"width": 1280, "height": 720})
         page = context.new_page()
 

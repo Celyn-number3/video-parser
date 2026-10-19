@@ -26,7 +26,11 @@ worker_lock = Lock()
 
 
 def runtime_python():
-    return ROOT / 'runtimes/whisper/Scripts/python.exe' if TOOL_ROOT == BUNDLED_ROOT else TOOL_ROOT / '.venv/Scripts/python.exe'
+    if TOOL_ROOT != BUNDLED_ROOT:
+        return TOOL_ROOT / '.venv/Scripts/python.exe'
+    # Portable builds install an embedded interpreter (python.exe at the root); developer setups use a venv.
+    embedded = ROOT / 'runtimes/whisper/python.exe'
+    return embedded if embedded.is_file() else ROOT / 'runtimes/whisper/Scripts/python.exe'
 
 
 def model_directory():
@@ -39,7 +43,7 @@ def available():
 
 def require_tool():
     if not available():
-        raise FileNotFoundError('未找到项目内 Whisper 环境或模型，请运行 scripts/setup-local-tools.ps1 -DownloadModel；使用旧外部环境时检查 WHISPER_ROOT。')
+        raise FileNotFoundError('本机转写组件未安装（需要 NVIDIA 显卡）。开发环境请运行 scripts/setup-local-tools.ps1 -DownloadModel；使用旧外部环境时检查 WHISPER_ROOT。')
 
 
 def validate_language(language):

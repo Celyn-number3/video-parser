@@ -1,4 +1,5 @@
 """Central repository, runtime and historical-task paths for the local workspace."""
+import os
 from pathlib import Path
 
 
@@ -13,7 +14,26 @@ def project_root(anchor: Path | None = None) -> Path:
 
 
 ROOT = project_root()
+
+
+def instance_id(root: Path | None = None) -> str:
+    """Short stable id of an install folder; the desktop launcher only reuses a running server from the same install."""
+    import hashlib
+    folder = os.path.normcase(str(Path(root or ROOT).resolve()))
+    return hashlib.sha256(folder.encode('utf-8')).hexdigest()[:12]
 FRONTEND_DIR = ROOT / 'frontend' / 'dist'
+# Portable builds ship ffmpeg/ffprobe here; developer setups keep using the copy on PATH.
+BUNDLED_TOOLS_DIR = ROOT / 'runtimes' / 'ffmpeg' / 'bin'
+
+
+def use_bundled_tools(environ=os.environ, folder: Path = BUNDLED_TOOLS_DIR) -> None:
+    """Put bundled media tools ahead of PATH so subprocess, shutil.which and yt-dlp all find them."""
+    entries = environ.get('PATH', '').split(os.pathsep)
+    if folder.is_dir() and str(folder) not in entries:
+        environ['PATH'] = os.pathsep.join([str(folder), *filter(None, entries)])
+
+
+use_bundled_tools()
 
 
 def runtime_directory(name: str, root: Path = ROOT) -> Path:

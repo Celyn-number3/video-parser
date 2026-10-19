@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from video_parser.web.routes import router as workspace_router
 
-from video_parser.core.paths import FRONTEND_DIR
+from video_parser.core.paths import FRONTEND_DIR, instance_id
 app = FastAPI(
     title='Video Parser 工作台',
     description='本地视频解析、归档、画面分析、字幕与转写服务',
@@ -66,7 +66,7 @@ async def root():
 
 @app.get('/health')
 async def health_check():
-    return {'status': 'healthy', 'timestamp': int(time.time() * 1000)}
+    return {'status': 'healthy', 'timestamp': int(time.time() * 1000), 'instance': instance_id()}
 
 
 if __name__ == '__main__':
