@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from PIL import Image
@@ -102,7 +103,7 @@ def check_icons(page):
 
 def main():
     assert (ROOT / 'frontend/dist/index.html').is_file(), 'Build the React frontend first'
-    output = ROOT / 'outputs/react-preview'
+    output = ROOT / '.local/work/artifacts/react-preview'
     output.mkdir(parents=True, exist_ok=True)
     report = {'platform_requests': 0, 'paid_model_requests': 0, 'checks': []}
     with tempfile.TemporaryDirectory(prefix='react-e2e-') as directory:
@@ -211,11 +212,13 @@ for episode in valid:
             if 'slow' in text:
                 time.sleep(.8)
             is_bilibili = 'bilibili' in text
+            part = int(parse_qs(urlparse(text).query).get('p', ['1'])[0]) if is_bilibili else None
             video = '/video-only.mp4' if is_bilibili else '/slow.mp4' if 'slow-download' in text else '/retry.mp4' if 'retry' in text else '/fixture.mp4'
             parsed = cli.ParsedVideo({'title': '本地音视频合并验证' if is_bilibili else '本地视频验证',
                 'bilibili_cookie_status': 'reused_unverified' if is_bilibili else None,
                 'platform': '哔哩哔哩' if is_bilibili else '抖音', 'video_id': 'BV1TaqYBcEJc' if is_bilibili else text.rstrip('/').split('/')[-1],
-                'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc' if is_bilibili else text,
+                'source_url': f'https://www.bilibili.com/video/BV1TaqYBcEJc?p={part}' if is_bilibili else text,
+                'episodes': [{'part': 1, 'title': '第一讲', 'duration': 75}, {'part': 2, 'title': '核心内容', 'duration': 180}, {'part': 3, 'title': '总结', 'duration': 120}] if is_bilibili else [],
                 'cover_url': base + ('/missing.png' if 'no-cover' in text else '/cover.png'),
                 'duration': 2, 'video_url': base + video}, {}, [base + video], [base + '/audio.m4a'] if is_bilibili else [])
             if is_bilibili:
@@ -251,7 +254,7 @@ for episode in valid:
                         url = f'http://127.0.0.1:{port}'
                         page.goto(url)
                         page.wait_for_load_state('networkidle')
-                        source = page.get_by_role('textbox', name='添加视频链接')
+                        source = page.get_by_role('textbox', name='视频链接或分享文本')
                         status = page.locator('.details-panel').get_by_role('status')
                         parse_button = page.get_by_role('button', name='解析视频', exact=True)
                         download_button = page.locator('.download-button')
@@ -265,14 +268,14 @@ for episode in valid:
                         page.screenshot(path=str(output/'mobile.png'),full_page=True)
                         page.set_viewport_size({'width':1440,'height':1000})
                         page.screenshot(path=str(output/'desktop.png'),full_page=True)
-                        page.get_by_role('tab',name='视频预览').focus();page.keyboard.press('ArrowLeft')
-                        expect(page.get_by_role('tab',name='封面图片')).to_be_focused()
+                        page.get_by_role('tab',name='AI 分析').focus();page.keyboard.press('ArrowLeft')
+                        expect(page.get_by_role('tab',name='视频')).to_be_focused()
                         page.keyboard.press('End')
                         expect(page.get_by_role('tab',name='AI 分析')).to_be_focused()
                         expect(page.get_by_role('button',name='开始分析')).to_be_disabled()
                         page.get_by_role('button',name='设置',exact=True).click()
                         page.get_by_label('归档完成提醒',exact=True).check()
-                        page.keyboard.press('Escape')
+                        page.locator('.app-sidebar').get_by_role('button', name='视频工作台', exact=True).click()
                         page.get_by_role('button',name='哔哩哔哩',exact=True).click()
                         before_parse=state['parse_calls']
                         parse_button.evaluate('el=>{el.click();el.click()}')
@@ -300,7 +303,7 @@ for episode in valid:
                         page.get_by_role('button',name='关闭归档提醒').click()
                         assert not accidental,'Archive download must not automatically export'
                         page.remove_listener('download',delivery)
-                        page.get_by_role('tab',name='视频预览').click()
+                        page.get_by_role('tab',name='视频').click()
                         page.wait_for_function("document.querySelector('video')?.readyState>=2")
                         low_url=page.locator('video').get_attribute('src')
                         assert page.locator('video').evaluate('el=>el.videoHeight')==180
@@ -346,7 +349,7 @@ for episode in valid:
                         assert pinfo['resources'][report_name]['video_resource']==low_url.split('/files/')[1]
                         page.reload();page.wait_for_load_state('networkidle')
                         expect(status).to_have_text('已恢复视频项目')
-                        page.get_by_role('tab',name='视频预览').click()
+                        page.get_by_role('tab',name='视频').click()
                         assert page.locator('video').get_attribute('src')==low_url
                         quality=page.get_by_label('视频清晰度',exact=True)
                         assert len(quality.locator('option').all_text_contents())==2
@@ -395,7 +398,7 @@ for episode in valid:
                         # One action: real API -> CLI subprocess -> checker -> JSON/SRT/MD downloads, no ZIP.
                         subtitle_panel = page.locator('.subtitle-panel')
                         subtitle_status = subtitle_panel.get_by_role('status')
-                        page.get_by_role('textbox', name='添加视频链接').fill('https://www.bilibili.com/video/BV1TaqYBcEJc?p=3')
+                        page.get_by_role('textbox', name='视频链接或分享文本').fill('https://www.bilibili.com/video/BV1TaqYBcEJc?p=3')
                         files = subtitle_downloads(page, subtitle_panel, 3, '本次下载 1 集，已有可用 0 集，未完成 0 集。')
                         expect(subtitle_panel.get_by_text('P3', exact=True)).to_be_visible()
                         assert all(item.suggested_filename.startswith('P03_') for item in files)
@@ -430,7 +433,7 @@ for episode in valid:
                         page.remove_listener('download', collect_stale)
                         expect(subtitle_panel.get_by_role('button', name='下载字幕', exact=True)).to_be_disabled()
                         assert subtitle_panel.locator('.subtitle-results').count() == 0
-                        page.get_by_role('textbox', name='添加视频链接').fill('https://www.douyin.com/video/1')
+                        page.get_by_role('textbox', name='视频链接或分享文本').fill('https://www.douyin.com/video/1')
                         subtitle_panel.get_by_role('button', name='下载字幕', exact=True).click()
                         expect(subtitle_status).to_have_text('字幕下载目前只支持 B站 BV 视频链接。')
                         report['checks'].append('subtitle real subprocess, current/custom/all selection, reused files, automatic JSON/SRT/MD triplets (no ZIP), partial range, login error and stale-result isolation')

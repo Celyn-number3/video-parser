@@ -9,11 +9,11 @@ from playwright.sync_api import sync_playwright,expect
 # Button-surface checks were dropped on 2026-10-14: the approved minimal design system uses borderless ghost buttons.
 ROOT=Path(__file__).resolve().parents[2]
 if (ROOT/'runtimes/browsers').is_dir():os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH',str(ROOT/'runtimes/browsers'))
-OUT=ROOT/'outputs/frontend-layout-verification'
+OUT=ROOT/'.local/work/artifacts/frontend-layout-verification'
 URL=os.environ.get('FRONTEND_LAYOUT_URL','http://127.0.0.1:15001')
 WIDTHS=[1920,1551,1550,1549,1440,1171,1170,1169,1024,1001,1000,999,768,761,760,390,350,320,280]
-PAGES=[('workspace','视频工作台'),('transcription','字幕与转写'),('tasks','任务中心'),('accounts','账号与登录')]
-TABS=['封面图片','视频预览','AI 分析']  # 2026-10-14: B站字幕 tab merged into 字幕与转写
+PAGES=[('workspace','视频工作台'),('transcription','字幕与转写'),('tasks','任务中心'),('accounts','账号与登录'),('settings','设置')]
+TABS=['视频','AI 分析']  # 2026-10-14: B站字幕 tab merged into 字幕与转写
 
 def main():
  OUT.mkdir(parents=True,exist_ok=True);checks=[];measurements=[];errors=[];unexpected=[];posts=[]
@@ -97,10 +97,10 @@ def main():
      if mode=='classic' and width in [1440,390]:
       for _,name in PAGES:
        nav(name);page.screenshot(path=str(OUT/f'{name}-{width}.png'),full_page=True)
-      nav('视频工作台');page.get_by_role('tab',name='封面图片',exact=True).click();page.screenshot(path=str(OUT/f'封面图片-{width}.png'),full_page=True)
+      nav('视频工作台');page.get_by_role('tab',name='视频',exact=True).click();page.screenshot(path=str(OUT/f'封面图片-{width}.png'),full_page=True)
      if mode=='classic' and width==1920:check('Classic scrollbar gutter is truly allocated',page.evaluate('innerWidth-document.body.getBoundingClientRect().width>0'))
     page.set_viewport_size({'width':1440,'height':900});settle();nav('字幕与转写');page.get_by_role('button',name='设置',exact=True).click();before=page.locator('.modern-main').bounding_box();page.keyboard.press('Escape');settle();after=page.locator('.modern-main').bounding_box();check(f'{mode}: closing settings leaves shell geometry unchanged',close(before['x'],after['x']) and close(before['width'],after['width']))
-    nav('视频工作台');page.get_by_role('tab',name='视频预览',exact=True).click();page.reload(wait_until='networkidle');expect(page.locator('.info-title')).to_have_text(video['title']);check(f'{mode}: refresh restores project with no processing replay',all(path=='/parse' for path in posts))
+    nav('视频工作台');page.get_by_role('tab',name='视频',exact=True).click();page.reload(wait_until='networkidle');expect(page.locator('.info-title')).to_have_text(video['title']);check(f'{mode}: refresh restores project with no processing replay',all(path=='/parse' for path in posts))
     check(f'{mode}: no browser runtime exceptions',not errors);check(f'{mode}: every workspace API mocked',not unexpected)
    except Exception:
     page.screenshot(path=str(OUT/f'failure-{mode}.png'),full_page=True);raise

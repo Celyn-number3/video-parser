@@ -18,9 +18,9 @@ sys.path.insert(0, str(ROOT))
 def check_quality_selection():
     with tempfile.TemporaryDirectory(prefix='settings-ts-') as output:
         subprocess.run(['node', str(ROOT / 'frontend/node_modules/typescript/bin/tsc'),
-            'src/settings.ts', '--ignoreConfig', '--target', 'es2022', '--module', 'esnext', '--outDir', output,
+            'src/features/settings/settings.ts', '--ignoreConfig', '--target', 'es2022', '--module', 'esnext', '--outDir', output,
             '--skipLibCheck'], cwd=ROOT / 'frontend', check=True)
-        module = Path(output) / 'settings.js'
+        module = Path(output) / 'features/settings/settings.js'
         script = r"""import fs from 'node:fs'; import assert from 'node:assert/strict';
 const source = fs.readFileSync(process.argv[1], 'utf8');
 const { preferredQualityId } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
@@ -58,27 +58,53 @@ def main():
                 page.goto(f'http://127.0.0.1:{port}')
                 button = page.get_by_role('button', name='设置', exact=True)
                 button.click()
-                dialog = page.get_by_role('dialog', name='设置', exact=True)
-                expect(dialog).to_be_visible()
+                settings_page = page.get_by_test_id('page-settings')
+                expect(settings_page).to_be_visible()
+                expect(page.get_by_role('dialog', name='设置', exact=True)).to_have_count(0)
+                expect(page.locator('.sidebar-settings button')).to_have_attribute('aria-current', 'page')
                 expect(page.get_by_label('默认画质', exact=True)).to_have_value('best')
                 page.get_by_label('默认画质', exact=True).select_option('720p')
                 page.get_by_label('归档完成提醒', exact=True).check()
-                page.keyboard.press('Escape')
-                expect(dialog).not_to_be_visible()
-                expect(button).to_be_focused()
+                page.locator('.app-sidebar').get_by_role('button', name='视频工作台', exact=True).click()
+                expect(settings_page).to_be_hidden()
+                expect(page.locator('.app-sidebar').get_by_role('button', name='视频工作台', exact=True)).to_be_focused()
                 page.reload()
                 button = page.get_by_role('button', name='设置', exact=True)
                 button.click()
                 expect(page.get_by_label('默认画质', exact=True)).to_have_value('720p')
                 expect(page.get_by_label('归档完成提醒', exact=True)).to_be_checked()
-                page.get_by_role('button', name='恢复默认', exact=True).click()
+                page.get_by_role('button', name='恢复常用默认', exact=True).click()
                 expect(page.get_by_label('默认画质', exact=True)).to_have_value('best')
                 expect(page.get_by_label('归档完成提醒', exact=True)).not_to_be_checked()
                 assert page.evaluate("localStorage.getItem('video-parser:last-project')") == 'keep-project'
                 assert page.evaluate("localStorage.getItem('video-parser:last-quality')") == 'keep-quality'
+                page.get_by_role('button', name='存储与维护', exact=True).click()
                 expect(page.locator('.archive-root')).to_contain_text(str(Path(directory) / 'library'))
                 page.set_viewport_size({'width': 390, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'Settings overflow at 390px'
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.get_by_role('button', name='常用设置', exact=True).click()
+                page.locator('.language-switch label', has_text='English').click()
+                expect(page.get_by_role('radio', name='English', exact=True)).to_be_checked()
+                expect(page.locator('html')).to_have_attribute('lang', 'en')
+                expect(page.get_by_role('heading', name='Interface language', exact=True)).to_be_visible()
+                expect(page.get_by_label('Default quality', exact=True)).to_have_value('best')
+                expect(page.locator('.app-sidebar').get_by_role('button', name='Video workbench', exact=True)).to_be_visible()
+                assert page.evaluate("localStorage.getItem('vp-language')") == 'en'
+                page.reload()
+                page.get_by_role('button', name='Settings', exact=True).click()
+                expect(page.get_by_role('radio', name='English', exact=True)).to_be_checked()
+                expect(page.get_by_role('button', name='Restore general defaults', exact=True)).to_be_visible()
+                assert page.title() == 'Video Parser · Video workbench', page.title()
+                leftover = page.evaluate(r"""() => [...document.querySelectorAll('.app-sidebar *, .settings-page *')]
+                    .filter(node => node.offsetParent && !node.closest('[translate="no"]')
+                        && [...node.childNodes].some(child => child.nodeType === 3 && /[\u3400-\u9fff]/.test(child.data)))
+                    .map(node => node.textContent.trim())""")
+                assert leftover == [], leftover
+                page.locator('.language-switch label', has_text='中文').click()
+                expect(page.locator('html')).to_have_attribute('lang', 'zh-CN')
+                expect(page.get_by_label('默认画质', exact=True)).to_have_value('best')
+                assert page.evaluate("localStorage.getItem('vp-language')") == 'zh'
                 assert not errors, errors
                 blocked = browser.new_page()
                 blocked.add_init_script("const original=Storage.prototype.setItem; Storage.prototype.setItem=function(key,...args){if(key==='video-parser:settings') throw new DOMException('blocked','QuotaExceededError'); return original.call(this,key,...args)}")
@@ -92,7 +118,7 @@ def main():
             server.should_exit = True
             thread.join(timeout=10)
             sock.close()
-    print('Settings browser checks passed: malformed preference fallback, save/reload/reset isolation, dialog keyboard focus, archive path, and 390px layout.')
+    print('Settings browser checks passed: malformed preference fallback, save/reload/reset isolation, sidebar/page keyboard focus and grouped maintenance, archive path, 390px layout, and the English/Chinese interface switch.')
 
 
 if __name__ == '__main__':

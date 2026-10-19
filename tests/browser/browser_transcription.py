@@ -1,5 +1,6 @@
 """Real browser -> HTTP -> mocked GPU -> validated files; no external websites."""
 import json
+import re
 from pathlib import Path
 import socket
 import sys
@@ -31,7 +32,7 @@ def main():
     server = uvicorn.Server(uvicorn.Config(app, log_level='warning'))
     thread = threading.Thread(target=server.run, kwargs={'sockets': [sock]}, daemon=True)
     thread.start()
-    output = ROOT / 'outputs/verification-transcription'
+    output = ROOT / '.local/work/artifacts/verification-transcription'
     output.mkdir(parents=True, exist_ok=True)
     report = {'checks': [], 'gpu': 'mocked'}
     try:
@@ -55,13 +56,13 @@ def main():
                 panel.locator('#transcription-file').set_input_files(str(fixture.source))
                 panel.get_by_role('button', name='开始转写').click()
                 expect(panel.get_by_label('识别文字')).to_have_value('你好，世界。', timeout=10000)
-                for fmt in ('TXT', 'SRT'):
-                    with page.expect_download() as downloaded:
-                        panel.get_by_role('button', name='下载 ' + fmt, exact=True).click()
-                    download = downloaded.value
-                    assert download.suggested_filename.endswith('.' + fmt.lower())
-                    assert '你好' in Path(download.path()).read_text(encoding='utf-8')
-                report['checks'].append('local upload, polling, text display, TXT/SRT browser downloads')
+                # 2026-10-19: results are already written to disk, so the view shows where (and 打开文件夹)
+                # instead of TXT/SRT download buttons. Not clicked here: it would open a real Explorer window.
+                saved = panel.locator('.saved-location')
+                expect(saved).to_contain_text('outputs/transcriptions/')
+                expect(saved.get_by_role('button', name='打开文件夹', exact=True)).to_be_visible()
+                expect(panel.get_by_role('button', name=re.compile(r'^下载 (TXT|SRT)$'))).to_have_count(0)
+                report['checks'].append('local upload, polling, text display, saved location instead of downloads')
                 for width in (1280, 390):
                     page.set_viewport_size({'width': width, 'height': 900})
                     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width

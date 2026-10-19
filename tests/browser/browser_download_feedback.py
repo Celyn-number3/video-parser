@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright,expect
 ROOT=Path(__file__).resolve().parents[2]
 os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH',str(ROOT/'runtimes/browsers'))
-OUT=ROOT/'outputs/preview-download-placement';OUT.mkdir(parents=True,exist_ok=True)
+OUT=ROOT/'.local/work/artifacts/preview-download-placement';OUT.mkdir(parents=True,exist_ok=True)
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self,*args):pass
 server=ThreadingHTTPServer(('127.0.0.1',0),partial(Quiet,directory=str(ROOT/'frontend/dist')))
