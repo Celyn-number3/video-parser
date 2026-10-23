@@ -159,8 +159,8 @@ $Outputs = @()
 if (!$NoZip) {
     $ZipPath = Join-Path $Release "VideoParser-$Version-win64-portable.zip"
     if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath }
-    # Windows bsdtar, not a GNU tar from Git Bash on PATH (which treats "D:" as a remote host).
-    Checked (Join-Path $env:SystemRoot 'System32\tar.exe') @('-a', '-c', '-f', $ZipPath, '-C', $Release, 'VideoParser')
+    # Use the bundled standard library; Windows tar has crashed while creating ZIPs on hosted runners.
+    Checked $Python @('-m', 'zipfile', '-c', $ZipPath, $Stage)
     Write-Host ('Zip: {0} ({1:N0} MB)' -f $ZipPath, ((Get-Item -LiteralPath $ZipPath).Length / 1MB))
     $Outputs += $ZipPath
 }
