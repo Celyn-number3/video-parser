@@ -1,0 +1,75 @@
+# Windows release build: portable zip + installer (scripts/build-release.ps1 -Installer).
+# - Push a tag like v3.0.0: builds, then creates a DRAFT GitHub Release with the files and SHA256SUMS.
+#   Nothing is published automatically; review the draft and publish it by hand.
+# - Manual run (Actions > Release > Run workflow): builds only and keeps the files as a 7-day artifact.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.11.14'
+          enable-cache: false
+
+      - name: Cache pinned downloads (Python, ffmpeg, Inno Setup)
+        uses: actions/cache@v6
+        with:
+          path: .local/work/release/cache
+          key: release-downloads-${{ hashFiles('scripts/build-release.ps1') }}
+
+      - name: Tag must match the pyproject version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = ([regex]::Match((Get-Content -Raw pyproject.toml), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match pyproject version $version" }
+
+      - name: Build portable zip and installer
+        shell: powershell
+        run: ./scripts/build-release.ps1 -Installer
+
+      - name: Keep the build as an artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: video-parser-windows
+          path: |
+            .local/work/release/VideoParser-*-win64-portable.zip
+            .local/work/release/VideoParser-*-win64-setup.exe
+            .local/work/release/SHA256SUMS.txt
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem .local/work/release -File |
+            Where-Object { $_.Name -like 'VideoParser-*' -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME @files --draft --verify-tag --generate-notes `
+            --title "Video Parser $($env:GITHUB_REF_NAME.TrimStart('v'))"

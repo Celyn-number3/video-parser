@@ -33,5 +33,18 @@ class DesktopLauncherTests(unittest.TestCase):
             self.assertEqual(desktop.choose_port(), (desktop.PORTS[0], True))
 
 
+    def test_installer_matches_launcher(self):
+        script = (paths.ROOT / 'scripts/installer/VideoParser.iss').read_text(encoding='utf-8-sig')
+        self.assertIn(f'#define AppUserModelID "{desktop.APP_ID}"', script)
+        self.assertIn(f'#define AppMutexName "{desktop.MUTEX}"', script)
+        self.assertTrue(desktop.ICON.is_file())
+        icon = desktop.ICON.relative_to(paths.ROOT).as_posix().replace('/', '\\')
+        self.assertIn(f'#define AppIcon "{icon}"', script)
+        # Upgrades wipe the program folders, never the user's data.
+        upgrade = script.split('[InstallDelete]')[1].split('[Files]')[0]
+        for kept in ('outputs', '.local', '.env'):
+            self.assertNotIn('{app}\\' + kept + '"', upgrade)
+
+
 if __name__ == '__main__':
     unittest.main()

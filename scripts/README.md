@@ -11,6 +11,6 @@
 | 验证 | `scripts/verify-whisper-model.py` | 模型存在、大小与哈希检查；不自动重下载 |
 | 模型专项验证 | `scripts/check-local-ai.py` | 会实际调用限定的本机模型；不是无副作用的普通健康检查，不在常规回归中自动执行 |
 | 性能验证 | `scripts/benchmark-library-index.py` | 资料库索引专项基准；按脚本参数选择范围 |
-| 发布打包 | `scripts/build-release.ps1`、`scripts/write-third-party-notices.py` | 生成 Windows 便携包到 `.local/work/release/`；下载项固定 URL 与 SHA-256；只复制 git 跟踪或未忽略的文件；桌面入口为 `python -m video_parser.desktop` |
+| 发布打包 | `scripts/build-release.ps1`、`scripts/write-third-party-notices.py`、`scripts/installer/VideoParser.iss`、`.github/workflows/ci.yml`、`.github/workflows/release.yml` | 生成 Windows 便携包到 `.local/work/release/`，加 `-Installer` 同时生成安装程序（Inno Setup 7，以便携方式解压到 `.local/work/release/tools/`）；下载项固定 URL 与 SHA-256；只复制 git 跟踪或未忽略的文件；桌面入口为 `python -m video_parser.desktop`；CI 在 push/PR 时运行离线测试和前端类型检查；推送 `v*` 标签时 GitHub 生成 Release 草稿，需手动发布 |
 
 运行时缓存和日志默认分别为 `.local/work/cache/`、`.local/work/logs/`。旧安装在显式迁移前继续使用唯一的旧目录；新旧目录同时存在时拒绝启动，避免把历史任务与新任务分成两套。不要手工创建第二个缓存目录。

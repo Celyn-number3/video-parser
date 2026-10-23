@@ -21,6 +21,10 @@ ROOT = Path(__file__).resolve().parents[2]
 LOG_DIR = ROOT / '.local' / 'work' / 'logs'
 LOG_FILE = LOG_DIR / 'launcher.log'
 TITLE = 'Video Parser'
+ICON = Path(__file__).resolve().parent / 'assets' / 'app.ico'
+# Both must match scripts/installer/VideoParser.iss (AppUserModelID of the shortcuts, AppMutex).
+APP_ID = 'VideoParser.Desktop'
+MUTEX = 'VideoParser.Desktop.Running'
 PORTS = range(15001, 15021)
 CREATE_NO_WINDOW, DETACHED_PROCESS, CREATE_NEW_CONSOLE = 0x08000000, 0x00000008, 0x00000010
 # Local health checks must never go through a system or environment proxy.
@@ -63,6 +67,19 @@ def hide_child_consoles():
     console = Path(sys.executable).with_name('python.exe')
     if Path(sys.executable).name.lower() == 'pythonw.exe' and console.is_file():
         sys.executable = str(console)
+
+
+def windows_identity():
+    """Own taskbar entry (grouped with the Start menu shortcut, not with pythonw) and a mutex the installer
+    checks so it can ask the user to close the app before upgrading or uninstalling. Returns the mutex handle."""
+    if os.name != 'nt':
+        return None
+    import ctypes
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+    except (AttributeError, OSError):
+        pass
+    return ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX)
 
 
 def get_json(url, timeout=2.0):
@@ -172,7 +189,7 @@ def show(url, server):
 
     storage = ROOT / '.local' / 'webview'
     storage.mkdir(parents=True, exist_ok=True)
-    webview.start(navigate, private_mode=False, storage_path=str(storage))
+    webview.start(navigate, private_mode=False, storage_path=str(storage), icon=str(ICON) if ICON.is_file() else None)
 
 
 def check():
@@ -201,6 +218,7 @@ def main():
         return check()
     redirect_output()
     hide_child_consoles()
+    mutex = windows_identity()  # held until the process exits
     os.chdir(ROOT)
     port, running = choose_port()
     url = f'http://127.0.0.1:{port}/'

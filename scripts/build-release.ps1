@@ -4,11 +4,14 @@ Build the portable Windows package (stage 1 of docs: desktop release plan).
 Output (all under .local/work/release, nothing else is touched):
   VideoParser\                               staged app, runnable in place
   VideoParser-<version>-win64-portable.zip   zipped stage
+  VideoParser-<version>-win64-setup.exe      installer (-Installer, Inno Setup 7)
   SHA256SUMS.txt
-Downloads are pinned by URL and SHA-256 and cached in .local/work/release/cache.
+Downloads are pinned by URL and SHA-256 and cached in .local/work/release/cache. Inno Setup is unpacked in
+portable mode into .local/work/release/tools (no uninstaller, no registry entries); set VIDEO_PARSER_ISCC
+to use an existing ISCC.exe instead.
 Only git-tracked or new non-ignored files are copied, so .env, .local, outputs and credentials never ship.
 #>
-param([switch]$SkipFrontend, [switch]$NoZip)
+param([switch]$SkipFrontend, [switch]$NoZip, [switch]$Installer)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $Root = Split-Path $PSScriptRoot -Parent
@@ -20,9 +23,14 @@ $PythonVersion = '3.13.12'   # must match the interpreter the main lock was test
 $PythonZip = "python-$PythonVersion-embed-amd64.zip"
 $PythonUrl = "https://www.python.org/ftp/python/$PythonVersion/$PythonZip"
 $PythonSha = '76f238f606250c87c6beac75dccd35ee99070a13490555936abb6cb64ecce3d0'
-$FfmpegZip = 'ffmpeg-n8.1.3-14-g330caae0c1-win64-lgpl-shared-8.1.zip'
-$FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-08-13-05/$FfmpegZip"
-$FfmpegSha = '1af9562d002b8e2ab66817616e8a9211e77ab4b0fef58c5c345f467dc0213729'
+# BtbN keeps month-end builds for two years; daily builds expire after 14 days.
+$FfmpegZip = 'ffmpeg-n8.1.3-9-g29e619e767-win64-lgpl-shared-8.1.zip'
+$FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/$FfmpegZip"
+$FfmpegSha = '3e47bda1607740550141e37c0e49d1e5182b34699f15adfd137ee266d346811a'
+$InnoVersion = '7.1.0'
+$InnoExe = "innosetup-$InnoVersion-x64.exe"
+$InnoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/$InnoExe"
+$InnoSha = '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
 
 function Checked {
     param([string]$Program, [string[]]$Arguments)
@@ -60,6 +68,20 @@ function Copy-Listed {
         Copy-Item -LiteralPath $Source -Destination $Target
     }
     return @($Files).Count
+}
+
+function Get-InnoCompiler {
+    if ($env:VIDEO_PARSER_ISCC) { return $env:VIDEO_PARSER_ISCC }
+    $Dir = Join-Path $Release "tools\innosetup-$InnoVersion"
+    $Iscc = Join-Path $Dir 'ISCC.exe'
+    if (!(Test-Path -LiteralPath $Iscc)) {
+        $Setup = Get-Pinned $InnoUrl $InnoExe $InnoSha
+        Write-Host "Unpacking Inno Setup $InnoVersion (portable mode)"
+        $Arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/PORTABLE=1', '/NOICONS', '/TASKS=""', "/DIR=`"$Dir`"")
+        $Process = Start-Process -FilePath $Setup -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru
+        if ($Process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $Iscc)) { throw "Inno Setup unpack failed (exit $($Process.ExitCode))" }
+    }
+    return $Iscc
 }
 
 $Version = ([regex]::Match((Get-Content -Raw (Join-Path $Root 'pyproject.toml')), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
@@ -132,13 +154,32 @@ foreach ($Created in @('.local', 'outputs', 'cache', 'logs', 'var')) {
 $Size = (Get-ChildItem -LiteralPath $Stage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ('Stage: {0} ({1:N0} MB)' -f $Stage, $Size)
 
-# 9. Zip + checksums
+# 9. Zip
+$Outputs = @()
 if (!$NoZip) {
     $ZipPath = Join-Path $Release "VideoParser-$Version-win64-portable.zip"
     if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath }
     # Windows bsdtar, not a GNU tar from Git Bash on PATH (which treats "D:" as a remote host).
     Checked (Join-Path $env:SystemRoot 'System32\tar.exe') @('-a', '-c', '-f', $ZipPath, '-C', $Release, 'VideoParser')
-    $Hash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Set-Content -LiteralPath (Join-Path $Release 'SHA256SUMS.txt') -Encoding ascii -Value "$Hash  $(Split-Path $ZipPath -Leaf)"
     Write-Host ('Zip: {0} ({1:N0} MB)' -f $ZipPath, ((Get-Item -LiteralPath $ZipPath).Length / 1MB))
+    $Outputs += $ZipPath
+}
+
+# 10. Installer (Inno Setup 7, per-user, scripts\installer\VideoParser.iss)
+if ($Installer) {
+    $SetupPath = Join-Path $Release "VideoParser-$Version-win64-setup.exe"
+    if (Test-Path -LiteralPath $SetupPath) { Remove-Item -LiteralPath $SetupPath }
+    Checked (Get-InnoCompiler) @('/Q', "/DAppVersion=$Version", "/DStageDir=$Stage", "/DOutputDir=$Release",
+        (Join-Path $Root 'scripts\installer\VideoParser.iss'))
+    if (!(Test-Path -LiteralPath $SetupPath)) { throw "Installer not produced: $SetupPath" }
+    Write-Host ('Installer: {0} ({1:N0} MB)' -f $SetupPath, ((Get-Item -LiteralPath $SetupPath).Length / 1MB))
+    $Outputs += $SetupPath
+}
+
+# 11. Checksums for whatever was produced in this run
+if ($Outputs) {
+    $Lines = foreach ($Output in $Outputs) {
+        "$((Get-FileHash -LiteralPath $Output -Algorithm SHA256).Hash.ToLowerInvariant())  $(Split-Path $Output -Leaf)"
+    }
+    Set-Content -LiteralPath (Join-Path $Release 'SHA256SUMS.txt') -Encoding ascii -Value $Lines
 }

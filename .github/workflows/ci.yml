@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: '0.11.14'
+          enable-cache: false
+
+      - name: Install locked Windows Python dependencies
+        shell: pwsh
+        run: |
+          uv python install 3.13.12
+          uv venv --python 3.13.12 .venv
+          uv pip install --python .venv/Scripts/python.exe -r configs/requirements/windows-main.lock.txt
+
+      - name: Run offline Python tests
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE 'backend'
+          .\.venv\Scripts\python.exe -m unittest discover -s tests/offline -p "test_*.py"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-fund --no-audit
+
+      - name: Type-check frontend
+        working-directory: frontend
+        run: npm run typecheck

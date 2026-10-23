@@ -27,6 +27,15 @@
 
 在**学习视图**中可直接选择已归档项目并切换分集；阅读摘要不会隐藏当前视频已有的章节目录和时间轴。顶部“字幕层级命名”支持字幕驱动的系列命名建议、手动编辑、真实文件清单预览、单独确认执行与恢复原命名。只有明确同意后才会向所选模型发送字幕选段，不会自动改名真实课程。
 
+## Windows 桌面版
+
+正式版发布后，可从 [GitHub Releases](https://github.com/Celyn-number3/video-parser/releases/latest) 下载。支持 Windows 10/11 x64。
+
+- **安装版**：运行 `VideoParser-<版本>-win64-setup.exe`，按向导安装到当前用户目录，无需管理员权限；可创建开始菜单和桌面快捷方式。升级会保留下载内容、字幕、登录状态和设置；卸载时会询问是否删除这些数据。
+- **便携版**：解压 `VideoParser-<版本>-win64-portable.zip` 到有写入权限的目录，双击 `Video Parser.cmd`。无需另装 Python、Node 或 Git。
+- 每个 Release 附带 `SHA256SUMS.txt`。下载后请先核对文件哈希。当前版本尚未进行代码签名，Windows SmartScreen 可能提示“未知发布者”；只有在确认从官方 Releases 下载且哈希匹配后，才考虑通过“更多信息 → 仍要运行”启动。
+- 当前安装包不包含本机 Whisper/CUDA 转写、大模型或内置 Chromium。桌面窗口使用 Edge WebView2；若系统缺少 WebView2，会回退到默认浏览器。桌面版的登录状态与普通浏览器相互独立，需在应用内登录。
+
 ## 应用截图
 
 ### 视频工作台
@@ -268,4 +277,4 @@ npm.cmd --prefix frontend run dev
 
 ## 许可与使用范围
 
-适用的许可与第三方代码说明见 [LICENSE](LICENSE) 和 [许可说明](docs/integrated-tools-provenance.md)。不同来源的代码可能适用不同许可，发布或分发前请确认授权范围。请仅处理拥有或获得授权的素材，并遵守平台条款。
+适用的许可与第三方代码说明见 [LICENSE](LICENSE) 和 [许可说明](docs/integrated-tools-provenance.md)。不同来源的代码可能适用不同许可，发布或分发前请确认授权范围。本工具仅供个人学习、备份和处理你拥有或已获授权的素材；不提供去水印或绕过付费、DRM 与访问控制的功能。请遵守版权法律及平台条款，使用者需自行确认并承担素材授权与下载行为的责任。
