@@ -217,7 +217,7 @@ class LogicTests(unittest.TestCase):
         parsed = self.cli.ParsedVideo({'source_url': 'https://www.bilibili.com/video/BV123', 'title': 'title', 'video_id': 'BV123', 'platform': '哔哩哔哩'}, {}, ['https://cdn/video'], ['https://cdn/audio'])
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / 'report.md'
-            downloads = Path(directory) / 'downloads'
+            downloads = Path(directory).resolve() / 'downloads'
             def download(video, target):
                 self.assertEqual(Path(target).parent, downloads)
                 self.assertEqual(Path(target).suffix, '.mp4')

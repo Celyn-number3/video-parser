@@ -14,7 +14,7 @@ class OutputDestinationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         patch.object(folders, 'STATE', self.root / 'state/output-folders.json').start()
         patch.object(library, 'LIBRARY_ROOT', self.root / 'library').start()
         patch.object(transcription, 'OUTPUT_ROOT', self.root / 'outputs').start()

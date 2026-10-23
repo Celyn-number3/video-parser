@@ -10,7 +10,7 @@ from video_parser.services import library as library
 class QualityTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        self.root=Path(self.temp.name);self.addCleanup(patch.stopall)
+        self.root=Path(self.temp.name).resolve();self.addCleanup(patch.stopall)
         patch.object(library,'LIBRARY_ROOT',self.root/'library').start()
         self.video=[
             {'id':80,'width':1920,'height':1080,'codecs':'hev1','bandwidth':200,'baseUrl':'https://fixture/hevc'},

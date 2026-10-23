@@ -1,5 +1,7 @@
 """Offline checks for the desktop launcher's single-instance rule."""
 from pathlib import Path
+import re
+import tomllib
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -32,6 +34,15 @@ class DesktopLauncherTests(unittest.TestCase):
             replies['/health']['instance'] = paths.instance_id()
             self.assertEqual(desktop.choose_port(), (desktop.PORTS[0], True))
 
+
+    def test_main_lock_covers_declared_dependencies(self):
+        project = tomllib.loads((paths.ROOT / 'pyproject.toml').read_text(encoding='utf-8'))
+        lock = (paths.ROOT / 'configs/requirements/windows-main.lock.txt').read_text(encoding='utf-8')
+        normalise = lambda name: re.sub(r'[-_.]+', '-', name).lower()
+        locked = {normalise(line.split('==')[0]) for line in lock.splitlines() if '==' in line and not line.startswith('#')}
+        for requirement in project['project']['dependencies']:
+            name = re.match(r'[\w.-]+', requirement).group()
+            self.assertIn(normalise(name), locked, f'{name} is missing from the Windows runtime lock')
 
     def test_installer_matches_launcher(self):
         script = (paths.ROOT / 'scripts/installer/VideoParser.iss').read_text(encoding='utf-8-sig')
