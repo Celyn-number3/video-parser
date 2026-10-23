@@ -177,7 +177,7 @@ class TranscriptionTests(unittest.TestCase):
         response = self.client.post('/api/workspace/transcriptions', json={
             'project_id': project['id'], 'resource': name, 'language': 'en'})
         result = self.finish(response)
-        self.assertEqual(result['state'], 'completed')
+        self.assertEqual(result['state'], 'completed', result)
         resources = library.get(project['id'])['resources']
         saved = [item for item in resources.values() if item['kind'] == 'transcription']
         self.assertEqual(len(saved), 2)
