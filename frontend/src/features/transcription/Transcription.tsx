@@ -21,12 +21,12 @@ function duration(seconds: number | null) {
 }
 const megabytes = (bytes: number) => bytes >= 1024 ** 3 ? (bytes / 1024 ** 3).toFixed(1) + ' GB' : (bytes / 1024 ** 2).toFixed(1) + ' MB';
 
-export default function Transcription({ projectId, media, ready, subtitlesReady, uploadLimit, reuseModel, pending, focusRequest, config, onOpenSettings }: TranscriptionOptions & { ready?: boolean; subtitlesReady?: boolean; config?: Configuration | null; onOpenSettings?: (button: HTMLButtonElement) => void }) {
+export default function Transcription({ projectId, media, ready, subtitlesReady, uploadLimit, reuseModel, pending, focusRequest, visible, onSelectSource, config, onOpenSettings }: TranscriptionOptions & { ready?: boolean; subtitlesReady?: boolean; config?: Configuration | null; onOpenSettings?: (button: HTMLButtonElement) => void }) {
   const { destination, setDestination, targetProject, setTargetProject, folder, picking, pickFolder, projects, saveNotice, destinationReady,
     pendingSource, pendingKey, isBilibili, archived, chooseSource, effectiveMethod: method, setMethod,
     mode, setMode, sources, sourcesError, selectedKey, selectedSource, reloadSources, canRetry, requested, retryAs, batchFiles,
     batchNotice, file, job, busy, error, cancelling, limit, running, hasJob,
-    selectFiles, start, cancel, refresh } = useTranscription({ projectId, media, uploadLimit, reuseModel, pending, focusRequest });
+    selectFiles, start, cancel, refresh } = useTranscription({ projectId, media, uploadLimit, reuseModel, pending, focusRequest, visible, onSelectSource });
   const [filter, setFilter] = useState('');
   const [archiveState, setArchiveState] = useState<{ key: string; data: ArchivedSubtitles } | null>(null);
   const [archiveError, setArchiveError] = useState('');
@@ -35,7 +35,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const archive = archiveState?.key === archiveKey ? archiveState.data : null;
   useEffect(() => { setSubtitleResource(''); }, [selectedKey]);
   useEffect(() => {
-    setArchiveState(null); setArchiveError('');
+    setArchiveState(current => current?.key === archiveKey ? current : null); setArchiveError('');
     if (!archiveKey || !selectedSource) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ video_resource: selectedSource.resource });
@@ -45,7 +45,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
       .catch(reason => { if (!controller.signal.aborted) setArchiveError(reason instanceof Error ? reason.message : '无法读取已有字幕，请刷新列表。'); });
     return () => controller.abort();
   }, [archiveKey, subtitleResource, sources]);
-  const locked = busy || running;
+  const selectingLocked = busy && !job;
   const [acquireOpen, setAcquireOpen] = useState(false);
   // Re-fetch controls start collapsed for every newly selected video that already has subtitles.
   useEffect(() => { setAcquireOpen(false); }, [selectedKey, mode]);
@@ -54,7 +54,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const asked = job?.requested_language && job.requested_language !== 'auto' ? job.requested_language : requested;
   const forced = asked !== 'auto';
   // Only show a finished result under the source it belongs to.
-  const jobForSelection = !job || isActive(job.state) || (job.source_project_id
+  const jobForSelection = !job || (job.source_project_id
     ? mode === 'video' && !!selectedSource && job.source_project_id === selectedSource.project_id && job.source_resource === selectedSource.resource
     : mode === 'upload');
   // A translation of this video's subtitles (e.g. restored after a reload) belongs in the subtitle card's
@@ -63,12 +63,15 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const restoredTranslation = videoTranslation && !!selectedSource && job?.source_project_id === selectedSource.project_id
     && job.source_resource === selectedSource.resource ? job : null;
   const shownJob = jobForSelection && !videoTranslation ? job : null;
-  const transcribing = busy || (!!shownJob && isActive(shownJob.state));
+  const locked = selectingLocked || (jobForSelection && (busy || running));
+  const viewBusy = busy && jobForSelection;
+  const transcribing = viewBusy || (!!shownJob && isActive(shownJob.state));
+  const shownError = jobForSelection ? error : '';
   const detected = shownJob && !isActive(shownJob.state) && shownJob.language ? shownJob.language : '';
   // Offer the other language after a finished run; for anything else (e.g. 粤语) offer both.
   const retryLanguages = (detected === 'zh' ? ['en'] : detected === 'en' ? ['zh'] : ['zh', 'en']) as ('zh' | 'en')[];
   // Idle placeholder text is omitted; the live region stays mounted but collapses when empty.
-  const statusText = error || shownJob?.message || (busy ? '正在提交到本机服务…' : '');
+  const statusText = shownError || shownJob?.message || (viewBusy ? '正在提交到本机服务…' : '');
   const sourceProject = projects?.find(item => item.id === selectedSource?.project_id);
   const destinationHint = destination === 'source' ? (sourceProject ? `outputs/${sourceProject.location}/subtitles/` : '和视频放在同一个项目文件夹')
     : destination === 'default' ? 'outputs/transcriptions/' : destination === 'project' ? (projects?.find(item => item.id === targetProject)?.location ? `outputs/${projects?.find(item => item.id === targetProject)?.location}/subtitles/` : '') : '';
@@ -88,10 +91,11 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     archive.files.length > 1 ? `${archive.files.length} 个字幕文件` : ''].filter(Boolean).join(' · ') : '';
   return <Panel className={'transcription-panel' + (mode === 'video' ? ' is-video' : '')} aria-label="字幕与转写">
     {ready === false && !platformMode && !selectedSource?.has_subtitles && <p className="error-text" role="alert">本机转写组件未安装（需要 NVIDIA 显卡），可以先用平台字幕。</p>}
+    {job && isActive(job.state) && !jobForSelection && <p className="notice" role="status">其他视频的转写仍在后台运行，切换不会取消任务。可在任务中心查看。</p>}
     <div className="transcription-head">
       <div className="source-switch" role="group" aria-label="来源">
-        <button type="button" aria-pressed={mode === 'upload'} disabled={locked} onClick={() => setMode('upload')}>上传文件</button>
-        <button type="button" aria-pressed={mode === 'video'} disabled={locked} onClick={() => setMode('video')}>已归档视频{sources?.length ? <span className="switch-count">{sources.length}</span> : null}</button>
+        <button type="button" aria-pressed={mode === 'upload'} disabled={selectingLocked} onClick={() => setMode('upload')}>上传文件</button>
+        <button type="button" aria-pressed={mode === 'video'} disabled={selectingLocked} onClick={() => setMode('video')}>已归档视频{sources?.length ? <span className="switch-count">{sources.length}</span> : null}</button>
       </div>
       {/* How subtitles are obtained is a view-level choice: right next to the source tabs, explanations as tooltips. */}
       {mode === 'video' && <div className="method-picker" role="group" aria-label="字幕来源">
@@ -104,16 +108,16 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     </div>
     {/* Stable tree: the detail column (and the embedded Subtitles state) stays mounted across tab switches. */}
     <div className={mode === 'video' ? 'subtitle-split' : 'subtitle-single'}>
-    {mode === 'upload' ? <div className="transcription-upload" onDragOver={event => { event.preventDefault(); if (!busy && !running) event.currentTarget.classList.add('drag'); }} onDragLeave={event => event.currentTarget.classList.remove('drag')} onDrop={event => { event.preventDefault();event.currentTarget.classList.remove('drag');if (!busy && !running) selectFiles(Array.from(event.dataTransfer.files)); }}>
+    {mode === 'upload' ? <div className="transcription-upload" onDragOver={event => { event.preventDefault(); if (!locked) event.currentTarget.classList.add('drag'); }} onDragLeave={event => event.currentTarget.classList.remove('drag')} onDrop={event => { event.preventDefault();event.currentTarget.classList.remove('drag');if (!locked) selectFiles(Array.from(event.dataTransfer.files)); }}>
       {/* Native file input stays for keyboard/tests but is visually replaced: its button text follows the browser locale. */}
       <input id="transcription-file" className="file-input" type="file" multiple accept="audio/*,video/*,.wav,.mp3,.m4a,.flac,.ogg,.opus,.aac,.wma,.mp4,.mkv,.webm,.mov,.avi,.m4v"
-        disabled={busy || running} onChange={event => { selectFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
+        disabled={locked} onChange={event => { selectFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
       <label htmlFor="transcription-file" className="file-drop">
         <span className="file-drop-icon" aria-hidden="true"><Icon name="audio-lines" /></span>
         <strong>{batchFiles.length ? `已选择 ${batchFiles.length} 个文件` : '选择音视频文件'}</strong>
         <span>{batchFiles.length ? '点击或拖入可重新选择' : `点击选择或拖到这里 · 最多 32 个，每个不超过 ${Math.round(limit / 1024 / 1024)}\u00a0MB`}</span>
       </label>
-      <ul className="selected-files">{batchFiles.map((item,index) => <li key={item.name + index}><span>{item.name}<small>{(item.size / 1024 / 1024).toFixed(1)} MB</small></span><button type="button" disabled={busy || running} onClick={() => selectFiles(batchFiles.filter((_,position) => position !== index))}>移除</button></li>)}</ul>
+      <ul className="selected-files">{batchFiles.map((item,index) => <li key={item.name + index}><span>{item.name}<small>{(item.size / 1024 / 1024).toFixed(1)} MB</small></span><button type="button" disabled={locked} onClick={() => selectFiles(batchFiles.filter((_,position) => position !== index))}>移除</button></li>)}</ul>
     </div> : <div className="source-picker">
       {sources === null ? <p className="source-empty">正在读取归档视频…</p>
         : sourcesError ? <div className="source-empty" role="alert"><p title={sourcesError}>读取归档视频列表失败。如果刚更新过程序，请重启本机服务后再试。</p>
@@ -123,13 +127,13 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
           {sources.length > 6 && <input className="source-filter" type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder="搜索标题或分集，如 P4" aria-label="搜索归档视频" />}
           <ul className="source-list" role="radiogroup" aria-label="选择视频">
             {pendingSource && <li><label className={'source-option' + (pendingKey === selectedKey ? ' checked' : '')}>
-              <input type="radio" name="transcription-video" checked={pendingKey === selectedKey} disabled={locked} onChange={() => chooseSource(pendingKey)} />
+              <input type="radio" name="transcription-video" checked={pendingKey === selectedKey} disabled={selectingLocked} onChange={() => chooseSource(pendingKey)} />
               <span><strong>{pendingSource.title}</strong><small>{[pendingSource.platform, pendingSource.part ? 'P' + pendingSource.part : '', '工作台当前视频 · 未归档，只能下载平台字幕'].filter(Boolean).join(' · ')}</small></span>
             </label></li>}
             {shownSources.map(item => { const key = sourceKey(item); const meta = [item.platform, item.part ? 'P' + item.part : '', item.quality, duration(item.duration_seconds), megabytes(item.size_bytes)].filter(Boolean).join(' · ');
               // Two lines per row; only the exception (no local subtitles) gets a marker.
-              return <li key={key}><label className={'source-option' + (key === selectedKey ? ' checked' : '')} title={item.title}>
-                <input type="radio" name="transcription-video" checked={key === selectedKey} disabled={locked} onChange={() => chooseSource(key)} />
+              return <li key={key}><label className={'source-option' + (key === selectedKey ? ' checked' : '')}>
+                <input type="radio" name="transcription-video" checked={key === selectedKey} disabled={selectingLocked} onChange={() => chooseSource(key)} />
                 <span><strong translate="no">{item.title}</strong><small>{meta}</small></span>
                 {item.has_subtitles === false && <span className="subtitle-missing">无字幕</span>}
               </label></li>; })}
@@ -139,16 +143,16 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     </div>}
     <div className="transcription-detail">
     {noSelection && !!sources?.length && <p className="detail-empty">从列表中选择一个视频。</p>}
-    {mode === 'video' && selectedSource && typeof selectedSource.has_subtitles === 'boolean' && <section className={'archived-subtitles' + (hasArchive ? '' : ' is-missing')} aria-label="当前视频字幕">
+    {mode === 'video' && selectedSource && typeof selectedSource.has_subtitles === 'boolean' && <section className={'archived-subtitles' + (hasArchive ? '' : ' is-missing')} aria-label="当前视频字幕" aria-busy={hasArchive && !archive && !archiveError}>
       {hasArchive ? <>
         <div className="archive-status"><span className="subtitle-badge">✓ 已有字幕</span>{archiveMeta && <span className="archive-meta">{archiveMeta}</span>}
           {archive?.has_subtitles && archive.files.length > 1 && <select aria-label="已有字幕文件" value={archive.selected?.resource || ''} onChange={event => setSubtitleResource(event.target.value)}>
             {archive.files.map(file => <option key={file.resource} value={file.resource}>{file.filename}</option>)}
           </select>}</div>
-        {archiveError ? <p className="error-text" role="alert">{archiveError}</p> : !archive ? <p className="subtitle-note" role="status">正在读取已有字幕…</p> : !archive.has_subtitles ? <p>字幕已变化，请刷新视频列表。</p>
+        {archiveError ? <p className="error-text" role="alert">{archiveError}</p> : !archive ? null : !archive.has_subtitles ? <p>字幕已变化，请刷新视频列表。</p>
           : archive.selected && <SubtitleTranslation key={selectedKey + archive.selected.resource} source={{ project_id: selectedSource.project_id, resource: archive.selected.resource, video_resource: selectedSource.resource }}
             text={archive.text} language={archive.selected.language} config={config} onOpenSettings={onOpenSettings}
-            label="字幕原文" textId="archived-subtitle-text" rows={6} restoredJob={restoredTranslation} />}
+            label="字幕原文" textId="archived-subtitle-text" rows={6} restoredJob={restoredTranslation && (restoredTranslation.translation_source === archive.selected.resource || !!restoredTranslation.translation_source_sha256 && restoredTranslation.translation_source_sha256 === archive.selected.sha256) ? restoredTranslation : null} archivedTranslations={archive.translations} />}
         {/* Subtitles already live in the project folder: show where (and open it) instead of another download. */}
         {archive?.has_subtitles ? <SavedLocation label="字幕已保存到" location={archiveFolder} openPath={`/projects/${selectedSource.project_id}/open`} body={{ folder: 'subtitles' }}>{acquireToggle}</SavedLocation>
           : <div className="saved-location-row"><span className="saved-location-actions">{acquireToggle}</span></div>}
@@ -172,8 +176,8 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
           <button type="button" disabled={locked || picking} aria-busy={picking} onClick={() => { void pickFolder(); }}>{picking ? '等待选择…' : folder ? '更换' : '选择文件夹'}</button></>}
       </div>
       {/* Primary action at the right end of the control row, the same slot as 下载字幕 in platform mode. */}
-      <div className="row-action"><button className="primary operation-button" type="button" aria-busy={busy} disabled={ready === false || locked || !destinationReady || (mode === 'upload' ? !file : !archived)} onClick={() => { void start(); }}>
-        <Icon name={busy ? 'loader-circle' : 'file-play'} className={busy ? 'spinner' : ''} />{busy ? (shownJob ? '转录中…' : '提交文件中…') : shownJob?.state === 'failed' ? '重试转写' : '开始转写'}</button></div>
+      <div className="row-action"><button className="primary operation-button" type="button" aria-busy={viewBusy} disabled={ready === false || locked || !destinationReady || (mode === 'upload' ? !file : !archived)} onClick={() => { void start(); }}>
+        <Icon name={viewBusy ? 'loader-circle' : 'file-play'} className={viewBusy ? 'spinner' : ''} />{viewBusy ? (shownJob ? '转录中…' : '提交文件中…') : shownJob?.state === 'failed' ? '重试转写' : '开始转写'}</button></div>
       {saveHint && <small className="option-hint" title={saveHint}>{saveHint}</small>}
     </div>}
     {saveNotice && <p className="notice" role="status">{saveNotice}</p>}
@@ -184,16 +188,16 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     {/* Progress and result of a transcription belong to the section that started it. */}
     {!platformMode && <>
     {batchNotice && <p className="notice" role="status">{batchNotice}</p>}
-    <div className={'inset subtitle-status ' + (error || shownJob?.state === 'failed' ? 'status-error' : '')} role="status" aria-live="polite">
+    <div className={'inset subtitle-status ' + (shownError || shownJob?.state === 'failed' ? 'status-error' : '')} role="status" aria-live="polite">
       {statusText}
     </div>
     {/* Outside the live region: the bar updates every second and must not be read out each time. */}
     {shownJob && (shownJob.state === 'queued' || shownJob.state === 'running') &&
       <TimeProgress progress={shownJob.phase === 'transcribing' ? shownJob.progress : undefined} label="转写进度" />}
-    {job && isActive(job.state) && <div className="task-inline-actions"><button type="button" disabled={cancelling || job.state === 'cancelling'} aria-busy={cancelling} onClick={() => { void cancel(); }}>取消转录任务</button></div>}
-    {error && hasJob && <button type="button" className="subtitle-refresh" disabled={busy} onClick={refresh}>重新读取转录状态</button>}
+    {shownJob && isActive(shownJob.state) && <div className="task-inline-actions"><button type="button" disabled={cancelling || shownJob.state === 'cancelling'} aria-busy={cancelling} onClick={() => { void cancel(); }}>取消转录任务</button></div>}
+    {shownError && hasJob && <button type="button" className="subtitle-refresh" disabled={busy} onClick={refresh}>重新读取转录状态</button>}
     {shownJob && mode === 'upload' && <p className="subtitle-title">本次任务：<span translate="no">{shownJob.title}</span></p>}
-    {job && !shownJob && !videoTranslation && <p className="subtitle-title">上次任务「<span translate="no">{job.title}</span>」的结果不属于当前选择，可在任务中心查看。</p>}
+    {job && !shownJob && !videoTranslation && !isActive(job.state) && <p className="subtitle-title">上次任务「<span translate="no">{job.title}</span>」的结果不属于当前选择，可在任务中心查看。</p>}
     {detected && shownJob?.operation !== 'translation' && <p className="detected-language">{forced ? `已按${languageName(asked)}转写` : `识别为：${languageName(detected)}`}
       {canRetry && !locked && <span className="retry-languages">{forced ? '' : '识别错了？'}{retryLanguages.map(code =>
         <button key={code} type="button" className="link-button" onClick={() => retryAs(code)}>{`按${languageName(code)}重新转写`}</button>)}</span>}

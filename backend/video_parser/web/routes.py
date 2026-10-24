@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from video_parser.core import desktop
 from video_parser.core.paths import CACHE_DIR, ROOT
 from video_parser.services import videos, ai_settings
-from video_parser.services import library as library
+from video_parser.services import library as library, library_layout
 from video_parser.platforms.downloaders.douyin_downloader import DouyinAccessError
 from video_parser.platforms.downloaders.base_downloader import PlatformAccessError
 from video_parser.platforms.downloaders.youtube_downloader import YoutubeAccessError
@@ -120,8 +120,8 @@ def safe_file(entry, filename):
         raise HTTPException(404, '文件尚未准备好，请重新加载。') from None
 
 
-def media_response(identifier, relative=None, quality_id=None):
-    saved = videos.archived_videos(identifier)
+def media_response(identifier, relative=None, quality_id=None, *, use_validation_cache=False):
+    saved = videos.archived_videos(identifier, use_validation_cache=True) if use_validation_cache else videos.archived_videos(identifier)
     item = next((video for video in saved if relative is None or video['path'] == relative), None)
     if item is None: return None
     media = item['media']
@@ -402,6 +402,8 @@ def has_local_video(project):
 
 @router.get('/projects')
 def list_projects():
+    from video_parser.services import project_folder_naming
+    applied_titles = project_folder_naming.applied_titles()
     projects = []
     for manifest in library.manifests():
         try: project = library.load(manifest)
@@ -409,7 +411,9 @@ def list_projects():
         platform = next((label for label, slug in library.PLATFORMS.items() if slug == project.get('platform')), project.get('platform', ''))
         projects.append({'id': project['id'], 'title': project.get('title', ''), 'platform': platform, 'part': project.get('part'),
                          'location': project['directory'].relative_to(library.LIBRARY_ROOT).as_posix(), 'created_at': project.get('created_at', ''),
-                         'video_id': project.get('video_id'), 'episode_title': project.get('episode_title'),
+                         'video_id': project.get('video_id'), 'episode_title': library.episode_title(project),
+                         'is_single': library_layout.single_episode(project),
+                         'display_title': project_folder_naming.display_title(project, applied_titles),
                          'archived': has_local_video(project)})
     projects.sort(key=lambda item: (item['created_at'], -(item['part'] or 0)), reverse=True)
     return {'projects': projects}
@@ -448,7 +452,7 @@ def transcription_sources():
             try: duration = float(((item.get('media') or {}).get('format') or {}).get('duration'))
             except (TypeError, ValueError): duration = None
             records = library.subtitle_records(project, name)
-            sources.append({'project_id': project['id'], 'resource': name, 'title': project.get('episode_title') or project.get('title', ''),
+            sources.append({'project_id': project['id'], 'resource': name, 'title': library.episode_title(project) or project.get('title', ''),
                             'has_subtitles': bool(records), 'subtitle_count': len(records), 'platform': platform, 'source_url': project.get('source_url', ''),
                             'part': project.get('part'), 'quality': (item.get('selected_quality') or {}).get('label') or Path(name).stem,
                             'duration_seconds': duration, 'size_bytes': item['size_bytes'], 'archived_at': project.get('created_at', '')})
@@ -508,9 +512,18 @@ def archived_subtitles(identifier: str, video_resource: str | None = None, subti
             raw = path.read_text(encoding='utf-8-sig', errors='replace')
             if path.suffix.lower() in ('.srt', '.vtt'):
                 from video_parser.services.ai_analysis import parse_cues
-                text = '\n'.join(body for _, body in parse_cues(raw))
+                text = '\n'.join(body for _, body in parse_cues(raw, preserve_duplicates=True))
             else: text = raw
-        return {'project_id': identifier, 'has_subtitles': bool(records), 'files': records, 'selected': selected, 'text': text}
+        translated = []
+        if selected:
+            for row in library.translation_records(project, video_resource, selected['resource']):
+                path = library.resource_from_project(project, row['resource'])
+                raw = path.read_text(encoding='utf-8-sig', errors='replace')
+                from video_parser.services.ai_analysis import parse_cues
+                body = '\n'.join(body for _, body in parse_cues(raw, preserve_duplicates=True)) if path.suffix.lower() in ('.srt', '.vtt') else raw
+                if body.strip(): translated.append({**row, 'text': body})
+        return {'project_id': identifier, 'has_subtitles': bool(records), 'files': records, 'selected': selected, 'text': text,
+                'translations': translated}
     except (KeyError, ValueError, OSError): raise HTTPException(404, '归档字幕已变化，请刷新列表后重试。') from None
 
 
@@ -523,7 +536,7 @@ def start_transcription(body: TranscriptionBody):
         if project['resources'][body.resource]['kind'] != 'video':
             raise HTTPException(400, '只能转写已归档的视频资源。')
         destination = output_destination(body.destination, body.target_project_id, body.folder, body.project_id)
-        return transcription.start(source,body.language,project['title'],body.project_id,body.resource,reuse_model=body.reuse_model,destination=destination)
+        return transcription.start(source,body.language,library.episode_title(project) or project['title'],body.project_id,body.resource,reuse_model=body.reuse_model,destination=destination)
     except FileNotFoundError:
         raise HTTPException(503, '未找到项目内 Whisper 环境或模型，请运行 scripts/setup-local-tools.ps1 -DownloadModel。') from None
     except (KeyError, ValueError, OSError) as error:
@@ -598,7 +611,7 @@ def transcription_file(identifier: str, token: str):
         title = transcription.get(identifier).title
     except (KeyError, OSError, ValueError):
         raise HTTPException(404, '转录文件不存在或已变化。') from None
-    return FileResponse(path, filename=path.name if transcription.get(identifier).operation == 'translation' else library.safe_name(Path(title).stem) + path.suffix,
+    return FileResponse(path, filename=path.name,
                         media_type='text/plain' if token == 'txt' else 'application/x-subrip', headers=FILE_HEADERS)
 
 
@@ -617,6 +630,7 @@ def project_details(identifier: str):
 def update_learning(identifier: str, body: LearningBody):
     try:
         episodes = library.set_learning_state(identifier, body.part, body.learned)
+        learned = library.get(identifier).get('learned') is True
     except KeyError:
         raise HTTPException(404, '视频项目不存在。') from None
     except TimeoutError:
@@ -625,7 +639,7 @@ def update_learning(identifier: str, body: LearningBody):
         raise HTTPException(400, str(error)) from None
     except OSError:
         raise HTTPException(500, '无法保存学习进度，请检查项目目录权限后重试。') from None
-    return {'episodes': episodes}
+    return {'episodes': episodes, 'learned': learned}
 
 
 @router.post('/projects/{identifier}/title')
@@ -646,14 +660,15 @@ def rename_project(identifier: str, body: TitleBody):
 @router.get('/projects/{identifier}/files/{relative:path}')
 def project_file(identifier: str, relative: str, download: bool = False):
     try:
+        from video_parser.services import media_validation
         project = library.get(identifier)
-        path = library.resource(identifier, relative)
+        path = media_validation.resource(project, relative)
     except (KeyError, ValueError, OSError):
         raise HTTPException(404, '未找到已校验的项目资源。') from None
     info = project['resources'][relative]
     filename = info.get('download_name', path.name)
     if info['kind'] == 'video':
-        current = media_response(identifier, relative)
+        current = media_response(identifier, relative, use_validation_cache=True)
         if current: filename = current['filename']
     return FileResponse(path, filename=filename, content_disposition_type='attachment' if download else 'inline', headers=FILE_HEADERS)
 

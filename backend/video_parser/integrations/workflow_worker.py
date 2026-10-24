@@ -42,7 +42,9 @@ def main():
     if (not directory.resolve().is_relative_to(CACHE_ROOT.resolve()) or directory.is_symlink()
             or not (directory/'.task-owner.json').is_file()):raise ValueError('Unsafe task directory')
     try:
-        result=execute(payload)
+        from video_parser.services import model_calls
+        with model_calls.bound_api(payload.get('api_binding')):
+            result=execute(payload)
         task_runtime.atomic(directory/'result.json',{'ok':True,'result':result})
         return 0
     except Exception as error:

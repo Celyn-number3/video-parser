@@ -6,7 +6,7 @@ const valueOf = (target: Pick<AgentTarget, 'engine' | 'model'>) => target.engine
 const ENGINES = [{ id: 'claude', name: 'Claude Code' }, { id: 'codex', name: 'Codex' }, { id: 'opencode', name: 'OpenCode' }] as const;
 
 type Props = { state: AgentModelsState; disabled?: boolean; onManage?: (button: HTMLButtonElement) => void };
-export default function AgentModelPicker({ state, disabled = false, onManage }: Props) {
+export default function AgentModelPicker({ state, disabled = false }: Props) {
   const selected = state.selected;
   const source = state.catalog?.engines.find(item => item.id === selected.engine);
   const currentKnown = !selected.model || source?.models.some(item => item.id === selected.model);
@@ -29,7 +29,7 @@ export default function AgentModelPicker({ state, disabled = false, onManage }: 
           const engineDefault = shown({ engine: engine.id, model: '' });
           const unlisted = selected.engine === engine.id && !currentKnown;
           if (!engineDefault && !models.length && !unlisted) return null;
-          return <optgroup key={engine.id} label={engine.name} disabled={!entry?.installed}>
+          return <optgroup key={engine.id} label={engine.name} disabled={!entry?.installed || entry.enabled === false}>
             {engineDefault && <option value={engine.id + '|'}>{engine.name} · 跟随工具默认模型</option>}
             {models.map(model => <option key={model.id} value={valueOf({ engine: engine.id, model: model.id })} title={model.id} translate="no">{engine.name + ' · ' + model.label}</option>)}
             {unlisted && <option value={valueOf(selected)} translate="no">{engine.name + ' · ' + selected.model}</option>}
@@ -40,12 +40,9 @@ export default function AgentModelPicker({ state, disabled = false, onManage }: 
         onChange={event => state.select({ ...selected, effort: event.target.value })}>
         <option value="">默认强度</option>{state.efforts.map(level => <option key={level} translate="no" value={level}>{level}</option>)}
       </select>}
-      <button type="button" disabled={locked} aria-busy={state.refreshing} onClick={() => { void state.refresh(); }}
-        aria-label="读取本机模型与命令" title="只读取模型与命令，不发送课程内容">{state.refreshing ? '读取中…' : '↻'}</button>
-      {onManage && <button type="button" className="agent-manage" disabled={locked} onClick={event => onManage(event.currentTarget)}
-        aria-label="在设置中管理可用模型" title="在设置中选择可用模型和默认模型">管理</button>}
-      {state.native && <span className="agent-mode" title="受限学习模式：不运行 shell、不写文件；不是操作系统沙箱，本机扩展仍需信任。">受限学习</span>}
+
     </div>
+    {source?.enabled === false && <p className="agent-error" role="alert">所选 Agent 已关闭，请在设置中开启或明确选择其他工具。</p>}
     {state.error && <p className="agent-error" role="alert">{state.error}</p>}
   </div>;
 }

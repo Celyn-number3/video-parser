@@ -66,7 +66,7 @@ class NotesUiTrimTests(unittest.TestCase):
 
     def notes(self):
         self.f.parse()
-        self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
         expect(self.page.locator('.study-sidebar')).to_be_visible()
         expect(self.page.locator('.playback-resume').get_by_role('button', name='记下当前时刻', exact=True)).to_have_count(0)
         self.page.get_by_role('tab', name='个人笔记', exact=True).click()

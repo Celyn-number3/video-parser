@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { request } from './lib/api';
+import { projectDisplayTitle, videoDisplayTitle } from './lib/projectTitles';
 import { useLanguage } from './lib/i18n';
 import { cancelTask, isActive, pollJob, remember, remembered, runWorkflow } from './lib/jobs';
 import type { TaskInfo, WorkflowJob } from './lib/jobs';
@@ -13,6 +14,7 @@ import ProjectPanel from './features/library/ProjectPanel';
 import LearningProgress, { LearningToggle } from './features/library/LearningProgress';
 import PlaybackResume from './features/learning/PlaybackResume';
 import StudySidebar from './features/learning/StudySidebar';
+import TaskSemanticSearch from './features/tasks/TaskSemanticSearch';
 import LearningProjectPicker from './features/learning/LearningProjectPicker';
 import SubtitleNaming from './features/naming/SubtitleNaming';
 import type { NamingJob } from './features/naming/types';
@@ -41,7 +43,9 @@ const examples: Record<string, string> = {
 };
 const tabs = [
   { name: '视频', id: 0, icon: 'circle-play' },
+  { name: '字幕与转写', id: 3, icon: 'captions' },
   { name: 'AI 分析', id: 2, icon: 'scan-eye' },
+  { name: '文件重命名', id: 4, icon: 'list-checks' },
 ] as const;
 type Tab = typeof tabs[number]['name'];
 type Operation = 'prepare' | 'analyze';
@@ -82,7 +86,7 @@ export default function App() {
   const restoringRequest = useRef<AbortController | null>(null);
   const [parseStatus, setParseStatus] = useState('等待解析');
   const [parseError, setParseError] = useState(false);
-  const [tab, setTab] = useState<Tab>('视频');
+  const [tab, setTab] = useState<Tab>(() => new URLSearchParams(location.search).get('page') === 'transcription' ? '字幕与转写' : '视频');
   // Both entry points share mounted content; the workbench keeps its own selected tab.
   const activeTab: Tab = page === 'learning' ? 'AI 分析' : tab;
   const learning = page === 'learning';
@@ -110,8 +114,9 @@ export default function App() {
   const [coverError, setCoverError] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [studyCollapsed, setStudyCollapsed] = useState(false);
-  const [namingOpen, setNamingOpen] = useState(false);
-  const [namingTaskId, setNamingTaskId] = useState<string | null>(null);
+  const [namingVisited, setNamingVisited] = useState(false);
+  useEffect(() => { if (page === 'workspace' && tab === '文件重命名') setNamingVisited(true); }, [page, tab]);
+  const [namingTask, setNamingTask] = useState<{ projectId: string; id: string } | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const resumeBar = useRef<HTMLElement>(null);
   const [activeCount, setActiveCount] = useState<number | null>(null);
@@ -150,8 +155,9 @@ export default function App() {
   }
   // A course rename also applies to its other archived episodes that are open in this page.
   function renameProject(project: VideoProject, renamed: string[]) {
+    setLibraryVersion(value => value + 1);
     for (const id of new Set([project.id, ...renamed])) updateProject(id, value => ({ ...value,
-      parsed: { ...value.parsed, title: project.title, project: { ...value.parsed.project, title: project.title } } }));
+      parsed: { ...value.parsed, title: project.title, project: { ...value.parsed.project, title: project.title, display_title: project.display_title } } }));
   }
   function selectProject(id: string) {
     const value = projects.current[id]; if (!value) return;
@@ -161,6 +167,7 @@ export default function App() {
     try { localStorage.setItem('video-parser:last-project', id); localStorage.setItem('video-parser:last-quality', value.parsed.qualities.find(item => item.id === value.quality)?.media?.resource || ''); } catch { /* Optional restore. */ }
   }
   function navigate(next: Page, focus = false) {
+    if (next === 'transcription') { setTab('字幕与转写'); next = 'workspace'; }
     const changed = next !== pageRef.current;
     if (changed) {
       const url = new URL(location.href);
@@ -174,12 +181,14 @@ export default function App() {
       if (focus) document.getElementById('page-title-' + next)?.focus({ preventScroll: true });
     });
   }
-  function openSettings(_button: HTMLButtonElement, ai = false) {
+  const [settingsFocusTarget, setSettingsFocusTarget] = useState<'api' | 'sources'>('api');
+  function openSettings(button: HTMLButtonElement, ai = false) {
+    setSettingsFocusTarget(button.dataset.settingsTarget === 'sources' ? 'sources' : 'api');
     if (ai) setSettingsFocusRequest(value => value + 1);
     navigate('settings', true);
   }
   function updateAI(ai: AISettings) { setConfig(current => current && { ...current, ai, ai_configured: ai.configured }); }
-  async function restoreProject(id: string, qualityResource = '', focus = true) {
+  async function restoreProject(id: string, qualityResource = '', focus = true, preserveTab = false) {
     if (!validId(id)) return;
     restoringRequest.current?.abort();
     if (parsingRequest.current) { ++parseEpoch.current; parsingRequest.current.abort(); parsingRequest.current = null; setParsing(false); }
@@ -193,13 +202,13 @@ export default function App() {
       if (controller.signal.aborted) return;
       const restoredId = installProject(result, true);
       if (version !== projectNavigation.current || parseVersion !== parseEpoch.current) return;
-      selectProject(restoredId); setTab('视频'); if (focus) navigate('workspace', true);
+      selectProject(restoredId); if (!preserveTab) setTab('视频'); if (focus) navigate('workspace', true);
       return restoredId;
     } catch (reason) {
       if (!controller.signal.aborted && version === projectNavigation.current && parseVersion === parseEpoch.current) {
         const message = reason instanceof Error ? reason.message : '无法恢复视频项目。';
         if (focus) { setParseStatus(message); setParseError(true); navigate('workspace', true); }
-        else if (pageRef.current === 'learning') setLearningNavigationError(message);
+        else if (pageRef.current === 'learning' || pageRef.current === 'workspace') setLearningNavigationError(message);
       }
     } finally {
       restoreRequests.current.delete(controller);
@@ -220,7 +229,7 @@ export default function App() {
       const restored = await restoreProject(job.project_id, '', false);
       if (controller.signal.aborted || version !== projectNavigation.current) return;
       if (restored !== job.project_id) throw new Error('无法从本地归档恢复命名任务对应的视频；请检查项目与归档后重试。');
-      setNamingTaskId(identifier); setNamingOpen(true); navigate('learning', true);
+      setNamingTask({ projectId: job.project_id, id: identifier }); setNamingVisited(true); setTab('文件重命名'); navigate('workspace', true);
     } catch (reason) {
       if (!controller.signal.aborted && version === projectNavigation.current) setLearningNavigationError(reason instanceof Error ? reason.message : '无法读取命名任务。');
     } finally { restoreRequests.current.delete(controller); }
@@ -299,7 +308,8 @@ export default function App() {
     });
     try {
       const last = new URLSearchParams(location.search).get('project') || localStorage.getItem('video-parser:last-project');
-      if (last) void restoreProject(last, localStorage.getItem('video-parser:last-quality') || '', false);
+      // Background restore must not replace a deep-linked or newly selected workbench tab.
+      if (last) void restoreProject(last, localStorage.getItem('video-parser:last-quality') || '', false, true);
     } catch { /* Restore cannot block a fresh start. */ }
     for (const kind of ['video', 'analysis']) { const id = remembered(kind); if (id) void restoreWorkflow(id, false); }
     const restore = (event: Event) => {
@@ -378,11 +388,28 @@ export default function App() {
       if (!controller.signal.aborted && epoch === parseEpoch.current) { setParseError(true); setParseStatus(reason instanceof Error ? reason.message : '解析失败，请检查链接后重试。'); }
     } finally { if (epoch === parseEpoch.current) { parsingRequest.current = null; setParsing(false); } }
   }
-  async function openLearningProject(id: string) {
+  async function openLearningProject(id: string, preserveTab = false) {
     if (parsingRequest.current || restoringRequest.current) return;
     // Flush the old video's pause/progress before changing the media context.
     videoRef.current?.pause();
-    await restoreProject(id, '', false);
+    await restoreProject(id, '', false, preserveTab);
+  }
+  async function selectSubtitleSource(id: string, resource: string) {
+    if (parsingRequest.current) return false;
+    const current = selectedRef.current ? projects.current[selectedRef.current] : undefined;
+    if (!restoringRequest.current && selectedRef.current === id && current?.parsed.qualities.find(item => item.id === current.quality)?.media?.resource === resource) return true;
+    videoRef.current?.pause();
+    return await restoreProject(id, resource, false, true) === id;
+  }
+  const [refreshingEpisodes, setRefreshingEpisodes] = useState(false);
+  const [episodeMessage, setEpisodeMessage] = useState('');
+  async function refreshEpisodes() {
+    if (!parsed || refreshingEpisodes) return;
+    const id = parsed.project.id; setRefreshingEpisodes(true); setEpisodeMessage('');
+    try { const result = await request<{ episodes: LearningEpisode[] }>(`/projects/${id}/episodes/refresh`, new AbortController().signal, { confirm: true });
+      updateProject(id, current => ({ ...current, parsed: { ...current.parsed, episodes: result.episodes } }));
+      setEpisodeMessage(result.episodes.length ? `已解析 ${result.episodes.length} 集。` : '当前链接为单集视频。');
+    } catch (e) { setEpisodeMessage(e instanceof Error ? e.message : '解析分集失败'); } finally { setRefreshingEpisodes(false); }
   }
   async function selectEpisode(part: number) {
     const id = selectedRef.current, value = id ? projects.current[id] : undefined;
@@ -401,16 +428,17 @@ export default function App() {
   async function setEpisodeLearned(part: number, learned: boolean) {
     const id = selectedRef.current, value = id ? projects.current[id] : undefined;
     if (!id || !value || value.busy !== null || parsingRequest.current || learningRequests.current.has(id)
-      || !value.parsed.episodes?.some(episode => episode.part === part)) return;
+      || (part !== (value.parsed.project.part || 1) && !value.parsed.episodes?.some(episode => episode.part === part))) return;
     const controller = new AbortController();
     learningRequests.current.set(id, controller);
     updateProject(id, current => ({ ...current, learningPendingPart: part, learningError: '' }));
     try {
-      const result = await request<{ episodes: LearningEpisode[] }>(`/projects/${id}/learning`, controller.signal, { part, learned });
+      const result = await request<{ episodes: LearningEpisode[]; learned?: boolean }>(`/projects/${id}/learning`, controller.signal, { part, learned });
       if (controller.signal.aborted) return;
       updateProject(id, current => {
         const episodes = Array.isArray(result.episodes) ? result.episodes : current.parsed.episodes || [];
-        const currentLearned = episodes.find(episode => episode.part === current.parsed.project.part)?.learned;
+        const currentLearned = typeof result.learned === 'boolean' ? result.learned
+          : episodes.find(episode => episode.part === current.parsed.project.part)?.learned;
         return { ...current, parsed: { ...current.parsed, episodes,
           project: { ...current.parsed.project, learned: typeof currentLearned === 'boolean' ? currentLearned : current.parsed.project.learned } }, learningError: '' };
       });
@@ -481,7 +509,7 @@ export default function App() {
       document.getElementById('video-stage')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }
-  function generateSubtitles() { setSubtitleFocus(value => value + 1); navigate('transcription', true); }
+  function generateSubtitles() { setSubtitleFocus(value => value + 1); setTab('字幕与转写'); navigate('workspace', true); }
   async function cancelWorkflow() {
     const id = selectedId, task = selected?.task;
     if (!id || !task || !isActive(task.state) || cancellingTask) return;
@@ -508,7 +536,13 @@ export default function App() {
   const qualityLimited = maxShortSide > 0 && maxShortSide < 720;
   const parseNeedsLogin = parseError && parseStatus.includes('账号与登录');
   const platformDuration = typeof parsed?.duration === 'number' && parsed.duration > 0 ? parsed.duration : null;
-  const currentEpisode = parsed?.episodes?.find(episode => episode.part === parsed.project.part);
+  const projectTitle = parsed ? projectDisplayTitle(parsed.project) : '';
+  const videoTitle = parsed ? videoDisplayTitle(parsed.project) : '';
+  const catalogEpisode = parsed?.episodes?.find(episode => episode.part === parsed.project.part);
+  const currentEpisode: LearningEpisode | undefined = parsed ? catalogEpisode || {
+    part: parsed.project.part || 1, title: videoTitle,
+    duration: parsed.duration ?? null, project_id: parsed.project.id, archived: !!media, learned: parsed.project.learned === true,
+  } : undefined;
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
     if (next === null) return; event.preventDefault(); setTab(tabs[next].name); tabButtons.current[next]?.focus();
@@ -519,25 +553,43 @@ export default function App() {
   const episodeToggle = currentEpisode && <LearningToggle episode={currentEpisode} placement="player"
     disabled={parsing || !!restoringId || busy !== null || (selected?.learningPendingPart !== null && selected?.learningPendingPart !== undefined)}
     onChange={learned => { void setEpisodeLearned(currentEpisode.part, learned); }} />;
+  const episodeLearning = parsed && parsed.episodes && parsed.episodes.length > 1 && <LearningProgress key={parsed.project.id}
+    project={parsed.project} episodes={parsed.episodes} disabled={parsing || !!restoringId || busy !== null}
+    savingPart={selected?.learningPendingPart ?? null} error={selected?.learningError || ''}
+    onSelectEpisode={part => { void selectEpisode(part); }}
+    onSetLearned={(part, learned) => { void setEpisodeLearned(part, learned); }} />;
+  const projectPicker = <LearningProjectPicker key={learning ? 'learning' : 'workspace'} context={learning ? 'learning' : 'workspace'} compact={!!parsed || !learning} current={parsed?.project || null} version={libraryVersion} disabled={parsing || !!restoringId}
+    loading={!!restoringId} onSelect={id => { void openLearningProject(id, !learning); }} />;
   return <WorkbenchLayout page={page} mobile={mobile} menuOpen={menuOpen} activeCount={activeCount}
     sidebarRef={sidebar} menuButtonRef={menuButton} onNavigate={navigate}
     onOpenMenu={() => setMenuOpen(true)}
     onCloseMenu={() => { setMenuOpen(false); requestAnimationFrame(() => menuButton.current?.focus()); }}
     overlays={<>
-      {namingOpen && parsed && <SubtitleNaming key={parsed.project.id} projectId={parsed.project.id} config={config} initialTaskId={namingTaskId}
-        onClose={() => setNamingOpen(false)} onOpenSettings={button => openSettings(button, true)} onBeforeApply={() => videoRef.current?.pause()}
-        onChanged={async () => { setLibraryVersion(value => value + 1); const id = selectedRef.current; if (id) await restoreProject(id, media?.resource || '', false); }} />}
       {archiveReminder && <div className="archive-reminder" role="status" aria-live="polite">视频已归档<button type="button" aria-label="关闭归档提醒" onClick={() => setArchiveReminder(false)}>×</button></div>}
     </>}>
         {configError && <p className="error-text configuration-error" role="alert">{configError}</p>}
         {!learning && learningNavigationError && <p className="error-text configuration-error" role="alert">{learningNavigationError}</p>}
         <WorkbenchPage page={page === 'learning' ? 'learning' : 'workspace'} activePage={page}>
         {(page === 'workspace' || page === 'learning') && config && !config.media_ready && <p className="error-text media-setup-error" role="alert">未检测到 ffmpeg 或 ffprobe，请安装并加入 PATH 后重启服务。</p>}
-              <div className="tabs" hidden={page === 'learning' || !parsed} role="tablist" aria-label="内容类型">{tabs.map((item, index) => <button key={item.id} ref={element => { tabButtons.current[index] = element; }} id={'tab-' + item.id} role="tab" aria-selected={tab === item.name} aria-controls="workpanel" tabIndex={tab === item.name ? 0 : -1} onClick={() => setTab(item.name)} onKeyDown={event => moveTab(event, index)}>
+          <div className="workspace-toolbar" hidden={learning}>
+              <div className="tabs" hidden={page === 'learning'} role="tablist" aria-label="内容类型">{tabs.map((item, index) => <button key={item.id} ref={element => { tabButtons.current[index] = element; }} id={'tab-' + item.id} role="tab" aria-selected={tab === item.name} aria-controls={item.name === '字幕与转写' ? 'subtitle-workpanel' : item.name === '文件重命名' ? 'naming-workpanel' : 'workpanel'} tabIndex={tab === item.name ? 0 : -1} onClick={() => setTab(item.name)} onKeyDown={event => moveTab(event, index)}>
           <Icon name={item.icon} />{item.name}
           </button>)}
           </div>
-          {!learning && !parsed && <WorkspaceStart onContinue={openLearning}>
+          {!learning && projectPicker}
+          </div>
+          <div hidden={!learning && !(parsed && (managing || activeTab === '文件重命名'))} className={learning ? `learning-context-header${!parsed ? ' is-empty' : ''}` : 'workspace-context-header'}>
+          {learning && <div className="learning-header-completion">{episodeToggle}</div>}
+          {learning && projectPicker}
+          {learning && selected?.learningError && (parsed?.episodes?.length || 0) <= 1 && <p className="error-text" role="alert">{selected.learningError}</p>}
+          {learning && learningNavigationError && <p className="error-text" role="alert">{learningNavigationError} 当前视频与学习数据保持不变。</p>}
+          {parsed && (learning || managing || activeTab === '文件重命名') && <div className="video-context-heading">
+            <div><strong translate="no" title={videoTitle}>{videoTitle}</strong>
+              {learning ? <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', projectTitle !== videoTitle ? projectTitle : !parsed.project.episode_title ? catalogEpisode?.title : ''].filter(Boolean).join(' · ')}</span>
+                : <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', projectTitle !== videoTitle ? projectTitle : ''].filter(Boolean).join(' · ')}</span>}</div>
+          </div>}
+          </div>
+          {!learning && !parsed && tab !== '字幕与转写' && tab !== '文件重命名' && <WorkspaceStart onContinue={openLearning}>
             <Panel className="source-panel" aria-labelledby="source-label">{sourceEntry}</Panel>
             {!source && <div className="examples-row"><div className="examples"><span>试试示例</span>
               {Object.entries(examples).map(([name, url]) => <button key={name} className="chip" type="button" onClick={() => { setSource(url); sourceInput.current?.focus(); }}>{name}</button>)}
@@ -547,31 +599,7 @@ export default function App() {
           {(parsing || parseError) && <p className={parseError ? 'error-text' : 'notice'} role="status">{parseStatus}
           {parseNeedsLogin && <button type="button" className="link-button" onClick={() => openAccounts(parseLoginPlatform(parseStatus, source))}>去登录</button>}
           </p>}
-          <div className={learning ? `learning-context-header${!parsed ? ' is-empty' : ''}` : 'workspace-context-header'}>
-          {learning && <LearningProjectPicker compact={!!parsed} current={parsed?.project || null} version={libraryVersion} disabled={parsing || !!restoringId}
-            loading={!!restoringId} onSelect={id => { void openLearningProject(id); }} />}
-          {learning && learningNavigationError && <p className="error-text" role="alert">{learningNavigationError} 当前视频与学习数据保持不变。</p>}
-          {parsed && (learning || managing) && <div className="video-context-heading">
-            <div><strong translate="no" title={parsed.project.episode_title || parsed.title}>{parsed.project.episode_title || parsed.title}</strong>
-              {learning ? <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', parsed.project.episode_title ? parsed.title : currentEpisode?.title].filter(Boolean).join(' · ')}</span>
-                : <span translate="no">{[parsed.project.part ? `P${parsed.project.part}` : '', parsed.project.episode_title && parsed.title !== parsed.project.episode_title ? parsed.title : ''].filter(Boolean).join(' · ')}</span>}</div>
-            <div className="video-context-actions">{learning ? <>
-              <details className="video-context-more" onKeyDown={event => {
-                if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); }
-              }}><summary>更多学习操作</summary><div onClick={event => {
-                if ((event.target as Element).closest('button')) event.currentTarget.closest('details')?.removeAttribute('open');
-              }}>
-                <button type="button" disabled={!!restoringId} onClick={() => { setNamingTaskId(null); setNamingOpen(true); }}>字幕层级命名</button>
-                <button type="button" disabled={!!restoringId} onClick={generateSubtitles}>生成字幕</button>
-                <button type="button" onClick={openPreparation}>返回视频准备</button>
-              </div></details>
-            </> : <>
-              <button type="button" disabled={!!restoringId} onClick={() => { setNamingTaskId(null); setNamingOpen(true); }}>字幕层级命名</button>
-              {media && <button type="button" onClick={openLearning}>返回学习</button>}
-            </>}</div>
-          </div>}
-          </div>
-          <div key="workpanel" id="workpanel" hidden={!parsed && !learning} role={page === 'learning' ? 'region' : 'tabpanel'} aria-labelledby={page === 'learning' ? 'page-title-learning' : 'tab-' + tabs.find(item => item.name === tab)?.id} className={`work-grid study-workspace${!fullInspector ? ' compact-context' : ''}${learning && media && studyCollapsed ? ' study-workspace-collapsed' : ''}${managing || (learning && !parsed) ? ' study-single-column' : ''}`}>
+          <div key="workpanel" id="workpanel" hidden={(!parsed && !learning) || (!learning && (tab === '字幕与转写' || tab === '文件重命名'))} role={page === 'learning' ? 'region' : 'tabpanel'} aria-labelledby={page === 'learning' ? 'page-title-learning' : 'tab-' + tabs.find(item => item.name === tab)?.id} className={`work-grid study-workspace${!fullInspector ? ' compact-context' : ''}${learning && media && studyCollapsed ? ' study-workspace-collapsed' : ''}${managing || (learning && !parsed) ? ' study-single-column' : ''}`}>
             <div className="study-main-column">
               <section className="preview-panel" aria-labelledby="content-heading" hidden={managing || !parsed}>
                 <h2 id="content-heading" className="sr-only">项目内容</h2>
@@ -583,23 +611,18 @@ export default function App() {
                 {videoError && <p className="error-text" role="alert">浏览器无法播放，请在归档目录中用本地播放器打开。</p>}
                 <div hidden={!learning}>
                 {parsed && media && <PlaybackResume key={`${parsed.project.id}:${media.resource}`}
-                  projectId={parsed.project.id} media={media} videoRef={videoRef} onSeek={seekVideo} anchorRef={resumeBar}>
-                  {episodeToggle}
-                </PlaybackResume>}
+                  projectId={parsed.project.id} media={media} videoRef={videoRef} onSeek={seekVideo} anchorRef={resumeBar} />}
                 {media && currentTimeline && <ChapterTimeline timeline={currentTimeline} view="player" compact
                   videoRef={videoRef} mediaKey={`${parsed?.project.id}:${media.preview_url}`} duration={media.duration}
                   enabled={timelineEnabled} onSeek={seekVideo} />}
-                {!media && episodeToggle}
                 </div>
-                {fullInspector && parsed && media && <div className="study-start-bar"><strong>视频已归档，可以开始学习</strong>
-                  <button type="button" className="primary" onClick={openLearning}>开始学习</button></div>}
               </section>
               <section className="learning-notes-panel" aria-label={learning ? 'AI 学习材料' : 'AI 分析与材料管理'} hidden={activeTab !== 'AI 分析'}>
                 <AnalysisPanel learning={learning} onManage={openAnalysis} onPrepare={openPreparation} onUseForLearning={openLearning} onTimelineChange={setAnalysisTimeline} onChatChange={setLearningChat} parsed={parsed} media={media} qualityId={quality} config={config} busy={busy} status={selected?.status || ''} error={!!selected?.error}
                   task={selected?.task} version={selected?.analysisVersion || 0} lastRecord={selected?.lastRecord} cancelDisabled={cancelDisabled}
                   onCancel={() => { void cancelWorkflow(); }} onAnalyze={body => { void run('analyze', { kind: 'analyze', body }); }}
                   onAsk={(recordId, question, position, agent) => { void run('analyze', { kind: 'ask', recordId, question, position, agent }); }}
-                  onSeek={media ? seekVideo : undefined} onOpenSettings={button => openSettings(button, true)} onGenerateSubtitles={generateSubtitles} />
+                  onSeek={media ? seconds => { if (!learning) navigate('learning'); seekVideo(seconds); } : undefined} onOpenSettings={button => openSettings(button, true)} onGenerateSubtitles={generateSubtitles} />
               </section>
             </div>
             <div className="study-context-rail" hidden={managing || (learning && !parsed)}>
@@ -607,6 +630,8 @@ export default function App() {
               {parsed && media && <StudySidebar projectId={parsed.project.id} media={media} videoRef={videoRef}
                 timeline={currentTimeline} enabled={timelineEnabled} collapsed={studyCollapsed}
                 alignTo={resumeBar} active={learning}
+                subtitles={{ projectId: parsed.project.id, mediaKey: media.resource, videoRef, onSeek: seekVideo, onGenerate: generateSubtitles,
+                  version: selected?.analysisVersion }}
                 onToggle={() => setStudyCollapsed(value => !value)} onSeek={seekVideo}
                 assistant={{ chat: currentChat, busy, status: selected?.status || '', error: !!selected?.error, task: selected?.task, cancelDisabled,
                   onAsk: (recordId, question, position, agent) => { void run('analyze', { kind: 'ask', recordId, question, position, agent }); },
@@ -615,8 +640,8 @@ export default function App() {
             <Panel as="aside" id="project-context" hidden={!parsed || (learning && ((!!media && studyCollapsed) || (parsed?.episodes?.length || 0) <= 1))} className={'details-panel' + (!fullInspector ? ' compact-inspector' : '')} aria-labelledby={learning ? undefined : 'details-heading'} aria-label={learning ? '分集学习上下文' : undefined}>
           {!learning && <div className="project-context-heading"><PanelTitle secondary id="details-heading">{fullInspector ? '项目与归档' : '当前项目'}</PanelTitle></div>}
           <div className="inspector-identity" hidden={learning}>
-          <h3 className="info-title" translate={parsed?.title ? 'no' : undefined}>{parsed?.title || '尚未选择视频'}
-          </h3>{parsed && <div className="identity-meta"><span className="platform-mark">{parsed.platform}{!fullInspector && parsed.project.part ? ` · P${parsed.project.part}` : ''}
+          <h3 className="info-title" translate={parsed?.title ? 'no' : undefined}>{videoTitle || '尚未选择视频'}
+          </h3>{parsed && projectTitle !== videoTitle && <p className="muted" translate="no">{projectTitle}</p>}{parsed && <div className="identity-meta"><span className="platform-mark">{parsed.platform}{!fullInspector && parsed.project.part ? ` · P${parsed.project.part}` : ''}
           </span><a className="source-link" href={parsed.source_url} target="_blank" rel="noreferrer" aria-label="打开原始链接" title="打开原始链接"><Icon name="external-link" /></a></div>}
           </div>
               {fullInspector && parsed && <>
@@ -658,27 +683,41 @@ export default function App() {
           </>}
               {fullInspector && parsed && <>
           <ProjectPanel key={parsed.project.id} project={parsed.project} onRenamed={renameProject} />
-          <button type="button" className="subtitle-entry" onClick={generateSubtitles}><Icon name="captions" />生成字幕</button>
           {qualityLimited && ['missing', 'missing_session', 'expired', 'invalid'].includes(parsed.bilibili_cookie_status || '') && <p className="notice quality-login">{qualityLogin === 'done' ? '已登录 B站，请重新解析链接以获取更高画质。' : <>画质受限：没有登录 B站，最高只有 480p。<button type="button" className="link-button" onClick={() => setQualityLogin('open')}>扫码登录</button><button type="button" className="link-button" onClick={() => openAccounts('bilibili')}>账号与登录</button></>}</p>}
           {qualityLogin === 'open' && <BiliLogin onClose={() => setQualityLogin('closed')} onSuccess={() => setQualityLogin('done')} />}
           </>}
-              {learning && parsed && parsed.episodes && parsed.episodes.length > 1 && <LearningProgress key={parsed.project.id}
-                project={parsed.project} episodes={parsed.episodes} disabled={parsing || !!restoringId || busy !== null}
-                savingPart={selected?.learningPendingPart ?? null} error={selected?.learningError || ''}
-                onSelectEpisode={part => { void selectEpisode(part); }}
-                onSetLearned={(part, learned) => { void setEpisodeLearned(part, learned); }} />}
+              {parsed?.platform === '哔哩哔哩' && <div className="episode-refresh"><button type="button" disabled={refreshingEpisodes || busy !== null} onClick={() => { void refreshEpisodes(); }}>{refreshingEpisodes ? '解析分集中…' : '解析视频集数'}</button><p role="status">{episodeMessage}</p></div>}
+              {learning && episodeLearning}
             </Panel>
+            {!learning && episodeLearning && <Panel as="aside" className="episode-learning-card" aria-label="分集学习">
+              {episodeLearning}
+            </Panel>}
             </div>
           </div>
-        </WorkbenchPage>
-        <WorkbenchPage page="transcription" activePage={page}>
+        <section id="subtitle-workpanel" role="tabpanel" aria-labelledby="tab-3" hidden={learning || tab !== '字幕与转写'}>
           <div className="transcription-layout">
           <Transcription config={config} onOpenSettings={button => openSettings(button, true)} projectId={parsed?.project.id} media={media} ready={config?.transcription_ready} subtitlesReady={config?.subtitles_ready}
             uploadLimit={config?.transcription_upload_limit} reuseModel={settings.reuseTranscriptionModel} focusRequest={subtitleFocus}
+            visible={page === 'workspace' && tab === '字幕与转写'} onSelectSource={selectSubtitleSource}
             pending={parsed && parsed.platform === '哔哩哔哩' ? { source_url: parsed.source_url, title: parsed.title, platform: parsed.platform, part: parsed.project.part ?? null, project_id: parsed.project.id } : null} />
           </div>
-          </WorkbenchPage>
+        </section>
+        <section id="naming-workpanel" role="tabpanel" aria-labelledby="tab-4" hidden={learning || tab !== '文件重命名'}>
+          {parsed ? namingVisited && <SubtitleNaming key={parsed.project.id} projectId={parsed.project.id} config={config}
+            visible={page === 'workspace' && tab === '文件重命名'} initialTaskId={namingTask?.projectId === parsed.project.id ? namingTask.id : null}
+            onOpenSettings={button => openSettings(button, true)} onBeforeApply={() => videoRef.current?.pause()}
+            onChanged={async () => { setLibraryVersion(value => value + 1); const id = selectedRef.current; if (id) await restoreProject(id, media?.resource || '', false, true); }} />
+            : <Panel className="naming-empty"><h2>文件重命名</h2><p>请先选择视频项目，再为已归档且有字幕的分集命名。</p>
+              </Panel>}
+        </section>
+        </WorkbenchPage>
         <WorkbenchPage page="tasks" activePage={page}>
+          <TaskSemanticSearch visible={page === 'tasks'} currentProjectId={parsed?.project.id} onSeek={async (id, time) => {
+            videoRef.current?.pause();
+            const restored = await restoreProject(id, '', false);
+            if (!restored) throw new Error('无法打开检索结果对应的视频，请刷新项目列表。');
+            navigate('learning', true); requestAnimationFrame(() => seekVideo(time));
+          }} />
           <TaskCenter onActivityChange={setActiveCount} />
           </WorkbenchPage>
         <WorkbenchPage page="accounts" activePage={page}>
@@ -687,7 +726,7 @@ export default function App() {
         <WorkbenchPage page="settings" activePage={page}>
           {(page === 'settings' || settingsVisited) && <SettingsPage settings={settings} onChange={saveSettings} config={config}
             configError={configError} saveStatus={settingsSaveStatus} activeCount={activeCount} onAIChange={updateAI}
-            visible={page === 'settings'} focusAIRequest={settingsFocusRequest} />}
+            visible={page === 'settings'} focusAIRequest={settingsFocusRequest} focusAITarget={settingsFocusTarget} />}
         </WorkbenchPage>
   </WorkbenchLayout>;
 }

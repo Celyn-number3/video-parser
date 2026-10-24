@@ -39,11 +39,11 @@ class OutputDestinationTests(unittest.TestCase):
         folders.remember(self.picked.resolve())
         source = self.root / 'a.srt'
         source.write_text('1', encoding='utf-8')
-        first = folders.publish(str(self.picked), source, '会议.本地转写.zh.srt')
+        first = folders.publish(str(self.picked), source, '会议.zh-本地转写.srt')
         source.write_text('2', encoding='utf-8')
-        second = folders.publish(str(self.picked), source, '会议.本地转写.zh.srt')
-        self.assertEqual(first.name, '会议.本地转写.zh.srt')
-        self.assertEqual(second.name, '会议.本地转写.zh (2).srt')
+        second = folders.publish(str(self.picked), source, '会议.zh-本地转写.srt')
+        self.assertEqual(first.name, '会议.zh-本地转写.srt')
+        self.assertEqual(second.name, '会议.zh-本地转写 (2).srt')
         self.assertEqual(first.read_text(encoding='utf-8'), '1')
 
     def test_route_destination_validation(self):
@@ -78,17 +78,17 @@ class OutputDestinationTests(unittest.TestCase):
         job = self.finished_job(project_id=project['id'], resource='videos/480p.mp4')
         self.assertEqual(job.state, 'completed')
         keys = sorted(library.get(project['id'])['resources'])
-        self.assertEqual(keys, ['subtitles/示例视频.本地转写.zh.srt', 'subtitles/示例视频.本地转写.zh.txt'])
+        self.assertEqual(keys, ['subtitles/示例视频.zh-本地转写.srt', 'subtitles/示例视频.zh-本地转写.txt'])
         self.assertEqual(transcription.saved_to(job)['type'], 'project')
 
     def test_upload_into_another_project_and_folder(self):
         other = self.project('BV1yy411c7mE', '另一个项目')
         job = self.finished_job(title='会议.wav', owned_input=True, destination={'type': 'project', 'project_id': other['id']})
-        self.assertIn('subtitles/会议.本地转写.zh.srt', library.get(other['id'])['resources'])
+        self.assertIn('subtitles/会议.zh-本地转写.srt', library.get(other['id'])['resources'])
         folders.remember(self.picked.resolve())
         transcription.jobs.clear()
         job = self.finished_job(title='会议.wav', owned_input=True, destination={'type': 'folder', 'path': str(self.picked.resolve())})
-        self.assertTrue((self.picked / '会议.本地转写.zh.srt').is_file())
+        self.assertTrue((self.picked / '会议.zh-本地转写.srt').is_file())
         self.assertEqual(transcription.saved_to(job), {'type': 'folder', 'location': str(self.picked.resolve())})
         self.assertEqual(transcription.download_file.__name__, 'download_file')
 

@@ -25,7 +25,7 @@ export default function WorkbenchLayout({ page, mobile, menuOpen, activeCount,
       aria-label="主导航" inert={mobile && !menuOpen}
       role={menuOpen ? 'dialog' : undefined} aria-modal={menuOpen || undefined}>
       <div className="brand"><span className="brand-mark"><Icon name="clapperboard" /></span><strong>Video Parser</strong></div>
-      <nav>{(Object.keys(pageNames) as Page[]).filter(name => name !== 'settings').map(name => <button key={name}
+      <nav>{(Object.keys(pageNames) as Page[]).filter(name => name !== 'settings' && name !== 'transcription').map(name => <button key={name}
         className="nav-button" type="button" aria-current={page === name ? 'page' : undefined}
         onClick={() => onNavigate(name, mobile)}><Icon name={pageIcons[name]} />{pageNames[name]}
         {name === 'tasks' && running > 0 && <b className="nav-count">{running}<span className="sr-only"> 项进行中</span></b>}</button>)}</nav>

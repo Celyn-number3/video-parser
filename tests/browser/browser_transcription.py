@@ -50,7 +50,7 @@ def main():
                 page.goto(base)
                 page.wait_for_load_state('networkidle')
                 # 2026-10-14 UI: page renamed 字幕与转写; source tabs 上传文件 / 已归档视频; language auto-detected.
-                page.locator('nav').get_by_role('button', name='字幕与转写').click()
+                page.get_by_role('tab', name='字幕与转写', exact=True).click()
                 panel = page.locator('section.transcription-panel')
                 expect(panel.get_by_role('button', name='开始转写')).to_be_disabled()
                 panel.locator('#transcription-file').set_input_files(str(fixture.source))
@@ -82,7 +82,8 @@ def main():
                 resource = library.import_file(project['id'], fixture.source, 'videos/720p.mp4', 'video', {'media': media})
                 page.goto(base + '?project=' + project['id'])
                 expect(page.locator('.info-title')).to_contain_text('浏览器视频', timeout=10000)
-                page.locator('.subtitle-entry').click()  # 生成字幕 → 字幕与转写 with this video preselected.
+                page.get_by_role('tab', name='字幕与转写', exact=True).click()
+                page.get_by_role('button', name=re.compile('^已归档视频')).click()
                 panel = page.locator('section.transcription-panel')
                 expect(panel.locator('.source-option.checked')).to_contain_text('浏览器视频')
                 panel.get_by_role('button', name='开始转写').click()
@@ -90,8 +91,8 @@ def main():
                 items = library.get(project['id'])['resources']
                 saved = [item for item in items.values() if item['kind'] == 'transcription']
                 assert len(saved) == 2 and all(item['video_resource'] == resource for item in saved)
-                assert all(path.startswith('subtitles/') and '.本地转写.' in path for path, item in items.items() if item['kind'] == 'transcription')
-                report['checks'].append('生成字幕 -> archived video preselected -> transcription saved to project subtitles/')
+                assert all(path.startswith('subtitles/') and re.search(r'-本地转写\.(?:txt|srt)$', path) for path, item in items.items() if item['kind'] == 'transcription')
+                report['checks'].append('字幕与转写 -> archived video preselected -> transcription saved to project subtitles/')
                 assert not errors, errors
                 report['checks'].append('no browser runtime errors')
             finally:

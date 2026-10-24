@@ -6,10 +6,10 @@ import type { TaskInfo } from '../../lib/jobs';
 import Icon from '../../components/Icon';
 import Panel, { PanelTitle } from '../../components/Panel';
 import Markdown from '../../components/Markdown';
+import FrameLightbox from '../../components/FrameLightbox';
 import './analysis.css';
 import { extractChapters } from './chapters';
 import type { AnalysisTimeline } from './chapters';
-import AIChat from '../learning/AIChat';
 import type { LearningChat } from '../learning/AIChat';
 import useConversations from '../learning/useConversations';
 import useAgentModels from '../learning/useAgentModels';
@@ -62,7 +62,7 @@ export default function AnalysisPanel(props: Props) {
   const [template, setTemplate] = useState('summary');
   const [source, setSource] = useState<AnalysisSource>('both');
   const [transcript, setTranscript] = useState('');
-  const [frameMode, setFrameMode] = useState<'scene' | 'uniform'>('scene');
+  const [frameMode, setFrameMode] = useState<'scene' | 'uniform' | 'ai'>('scene');
   const [count, setCount] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [consent, setConsent] = useState(false);
@@ -70,6 +70,8 @@ export default function AnalysisPanel(props: Props) {
   const [kept, setKept] = useState<Set<string>>(new Set());
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [largeFrame, setLargeFrame] = useState<AnalysisFrame | null>(null);
+  useEffect(() => setLargeFrame(null), [projectId, resource]);
   const [notice, setNotice] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const previewRequest = useRef<AbortController | null>(null);
@@ -114,8 +116,14 @@ export default function AnalysisPanel(props: Props) {
   useEffect(() => () => previewRequest.current?.abort(), []);
   useEffect(() => { setConfirmDelete(false); setNotice(''); }, [active]);
   useEffect(() => { setConfirmDelete(false); }, [learning]);
+  useEffect(() => {
+    const refresh = () => setReload(value => value + 1);
+    window.addEventListener('video-parser:subtitles-changed', refresh);
+    return () => window.removeEventListener('video-parser:subtitles-changed', refresh);
+  }, []);
 
   const models = useAgentModels(ai, !!config?.ai_configured);
+  const chatModels = useAgentModels(ai, !!config?.ai_configured);
   const configured = models.configured;
   const needsConsent = models.native || (!!ai && !ai.consented);
   useEffect(() => { setConsent(false); }, [models.key]);
@@ -123,12 +131,12 @@ export default function AnalysisPanel(props: Props) {
   const spec = templates.find(item => item.id === template);
   const transcripts = context?.transcripts || [];
   const chosen = transcripts.find(item => item.resource === transcript) || transcripts[0];
-  const effective: AnalysisSource = source === 'both' && !transcripts.length ? 'frames' : source;
+  const effective: AnalysisSource = source;
   const usesTranscript = effective !== 'frames';
   const usesFrames = effective !== 'transcript';
   const duration = context?.duration || media?.duration || parsed?.duration || 0;
   const automatic = autoCount(duration);
-  const frameTotal = usesFrames ? (preview ? kept.size : count || automatic) : 0;
+  const frameTotal = usesFrames ? (frameMode === 'ai' ? 16 : preview ? kept.size : count || automatic) : 0;
   const running = busy === 'analyze';
   const working = busy !== null;
   const recordsReady = recordsFor.project === projectId && recordsFor.resource === resource;
@@ -138,7 +146,7 @@ export default function AnalysisPanel(props: Props) {
     : visibleRecords.find(item => item.id === active) || null;
   const recordMatches = !!record && matchesLearningMedia(record, media, parsed?.episodes?.length || 0);
   // Management is a material editor, not another player. Only the learning reader can seek.
-  const recordSeek = learning && recordMatches ? onSeek : undefined;
+  const recordSeek = recordMatches ? onSeek : undefined;
   function chooseLearningMaterial(id: string) {
     const chosenRecord = eligibleRecords.find(item => item.id === id);
     if (!chosenRecord) return;
@@ -158,17 +166,19 @@ export default function AnalysisPanel(props: Props) {
       recordId: timeline.record.id, label: timeline.record.template_name, chapters: timeline.chapters } : null);
   }, [timeline, projectId, props.onTimelineChange]);
   const conversation = useConversations(projectId, resource, version, working);
-  const provider = models.name, host = !models.native && ai ? hostOf(ai.base_url) : '';
-  const chat = useMemo<LearningChat>(() => ({ ...conversation, configured, needsConsent, provider, host, models }),
-    [conversation, configured, needsConsent, provider, host, models]);
+  const provider = chatModels.name, host = !chatModels.native && ai ? hostOf(ai.base_url) : '';
+  const chatConsent = chatModels.native || (!!ai && !ai.consented);
+  const chat = useMemo<LearningChat>(() => ({ ...conversation, configured: chatModels.configured, needsConsent: chatConsent, provider, host, models: chatModels }),
+    [conversation, chatConsent, provider, host, chatModels]);
   const shownConversation = useRef('');
   useEffect(() => {
     const session = conversation.session;
     const key = projectId + ':' + (session?.id || '');
     if (!session || shownConversation.current === key) return;
     shownConversation.current = key;
-    models.select(session.agent || { engine: 'api', model: '', effort: '' });
-  }, [projectId, conversation.session, models.select]);
+    // Restoring a conversation must not override the model for NEW learning-material analysis.
+    chatModels.select(session.agent || { engine: 'api', model: '', effort: '' });
+  }, [projectId, conversation.session, chatModels.select]);
   useEffect(() => { props.onChatChange?.(projectId ? chat : null); }, [projectId, chat, props.onChatChange]);
 
 
@@ -176,7 +186,7 @@ export default function AnalysisPanel(props: Props) {
   const outputTokens = context?.output_tokens || 1500;
   const cost = ai && ai.price_input !== null ? inputTokens / 1e6 * ai.price_input + outputTokens / 1e6 * (ai.price_output ?? ai.price_input) : null;
 
-  const missingTranscript = !transcripts.length && (source === 'transcript' || spec?.requires === 'transcript');
+  const missingTranscript = !transcripts.length && (source !== 'frames' || spec?.requires === 'transcript' || frameMode === 'ai');
   const blocker = !parsed ? '先解析链接并选择视频。'
     : !context ? (loadError || '正在读取分析信息…')
     : missingTranscript ? '这个视频还没有字幕，先生成字幕再分析。'
@@ -192,8 +202,8 @@ export default function AnalysisPanel(props: Props) {
   }
   function body(): AnalysisBody {
     return {
-      agent: models.selected, template, source: effective, transcript_resource: usesTranscript ? chosen?.resource || null : null, frame_mode: frameMode,
-      count: usesFrames ? count : 0, preview_token: usesFrames && preview ? preview.token : null,
+      agent: models.selected, template, source: effective, transcript_resource: usesTranscript || frameMode === 'ai' ? chosen?.resource || null : null, frame_mode: frameMode,
+      count: usesFrames && frameMode !== 'ai' ? count : 0, preview_token: usesFrames && preview ? preview.token : null,
       frames: usesFrames && preview ? preview.frames.filter(frame => kept.has(frame.name)).map(frame => frame.name) : null, prompt: prompt.trim(),
     };
   }
@@ -244,6 +254,7 @@ export default function AnalysisPanel(props: Props) {
     <button type="button" onClick={props.onPrepare}>去准备视频</button></Panel>;
 
   return <>
+    <FrameLightbox frame={largeFrame} onClose={() => setLargeFrame(null)} onSeek={recordSeek} />
     <Panel className="analysis-form" hidden={learning} aria-labelledby="analysis-title">
       <PanelTitle id="analysis-title">生成 AI 学习材料</PanelTitle>
       {loadError && <p className="error-text" role="alert">{loadError}<button type="button" onClick={() => setReload(value => value+1)}>重新载入材料</button></p>}
@@ -275,29 +286,30 @@ export default function AnalysisPanel(props: Props) {
           </select>
         </label>}
         {usesTranscript && transcripts.length === 1 && chosen && <p className="analysis-hint">使用{chosen.label}：{chosen.cues} 条，到 {chosen.end}{chosen.merged ? '（较长，会按时间段合并）' : ''}。</p>}
-        {!transcripts.length && context && source !== 'frames' && <p className={'analysis-hint' + (missingTranscript ? ' analysis-warning' : '')}>
-          {missingTranscript ? '这个视频还没有字幕。' : '这个视频还没有字幕，这次只会用画面分析。'}
+        {!transcripts.length && context && (source !== 'frames' || frameMode === 'ai') && <p className={'analysis-hint' + (missingTranscript ? ' analysis-warning' : '')}>
+          {'当前视频暂无可用字幕，请先获取平台字幕或生成转写字幕；不会自动改为只用画面。'}
           <button type="button" className="link-button" onClick={props.onGenerateSubtitles}>先生成字幕</button></p>}
       </fieldset>
 
       {usesFrames && <div className="analysis-block">
         <span className="analysis-label">画面</span>
         <div className="analysis-frame-controls">
-          <select aria-label="选取画面的方式" value={frameMode} disabled={running} onChange={event => setFrameMode(event.target.value as 'scene' | 'uniform')}>
-            <option value="scene">按镜头切换选取</option><option value="uniform">按时间平均选取</option>
+          <select aria-label="选取画面的方式" value={frameMode} disabled={running} onChange={event => setFrameMode(event.target.value as 'scene' | 'uniform' | 'ai')}>
+            <option value="ai">AI 根据字幕智能选帧</option><option value="scene">按镜头切换选取</option><option value="uniform">按时间平均选取</option>
           </select>
-          <select aria-label="画面数量" value={count} disabled={running} onChange={event => setCount(Number(event.target.value))}>
-            <option value={0}>自动（{automatic} 张）</option>{COUNTS.map(value => <option key={value} value={value}>{value} 张</option>)}
+          <select aria-label="画面数量" value={count} disabled={running || frameMode === 'ai'} onChange={event => setCount(Number(event.target.value))}>
+            <option value={0}>{frameMode === 'ai' ? 'AI 自主决定（1–16 张）' : <>自动（{automatic} 张）</>}</option>{COUNTS.map(value => <option key={value} value={value}>{value} 张</option>)}
           </select>
-          {media ? <button type="button" disabled={previewing || running} aria-busy={previewing} onClick={() => { void loadPreview(); }}>
+          {media ? <button type="button" disabled={previewing || running || frameMode === 'ai'} aria-busy={previewing} onClick={() => { void loadPreview(); }}>
             {previewing ? <><Icon name="loader-circle" className="spinner" />截取中…</> : <><Icon name="image" />{preview ? '重新截取' : '预览画面'}</>}
           </button> : <span className="analysis-hint">归档后可以先预览画面、去掉不要的。</span>}
         </div>
+        <p className="analysis-hint">{frameMode === 'ai' ? 'AI 阅读字幕，自行决定画面时间点与张数（最多 16 张），增加一次模型调用；开始分析后执行。' : frameMode === 'scene' ? '检测画面变化优先抽帧；镜头不足或检测失败时按时间均匀补足，不等于理解视频内容。' : '按时长等间隔抽帧，可能错过短暂出现的内容。'}</p>
         {previewError && <p className="error-text" role="alert">{previewError}</p>}
         {preview && <>
-          <p className="analysis-hint">点击画面可以取消选择，已选 {kept.size} / {preview.frames.length} 张。</p>
+          <p className="analysis-hint">点击画面查看大图，勾选框控制是否分析，已选 {kept.size} / {preview.frames.length} 张。</p>
           <ul className="analysis-frames analysis-picker" aria-label="预览画面">
-            {preview.frames.map(frame => <li key={frame.name}><button type="button" aria-pressed={kept.has(frame.name)} disabled={running} onClick={() => toggleFrame(frame.name)}
+            {preview.frames.map(frame => <li key={frame.name}><label><input type="checkbox" checked={kept.has(frame.name)} disabled={running} onChange={() => toggleFrame(frame.name)} aria-label={`选择画面 ${frame.label}`} />纳入分析</label><button type="button" onClick={() => setLargeFrame(frame)}
               aria-label={`画面 ${frame.label}${kept.has(frame.name) ? '（已选）' : '（未选）'}`}>
               <img src={frame.url} alt="" /><span>{frame.label}</span></button></li>)}
           </ul>
@@ -312,7 +324,7 @@ export default function AnalysisPanel(props: Props) {
       {estimate && <p className="analysis-estimate">{estimate}。{price}</p>}
       {configured && needsConsent && <label className="consent">
         <input type="checkbox" disabled={running} checked={consent} onChange={event => setConsent(event.target.checked)} />
-        <span>{models.native ? '同意由本地 agent 的模型处理课程内容，可能联网并产生费用。' : <>{usesTranscript && usesFrames ? '同意把字幕和画面发送到 ' : usesTranscript ? '同意把字幕发送到 ' : '同意把画面发送到 '}{ai?.provider_name}（{ai ? hostOf(ai.base_url) : ''}），可能产生费用，发送后无法撤销。同意一次后，对这个服务不再询问。</>}</span>
+        <span>{models.native ? '同意由本地 agent 的模型处理课程内容，可能联网并产生费用。' : <>{(usesTranscript || frameMode === 'ai') && usesFrames ? '同意把字幕和画面发送到 ' : usesTranscript ? '同意把字幕发送到 ' : '同意把画面发送到 '}{ai?.provider_name}（{ai ? hostOf(ai.base_url) : ''}），可能产生费用，发送后无法撤销。同意一次后，对这个服务不再询问。</>}</span>
       </label>}
       <div className="analysis-actions">
         <button className="primary operation-button" type="button" aria-busy={running || busy === 'prepare'} disabled={!media || !!blocker || working}
@@ -355,17 +367,12 @@ export default function AnalysisPanel(props: Props) {
         {!learning && !recordMatches && <p className="notice">这份记录未绑定当前归档视频，不能用于当前学习。</p>}
         {!learning && notice && <p className="analysis-hint" role="status">{notice}</p>}
         {!learning && record.frames.length > 0 && <ul className="analysis-frames" aria-label="这次分析用到的画面">
-          {record.frames.map(frame => <li key={frame.url}><button type="button" disabled={!recordSeek} title={recordSeek ? `跳到 ${frame.label}` : '请在学习视图中回看画面'} onClick={() => recordSeek?.(frame.time)}>
+          {record.frames.map(frame => <li key={frame.url}><button type="button" title={`查看画面 ${frame.label} 大图`} onClick={() => setLargeFrame(frame)}>
             <img src={frame.url} alt={`画面 ${frame.label}`} loading="lazy" /><span>{frame.label}</span></button></li>)}
         </ul>}
         <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" />
 
       </article>}
-    </Panel>}
-    {!learning && media && <Panel className="independent-conversations"><PanelTitle>AI 对话</PanelTitle>
-      <AIChat chat={chat} busy={busy} status={status} error={error} task={task} cancelDisabled={props.cancelDisabled}
-        onAsk={props.onAsk} onCancel={props.onCancel} onOpenSettings={props.onOpenSettings} onManage={props.onManage}
-        onGenerateSubtitles={props.onGenerateSubtitles} duration={duration} visible={!learning} />
     </Panel>}
   </>;
 }

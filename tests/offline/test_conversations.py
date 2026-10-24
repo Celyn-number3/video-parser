@@ -40,6 +40,20 @@ class ConversationTests(unittest.TestCase):
         self.work = self.root / 'work'; self.work.mkdir()
         self.client = TestClient(app, base_url='http://127.0.0.1:15001', client=('127.0.0.1', 1234))
 
+    def test_english_transcription_is_valid_for_conversation_context(self):
+        library.remove(self.pid, [self.sub])
+        self.assertIn('subtitles', conversations.availability(self.pid, self.video)['missing'])
+        source = self.root / 'english.srt'
+        source.write_text('1\n00:00:02,000 --> 00:00:20,000\nThis lecture explains linear algebra.\n', encoding='utf-8')
+        resource = library.import_file(self.pid, source, 'subtitles/english.srt', 'transcription', {'language': 'en', 'video_resource': self.video})
+        result = self.client.get(f'/api/workspace/projects/{self.pid}/conversations/context', params={'resource': self.video})
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.json()['available'])
+        self.assertEqual(result.json()['missing'], [])
+        self.assertEqual(result.json()['transcript_resource'], resource)
+        with patch.object(ai_analysis, 'records', return_value=[]):
+            self.assertEqual(conversations.availability(self.pid, self.video)['missing'], ['chapters', 'summary'])
+
     def test_requires_subtitles_and_at_least_one_material(self):
         self.assertTrue(conversations.availability(self.pid, self.video)['available'])
         project = library.get(self.pid)

@@ -2,6 +2,7 @@
 import io
 import re
 import unittest
+from tests.browser.project_picker import select_project
 import wave
 from urllib.parse import parse_qs, urlsplit
 
@@ -89,6 +90,8 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
             return route.fulfill(content_type='audio/wav', body=self.fixture.audio)
         path = url.path.removeprefix('/api/workspace')
         self.calls.append((request.method, path))
+        if path.endswith('/folder-naming'):
+            return route.fulfill(json={'location': 'bilibili/合成课程__fixture', 'title': '合成课程', 'projects': 2, 'latest': None})
         match = re.match(r'/projects/([a-f0-9]{32})(/.*)?$', path)
         part = int(match[1], 16) if match else None
         suffix = match[2] or '' if match else ''
@@ -159,11 +162,14 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
     def test_switching_workbench_and_learning_preserves_the_player_node(self):
         self.open()
         self.page.locator('video').evaluate('video=>window.existingLearningPlayer=video')
-        self.page.locator('.video-context-more > summary').click()
-        self.page.get_by_role('button', name='返回视频准备', exact=True).click()
-        expect(self.page.get_by_role('button', name='开始学习', exact=True)).to_be_visible()
+        expect(self.page.locator('.learning-materials')).to_be_visible()
+        expect(self.page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True)).to_be_visible()
+        expect(self.page.locator('.study-start-bar')).to_have_count(0)
+        expect(self.page.locator('.video-context-more')).to_have_count(0)
+        self.page.get_by_role('button', name='视频工作台', exact=True).click()
+        expect(self.page.get_by_role('button', name='学习视图', exact=True)).to_be_visible()
         self.assertTrue(self.page.evaluate('document.querySelector("video")===window.existingLearningPlayer'))
-        self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
         expect(self.page.get_by_role('combobox', name='学习项目', exact=True)).to_be_visible()
         self.assertTrue(self.page.evaluate('document.querySelector("video")===window.existingLearningPlayer'))
         self.assertNotIn(('POST', '/parse'), self.calls)
@@ -175,8 +181,8 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
         expect(self.page.get_by_role('complementary', name='学习侧栏')).to_be_visible()
         expect(self.page.locator('.analysis-record')).to_contain_text('第2集自己的摘要')
         expect(self.page.locator('.analysis-record')).not_to_contain_text('第1集自己的摘要')
-        self.page.locator('.video-context-more > summary').click()
-        expect(self.page.get_by_role('button', name='生成字幕', exact=True)).to_be_visible()
+        expect(self.page.locator('.video-context-more')).to_have_count(0)
+        expect(self.page.get_by_role('button', name='视频工作台', exact=True)).to_be_visible()
         expect(self.page.get_by_role('tab', name='AI 对话', exact=True)).to_be_visible()
         expect(self.page.locator('.video-context-actions').get_by_role('button', name='AI 对话', exact=True)).to_have_count(0)
         self.assertNotIn(('POST', '/parse'), self.calls)
@@ -188,8 +194,8 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
         self.empty_parts.add(2)
         self.choose_part(2)
         expect(self.page.get_by_role('complementary', name='学习侧栏')).to_be_visible()
-        self.page.locator('.video-context-more > summary').click()
-        expect(self.page.get_by_role('button', name='生成字幕', exact=True)).to_be_visible()
+        expect(self.page.locator('.video-context-more')).to_have_count(0)
+        expect(self.page.get_by_role('button', name='视频工作台', exact=True)).to_be_visible()
         expect(self.page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True)).to_be_visible()
         expect(self.page.locator('.analysis-record')).to_have_count(0)
         expect(self.page.locator('.learning-materials')).to_contain_text('还没有当前视频的 AI 学习材料')
@@ -199,7 +205,7 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
         self.open()
         picker = self.page.get_by_role('combobox', name='学习项目', exact=True)
         expect(picker).to_be_visible()
-        picker.select_option(self.identifier(3))
+        select_project(picker, self.identifier(3))
         expect(self.page.locator('.video-context-heading')).to_contain_text('合成课程乙')
         expect(self.page.locator('.analysis-record')).to_contain_text('第3集自己的摘要')
         expect(self.page.locator('.analysis-record')).not_to_contain_text('第1集自己的摘要')
@@ -215,7 +221,7 @@ class LearningWorkflowBrowserTests(unittest.TestCase):
         expect(picker).to_be_enabled()
         expect(self.page.get_by_role('group', name='学习项目切换')).to_have_attribute('aria-busy', 'false')
         expect(self.page.get_by_role('alert')).to_have_count(0)
-        picker.select_option(self.identifier(3))
+        select_project(picker, self.identifier(3))
         expect(self.page.locator('.video-context-heading')).to_contain_text('合成课程乙')
         expect(self.page.locator('.analysis-record')).to_contain_text('第3集自己的摘要')
         self.assertNotIn(('POST', '/parse'), self.calls)

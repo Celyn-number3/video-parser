@@ -19,6 +19,11 @@ export default function useConversations(projectId: string, resource: string, ve
   const { drafts, setDraft, draftStorageFailed } = useConversationDrafts(projectId, resource);
   const [pending, setPending] = useState<PendingQuestion | null>(null);
   const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const refresh = () => setReload(value => value + 1);
+    window.addEventListener('video-parser:subtitles-changed', refresh);
+    return () => window.removeEventListener('video-parser:subtitles-changed', refresh);
+  }, []);
   const operations = useRef<AbortController | null>(null);
   const creation = useRef(false);
   useEffect(() => {

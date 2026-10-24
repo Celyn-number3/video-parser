@@ -151,7 +151,7 @@ def run_cli(url, episodes):
 
 def platform_name(title, suffix):
     # Same folder as local transcripts; the name tells the two sources apart.
-    return (library.safe_name(title)[:60] or 'subtitle') + '.平台字幕' + suffix
+    return (library.safe_name(title)[:60] or 'subtitle') + '-B站平台字幕' + suffix
 
 
 def sanitize_title(title):
@@ -248,11 +248,12 @@ def worker(job):
                 for path in triplet:
                     target = snapshot / ('_' + path.suffix[1:]) / path.name
                     task_runtime.checkpoint()
-                    relative = library.import_file(project['id'], target, 'subtitles/' + platform_name(project['title'], path.suffix), 'subtitle', {'download_name': path.name})
+                    name = platform_name(library.episode_title(project) or source.stem, path.suffix)
+                    relative = library.import_file(project['id'], target, 'subtitles/' + name, 'subtitle', {'download_name': name})
                     target = library.resource(project['id'], relative)
                     token = f'{episode}-{path.suffix[1:]}'
                     downloads[token] = target
-                    row['files'].append({'name': path.name, 'format': path.suffix[1:].upper(),
+                    row['files'].append({'name': name, 'format': path.suffix[1:].upper(),
                                          'url': f"/api/workspace/projects/{project['id']}/files/{relative}?download=true"})
                 row.update(status=final_status,message='已有，校验通过' if existing else '本次下载，校验通过')
                 # Published paths are in library, so this task's validated copy is no longer needed.
@@ -349,10 +350,28 @@ def get(identifier):
         return job
 
 
+def published_results(job):
+    """Keep durable logical URLs, but show current physical names after a rename."""
+    result = []
+    for row in job.results:
+        value = {**row, 'files': [dict(file) for file in row.get('files', [])]}
+        owner = (row.get('project') or {}).get('id')
+        try:
+            if owner:
+                project = library.get(owner)
+                prefix = f'/api/workspace/projects/{owner}/files/'
+                for file in value['files']:
+                    url = file.get('url', '').split('?', 1)[0]
+                    if url.startswith(prefix): file['name'] = library.resource_path(project, url[len(prefix):]).name
+        except (KeyError, ValueError, OSError): pass
+        result.append(value)
+    return result
+
+
 def view(job):
     with jobs_lock:
         return {**task_runtime.metadata(job), 'id': job.id, 'state': task_runtime.public_state(job), 'message': job.message, 'title': job.title,
-                'results': job.results, 'skipped': job.skipped,
+                'results': published_results(job), 'skipped': job.skipped,
                 'downloaded': sum(row['status'] == 'downloaded' for row in job.results),
                 'existing': sum(row['status'] == 'existing' for row in job.results),
                 'failed': sum(row['status'] == 'failed' for row in job.results)}
@@ -363,13 +382,29 @@ def download_file(identifier, token):
     path = job.files.get(token)
     if path is None:
         raise KeyError('未找到已校验的字幕文件。')
-    resolved = path.resolve(strict=True)
+    # Validate the journal path boundary even when a newer logical URL is available.
+    resolved = path.resolve()
     if resolved.is_relative_to(library.LIBRARY_ROOT.resolve()):
+        from video_parser.services.library_layout import restore_task_paths
+        resolved = Path(restore_task_paths({'path': str(resolved)})['path'])
         project = library.owner(resolved)
-        if project: return library.resource(project['id'], resolved.relative_to(project['directory']).as_posix())
+        if project:
+            for row in job.results:
+                owner = (row.get('project') or {}).get('id')
+                prefix = f'/api/workspace/projects/{owner}/files/'
+                for file in row.get('files', []):
+                    url = file.get('url', '').split('?', 1)[0]
+                    if owner and token == f"{row.get('episode')}-{file.get('format', '').lower()}" and url.startswith(prefix):
+                        if owner != project['id']: raise KeyError('字幕记录所属项目不一致。')
+                        return library.resource(owner, url[len(prefix):])
+            # Legacy journals retain the original logical path even after a physical rename.
+            key = resolved.relative_to(project['directory']).as_posix()
+            if key not in project['resources']: key = library.logical_resource(project, resolved)
+            return library.resource(project['id'], key)
     if not resolved.is_relative_to(job.directory.absolute()) or not resolved.is_relative_to(CACHE_ROOT.resolve()):
         raise KeyError('字幕文件不在受控目录中。')
-    return resolved
+    return resolved.resolve(strict=True)
+
 
 
 def retry_failed(identifier):

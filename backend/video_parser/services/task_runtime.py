@@ -35,7 +35,9 @@ class Cancelled(RuntimeError):
 def classify(error):
     if isinstance(error, Cancelled): return 'cancelled', '任务已取消；已归档成果保留。'
     if getattr(error, 'user_message', None): return getattr(error, 'code', 'operation_failed'), error.user_message
-    if isinstance(error, PermissionError): return 'permission_denied', '目录不可写，请检查本机文件权限。'
+    if isinstance(error, OSError) and getattr(error, 'winerror', None) in (32, 33):
+        return 'file_in_use', '文件或文件夹正在被占用，请停止播放或关闭正在使用它的程序后重试。'
+    if isinstance(error, PermissionError): return 'permission_denied', '文件或目录访问被拒绝，可能被占用或权限受限；请检查占用情况和访问权限。'
     if isinstance(error, OSError) and error.errno == errno.ENOSPC: return 'disk_full', '磁盘空间不足，请释放空间后重试。'
     if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)): return 'timeout', '操作超时，请检查网络或本机运行环境后重试。'
     if isinstance(error, FileNotFoundError): return 'missing_input', '输入文件或运行组件缺失，请检查环境。'
@@ -75,6 +77,8 @@ def restore(root, identifier, factory, path_fields=()):
         allowed = {f.name for f in fields(factory)}
         from video_parser.core.paths import restore_runtime_paths
         data = restore_runtime_paths({k:v for k,v in record['job'].items() if k in allowed})
+        from video_parser.services.library_layout import restore_task_paths
+        data = restore_task_paths(data)
         for name in path_fields:
             if data.get(name): data[name] = Path(data[name])
         data['created_at'] = time.monotonic()

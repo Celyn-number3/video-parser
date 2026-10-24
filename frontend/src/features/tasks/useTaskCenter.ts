@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from '../../lib/api';
 import { cancelTask, isActive, type TaskInfo } from '../../lib/jobs';
 import useTaskHistory from './useTaskHistory';
+import { taskDescription } from './taskDetails';
 
 export const STATUSES = ['all','active','completed','unfinished'] as const;
 export function hasStatus(job: TaskInfo, key: string) {
@@ -21,6 +22,8 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
   // Type filter (video / subtitles / transcriptions / analysis), combined with the status filter.
   const [kind,setKind] = useState('all');
   const [query,setQuery] = useState('');
+  const [facets, setFacets] = useState({ template: '', engine: '', source: '', model: '', after: '', before: '' });
+  const resetFilters = () => { setFilter('all'); setKind('all'); setQuery(''); setFacets({ template: '', engine: '', source: '', model: '', after: '', before: '' }); };
   const [retrying,setRetrying] = useState<string[]>([]);
   const retries = useRef(new Set<string>());
   const [pendingCancels, setPendingCancels] = useState<string[]>([]);
@@ -43,8 +46,11 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
   }
   // Each facet's counts apply the search and the other facet, so a count always equals what clicking it shows.
   const needle = query.trim().toLowerCase();
-  const searched = needle ? jobs.filter(job => [job.project_title, job.title, job.part ? 'P' + job.part : '', job.id, job.message]
-    .some(value => !!value && value.toLowerCase().includes(needle))) : jobs;
+  const matched = jobs.filter(job => ['template', 'engine', 'source', 'model'].every(key => !facets[key as keyof typeof facets] || job.details?.[key as 'template'] === facets[key as keyof typeof facets])
+    && (!facets.after || !!job.created && job.created * 1000 >= new Date(facets.after + 'T00:00:00').getTime())
+    && (!facets.before || !!job.created && job.created * 1000 <= new Date(facets.before + 'T23:59:59.999').getTime()));
+  const searched = needle ? matched.filter(job => [...(job.subjects || []).flatMap(item => [item.title, item.part ? 'P' + item.part : '']), ...(job.file_details || []).map(item => item.name), ...(job.video_names || []), ...(job.file_names || []), job.project_title, job.title, job.part ? 'P' + job.part : '', job.id, job.message, taskDescription(job)]
+    .some(value => !!value && value.toLowerCase().includes(needle))) : matched;
   const ofKind = (job: TaskInfo, key: string) => key === 'all' || job.kind === key;
   const visible = searched.filter(job => ofKind(job, kind) && hasStatus(job, filter));
   const statusCounts = Object.fromEntries(STATUSES.map(key => [key, searched.filter(job => ofKind(job, kind) && hasStatus(job, key)).length]));
@@ -69,6 +75,6 @@ export default function useTaskCenter(onActivityChange?: (count: number | null) 
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : '重试失败，请检查后再试。'); }
     finally { retries.current.delete(job.id);setRetrying(current => current.filter(id => id !== job.id)); }
   }
-  return { jobs, error, loaded, notice, filter, setFilter, kind, setKind, query, setQuery, statusCounts, kindCount, retrying,
+  return { jobs, error, loaded, facets, setFacets, resetFilters, notice, filter, setFilter, kind, setKind, query, setQuery, statusCounts, kindCount, retrying,
     pendingCancels, visible, cancel, retry, deadCount: dead.length, clearing, clearDead };
 }

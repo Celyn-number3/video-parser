@@ -32,7 +32,7 @@ export interface AgentTarget { engine: AgentEngine; model: string; effort: strin
 export interface AgentModel { id: string; label: string; efforts: string[]; images: boolean | null }
 export interface AgentCommand { name: string; prefix: string; description: string }
 export interface AgentCatalog {
-  engines: { id: Exclude<AgentEngine, 'api'>; name: string; installed: boolean; discovered: boolean;
+  engines: { id: Exclude<AgentEngine, 'api'>; name: string; installed: boolean; enabled?: boolean; discovered: boolean;
     models: AgentModel[]; commands: AgentCommand[]; error: string; updated_at?: number | null }[];
   permission: string;
 }
@@ -54,7 +54,7 @@ export interface AnalysisRecord {
 }
 export interface AnalysisBody {
   agent?: AgentTarget;
-  template: string; source: AnalysisSource; transcript_resource: string | null; frame_mode: 'scene' | 'uniform';
+  template: string; source: AnalysisSource; transcript_resource: string | null; frame_mode: 'scene' | 'uniform' | 'ai';
   count: number; preview_token: string | null; frames: string[] | null; prompt: string;
 }
 export interface AnalysisResult { text: string; record?: AnalysisRecord; conversation?: Conversation; mode: 'analyze' | 'ask' | 'conversation'; project: VideoProject }
@@ -171,6 +171,8 @@ export interface VideoProjectSummary {
   created_at: string;
   video_id?: string;
   episode_title?: string;
+  display_title?: string;
+  is_single?: boolean;
   archived: boolean;
 }
 
@@ -178,6 +180,8 @@ export interface VideoProject {
   id: string;
   video_id?: string;
   episode_title?: string;
+  display_title?: string;
+  is_single?: boolean;
   title: string;
   platform: string;
   part: number | null;
@@ -203,15 +207,20 @@ export interface TranscriptionSource {
   subtitle_count?: number;
 }
 
+export interface ArchivedTranslation { location?: string; resource: string; filename: string; language: string; text: string; url: string }
+
 export interface ArchivedSubtitles {
+  translations?: ArchivedTranslation[];
   project_id: string; has_subtitles: boolean; text: string;
   files: { resource: string; filename: string; kind: string; url: string; language: string }[];
-  selected: { resource: string; filename: string; url: string; language: string } | null;
+  selected: { resource: string; filename: string; url: string; language: string; sha256?: string } | null;
 }
 
 export interface TranscriptionJob {
   operation?: 'transcription' | 'translation';
   translation_target?: 'zh' | 'en';
+  translation_source?: string | null;
+  translation_source_sha256?: string | null;
   id: string;
   state: 'queued' | 'running' | 'cancelling' | 'completed' | 'empty' | 'failed' | 'cancelled' | 'interrupted';
   message: string;

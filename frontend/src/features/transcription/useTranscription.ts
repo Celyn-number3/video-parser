@@ -17,8 +17,9 @@ type Submission = { kind: 'upload'; file: File } | { kind: 'video'; project_id: 
 export const sourceKey = (source: { project_id: string; resource: string }) => source.project_id + '|' + source.resource;
 
 export type TranscriptionOptions = { projectId?: string; media: Media | null; uploadLimit?: number; reuseModel?: boolean;
-  pending?: PendingSource | null; focusRequest?: number };
-export default function useTranscription({ projectId, media, uploadLimit, reuseModel: reusePreference = false, pending = null, focusRequest = 0 }: TranscriptionOptions) {
+  pending?: PendingSource | null; focusRequest?: number; visible?: boolean;
+  onSelectSource?: (projectId: string, resource: string) => Promise<boolean> };
+export default function useTranscription({ projectId, media, uploadLimit, reuseModel: reusePreference = false, pending = null, focusRequest = 0, visible = true, onSelectSource }: TranscriptionOptions) {
   const [mode, setModeState] = useState<SourceMode>('upload');
   const [method, setMethod] = useState<Method>('transcribe');
   const [destination, setDestination] = useState<Destination>('default');
@@ -49,24 +50,29 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
   const lastId = useRef<string | null>(null);
   const limit = uploadLimit ?? 512 * 1024 * 1024;
   const running = isActive(job?.state);
+  // Switching the viewed source never cancels the backend job. Cache the last task per video.
+  const jobsBySource = useRef(new Map<string, TranscriptionJob>());
+  function updateJob(value: TranscriptionJob) {
+    if (value.source_project_id && value.source_resource) jobsBySource.current.set(sourceKey({ project_id: value.source_project_id, resource: value.source_resource }), value);
+    setJob(value);
+  }
+  function resume(identifier: string, sync = true, cached: TranscriptionJob | null = null) {
+    active.current?.abort(); cancellation.current?.abort(); cancellation.current = null; setCancelling(false);
+    const controller = new AbortController(); active.current = controller; lastId.current = identifier;
+    lastSubmission.current = null; setCanRetry(false); setRequested('auto'); syncToJob.current = sync; restoring.current = true;
+    setJob(cached); remember('transcriptions', identifier); setBusy(true); setError(''); void poll(identifier, controller);
+  }
 
   useEffect(() => {
-    function resume(identifier: string) {
-      active.current?.abort();
-      const controller=new AbortController();active.current=controller;lastId.current=identifier;
-      // A task restored from the task center has no local input to resubmit.
-      lastSubmission.current=null;setCanRetry(false);setRequested('auto');syncToJob.current=true;restoring.current=true;
-      remember('transcriptions',identifier);setBusy(true);setError('');void poll(identifier,controller);
-    }
     const previous=remembered('transcriptions');if (previous) resume(previous);
-    const listener=(event: Event) => { const detail=(event as CustomEvent<{kind:string;id:string}>).detail;if (detail?.kind==='transcriptions') resume(detail.id); };
+    const listener=(event: Event) => { const detail=(event as CustomEvent<{kind:string;id:string}>).detail;if (detail?.kind==='transcriptions') { navigateToJob.current = true; resume(detail.id); } };
     window.addEventListener('video-parser:restore-task',listener);
     return () => { active.current?.abort();cancellation.current?.abort();window.removeEventListener('video-parser:restore-task',listener); };
   }, []);
 
   async function poll(identifier: string, controller: AbortController) {
     try {
-      await pollJob<TranscriptionJob>('/transcriptions/'+identifier,controller.signal,value => { restoring.current=false;setJob(value); });
+      await pollJob<TranscriptionJob>('/transcriptions/'+identifier,controller.signal,value => { if (!controller.signal.aborted && active.current === controller) { restoring.current=false;updateJob(value); } });
       if (!controller.signal.aborted) { active.current=null;setBusy(false); }
     } catch (reason) {
       if (controller.signal.aborted) return;
@@ -80,6 +86,7 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
   // A restored task (page reload or task center) switches the page to that task's own source,
   // so its result is never shown under an unrelated selection.
   const syncToJob = useRef(false);
+  const navigateToJob = useRef(false);
   const restoring = useRef(false);
   useEffect(() => {
     if (!syncToJob.current || !job) return;
@@ -89,10 +96,13 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
     syncToJob.current = false;
     const match = sources.find(item => item.project_id === job.source_project_id && item.resource === job.source_resource);
     if (match) {
-      chooseSource(sourceKey(match));
-      keepPlatform.current = true; setMethod('transcribe');
-      lastSubmission.current = { kind: 'video', project_id: match.project_id, resource: match.resource, title: match.title };
-      setCanRetry(true);
+      void chooseSource(sourceKey(match), navigateToJob.current).then(selected => {
+        if (!selected) return;
+        keepPlatform.current = true; setMethod('transcribe');
+        lastSubmission.current = { kind: 'video', project_id: match.project_id, resource: match.resource, title: match.title };
+        setCanRetry(true);
+      });
+      navigateToJob.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job, sources]);
@@ -123,7 +133,7 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
   }, [mode, projectId, media, sourcesVersion, pending?.project_id, pending?.source_url]);
   const reloadSources = () => { setSources(null); setSourcesVersion(value => value + 1); };
   const completedKey = job?.state === 'completed' ? job.id : '';
-  useEffect(() => { if (completedKey) setSourcesVersion(value => value + 1); }, [completedKey]);
+  useEffect(() => { if (completedKey) { setSourcesVersion(value => value + 1); window.dispatchEvent(new Event('video-parser:subtitles-changed')); } }, [completedKey]);
   useEffect(() => {
     const refresh = () => setSourcesVersion(value => value + 1);
     window.addEventListener('video-parser:subtitles-changed', refresh);
@@ -148,7 +158,36 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
   useEffect(() => {
     if (!keepPlatform.current) setMethod(isBilibili ? 'platform' : 'transcribe');
   }, [selectedKey, isBilibili]);
-  function chooseSource(key: string) { keepPlatform.current = false; setSelectedKey(key); }
+  function selectSourceLocally(key: string) {
+    keepPlatform.current = false; setSelectedKey(key); setError(''); setBatchNotice('');
+    const cached = jobsBySource.current.get(key);
+    if (cached) {
+      keepPlatform.current = true; setMethod('transcribe');
+      if (cached.id !== job?.id) resume(cached.id, false, cached);
+    }
+  }
+  const sourceSelection = useRef(0);
+  async function chooseSource(key: string, navigate = false) {
+    syncToJob.current = false;
+    const version = ++sourceSelection.current;
+    const source = sources?.find(item => sourceKey(item) === key);
+    // Commit both selectors only after the shared workspace context is ready. A failed
+    // restore keeps the old source/result, and a newer click supersedes the old request.
+    if ((visible || navigate) && source && onSelectSource && !await onSelectSource(source.project_id, source.resource)) return false;
+    if (version !== sourceSelection.current) return false;
+    selectSourceLocally(key);
+    return true;
+  }
+  useEffect(() => {
+    if (!visible || mode !== 'video' || !projectId || !sources) return;
+    const exact = sources.find(item => item.project_id === projectId && item.resource === media?.resource);
+    const match = exact || sources.find(item => item.project_id === projectId);
+    const key = match ? sourceKey(match) : pending?.project_id === projectId ? pendingKey : '';
+    // Source refresh must not preserve a valid-but-unrelated old episode. A hidden
+    // remembered task is not allowed to navigate the workbench behind the user's back.
+    if (key !== selectedKey) selectSourceLocally(key);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, mode, projectId, media?.resource, sources, pendingKey]);
   useEffect(() => { if (!archived && method === 'transcribe' && selectedKey === pendingKey && pendingSource) setMethod('platform'); }, [archived, method, selectedKey, pendingKey, pendingSource]);
   // Workbench "生成字幕": open the video tab with the current video selected.
   useEffect(() => {
@@ -213,7 +252,10 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
 
   // language: 'auto' by default; zh/en only when retrying a wrongly detected result.
   async function start(language: 'auto' | ForcedLanguage = 'auto', retry?: Submission) {
-    if (active.current) return;
+    const ownsSelection = !job || (job.source_project_id
+      ? mode === 'video' && !!selectedSource && job.source_project_id === selectedSource.project_id && job.source_resource === selectedSource.resource
+      : mode === 'upload');
+    if (active.current && ownsSelection) return;
     if (!retry && mode === 'upload' && (!file || !file.size || file.size > limit)) {
       setError('请选择非空音视频文件，大小不能超过 ' + Math.round(limit / 1024 / 1024) + ' MB。');
       return;
@@ -224,6 +266,8 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
     const submission: Submission | null = retry || (mode === 'video' && selectedSource
       ? { kind: 'video', project_id: selectedSource.project_id, resource: selectedSource.resource, title: selectedSource.title }
       : batchFiles.length > 1 ? null : { kind: 'upload', file: file! });
+    // Stop watching the other task, not the task itself; the server queue remains authoritative.
+    active.current?.abort(); cancellation.current?.abort(); cancellation.current = null; setCancelling(false);
     lastSubmission.current = submission; setCanRetry(!!submission); setRequested(language);
     const controller = new AbortController();
     active.current = controller;
@@ -243,7 +287,7 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
         }
         setBatchNotice(`批量提交 ${submitted.length} 个任务；失败 ${rejected.length} 个。所有任务和结果可在任务中心查看。`+(rejected.length?' '+rejected.join('；'):''));
         const last=submitted.at(-1);
-        if (last) { lastId.current=last.id;remember('transcriptions',last.id);setJob(last);await poll(last.id,controller); }
+        if (last) { lastId.current=last.id;remember('transcriptions',last.id);updateJob(last);await poll(last.id,controller); }
         else { active.current=null;setBusy(false); }
         return;
       }
@@ -254,7 +298,7 @@ export default function useTranscription({ projectId, media, uploadLimit, reuseM
       const result = await request<TranscriptionJob>(path, controller.signal, body);
       if (controller.signal.aborted) return;
       lastId.current = result.id;remember('transcriptions',result.id);
-      setJob(result);
+      updateJob(result);
       await poll(result.id, controller);
     } catch (reason) {
       if (controller.signal.aborted) return;

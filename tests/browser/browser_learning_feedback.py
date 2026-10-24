@@ -87,7 +87,7 @@ class LearningFeedbackBrowserTests(unittest.TestCase):
 
     def learn(self):
         self.f.parse()
-        self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
         expect(self.page.locator('.study-sidebar')).to_be_visible()
 
     def test_empty_notes_can_create_save_edit_and_restore(self):
@@ -148,7 +148,7 @@ class LearningFeedbackBrowserTests(unittest.TestCase):
         self.learn()
         self.page.get_by_role('tab', name='AI 对话', exact=True).click()
         chat = self.page.locator('#study-panel-chat')
-        expect(chat).to_contain_text('当前视频没有可用的学习材料')
+        expect(chat).to_contain_text('已找到字幕；还需生成章节时间轴或内容摘要后才能对话。')
         expect(chat.get_by_role('button', name='准备学习材料', exact=True)).to_be_visible()
         expect(chat.locator('textarea')).to_have_count(0)
 

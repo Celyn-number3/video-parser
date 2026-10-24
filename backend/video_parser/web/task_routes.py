@@ -7,7 +7,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field,field_validator
 from video_parser.web.security import local_request
 from video_parser.web import routes,analysis_routes
-from video_parser.services import task_runtime,subtitles,transcription,workflows,storage,library,naming
+from video_parser.services import task_runtime,subtitles,transcription,workflows,storage,library,naming,task_files
 
 router=APIRouter(prefix='/api/workspace',dependencies=[Depends(local_request)])
 
@@ -57,7 +57,7 @@ def project_labels():
 
 @router.get('/tasks')
 def tasks():
-    result=[];label=project_labels()
+    result=[];label=project_labels();filenames=task_files.filename_labels()
     for category,(service,root) in catalog().items():
         mutex=getattr(service,'jobs_lock',None) or service.lock
         with mutex:cached=list(service.jobs)
@@ -65,10 +65,18 @@ def tasks():
         for identifier in identifiers:
             try:
                 job=service.get(identifier);data=service.view(job)
-                result.append({key:data.get(key) for key in ('id','state','message','title','phase','progress','error_code','created','elapsed_seconds','queue_position','stage_timings','operation')}|
-                    {'kind':job.kind or category,'project_id':getattr(job,'project_id',None)}|label(getattr(job,'project_id',None)))
+                if not data.get('details'):
+                    record = (getattr(job, 'result', {}) or {}).get('record') or {}
+                    payload = getattr(job, 'payload', {}) or {}
+                    data['details'] = {key: record.get(key, payload.get(key)) for key in ('template', 'source', 'model', 'frame_mode', 'count')}
+                    data['details']['engine'] = (payload.get('agent') or record.get('agent') or {}).get('engine', '')
+                result.append({key:data.get(key) for key in ('id','state','message','title','phase','progress','error_code','created','elapsed_seconds','queue_position','stage_timings','operation','details')}|
+                    {'kind':job.kind or category,'project_id':getattr(job,'project_id',None), 'file_names': filenames(job, category), 'video_names': filenames(job, category, video_only=True)}|label(getattr(job,'project_id',None))|filenames(job, category, with_presentation=True))
             except (KeyError,OSError,ValueError):continue
-    return {'jobs':sorted(result,key=lambda row:row['created'] or 0,reverse=True)[:100]}
+    ordered = sorted(result, key=lambda row: row['created'] or 0, reverse=True)
+    active = [row for row in ordered if row['state'] in task_runtime.ACTIVE]
+    history = [row for row in ordered if row['state'] not in task_runtime.ACTIVE][:100]
+    return {'jobs': sorted([*active, *history], key=lambda row: row['created'] or 0, reverse=True)}
 
 
 @router.get('/tasks/{identifier}')

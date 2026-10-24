@@ -23,8 +23,21 @@ def check_quality_selection():
         module = Path(output) / 'features/settings/settings.js'
         script = r"""import fs from 'node:fs'; import assert from 'node:assert/strict';
 const source = fs.readFileSync(process.argv[1], 'utf8');
-const { preferredQualityId } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const { preferredQualityId, normalizeSettings } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const q = (id, height) => ({ id, label: id, height, width: null, codec: null, media: null });
+for (const preference of ['best','1080p','720p','480p','360p']) {
+  assert.equal(normalizeSettings({qualityPreference: preference}).qualityPreference, preference);
+}
+for (const invalid of ['240p','480P',480,null,{},[]]) {
+  assert.equal(normalizeSettings({qualityPreference: invalid}).qualityPreference, 'best');
+}
+const all = [q('1080',1080),q('720',720),q('480',480),q('360',360)];
+assert.equal(preferredQualityId(all, '1080', '480p'), '480');
+assert.equal(preferredQualityId(all, '1080', '360p'), '360');
+assert.equal(preferredQualityId([q('720',720),q('360',360)], '720', '480p'), '360');
+assert.equal(preferredQualityId([q('720',720),q('480',480)], '720', '360p'), '480');
+assert.equal(preferredQualityId([q('unknown',null)], 'unknown', '360p'), 'unknown');
+assert.equal(preferredQualityId([], null, '480p'), '');
 assert.equal(preferredQualityId([q('720',720)], '720', '1080p'), '720');
 assert.equal(preferredQualityId([q('1080',1080)], '1080', '720p'), '1080');
 assert.equal(preferredQualityId([q('unknown',null)], 'unknown', '720p'), 'unknown');

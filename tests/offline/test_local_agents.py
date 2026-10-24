@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from video_parser.services import local_agents, model_calls, ai_settings, task_runtime
+from video_parser.services import local_agents, model_calls, ai_settings, task_runtime, agent_controls
 from video_parser.services.local_agents import claude, codex, opencode
 from video_parser.services.local_agents.transport import AgentError, RpcError, Wire
 from video_parser.services.local_agents.types import Result, prepare, command_entries
@@ -21,6 +21,7 @@ class LocalAgentTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(patch.stopall)
         self.root = Path(self.temp.name)
+        patch.object(agent_controls, 'PATH', self.root / 'agent-controls.json').start()
         patch.object(local_agents, 'CACHE_PATH', self.root / 'catalog.json').start()
         patch.object(local_agents, 'available', return_value=True).start()
 

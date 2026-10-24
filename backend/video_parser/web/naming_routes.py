@@ -2,7 +2,7 @@
 from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from video_parser.services import naming, resource_renames as names
+from video_parser.services import naming, project_folder_naming, resource_renames as names
 from video_parser.web.security import local_request
 
 router = APIRouter(prefix='/api/workspace', dependencies=[Depends(local_request)])
@@ -94,7 +94,8 @@ def adjust(identifier: str, body: AdjustBody):
 @router.get('/naming/plans/{identifier}')
 def read_plan(identifier: str):
     plan = guarded(names.load_plan, identifier)
-    public = {key: plan.get(key) for key in ('id', 'project_id', 'title', 'state', 'source', 'adjusted_from', 'rows', 'entries', 'excerpted', 'last_error', 'preview', 'preview_token')}
+    if plan.get('scope') == project_folder_naming.SCOPE: return project_folder_naming.public(plan)
+    public = {key: plan.get(key) for key in ('id', 'project_id', 'title', 'state', 'source', 'adjusted_from', 'rename_scope', 'strategy', 'completed_episodes', 'rows', 'entries', 'excerpted', 'last_error', 'preview', 'preview_token')}
     public['job_id'] = plan.get('active_job_id') or plan.get('job_id')
     return public
 
@@ -117,3 +118,22 @@ def restore(identifier: str, body: ConfirmBody):
 @router.get('/naming/tasks/{identifier}')
 def task(identifier: str):
     return guarded(lambda: naming.view(naming.get(identifier)))
+
+
+class FolderPreviewBody(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+
+@router.get('/projects/{identifier}/folder-naming')
+def folder_inventory(identifier: str):
+    return guarded(project_folder_naming.inventory, identifier)
+
+
+@router.post('/projects/{identifier}/folder-naming/plan', status_code=202)
+def folder_suggest(identifier: str, body: SuggestBody):
+    return guarded(project_folder_naming.start, identifier, body.consent, body.agent.model_dump() if body.agent else None)
+
+
+@router.post('/projects/{identifier}/folder-naming/preview', status_code=201)
+def folder_preview(identifier: str, body: FolderPreviewBody):
+    return guarded(project_folder_naming.preview, identifier, body.title)

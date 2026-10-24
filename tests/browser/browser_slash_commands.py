@@ -31,7 +31,7 @@ class SlashCommandBrowserTests(unittest.TestCase):
         self.f.tearDown()
 
     def open(self):
-        self.f.parse(); self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.f.parse(); self.page.get_by_role('button', name='学习视图', exact=True).click()
         self.page.get_by_role('tab', name='AI 对话', exact=True).click()
         self.panel = self.page.locator('#study-panel-chat')
         self.field = self.panel.locator('textarea'); expect(self.field).to_be_enabled(); self.field.focus()
@@ -87,6 +87,7 @@ class SlashCommandBrowserTests(unittest.TestCase):
         self.field.press('ArrowUp')
         expect(self.menu.get_by_role('option').last).to_have_attribute('aria-selected', 'true')
         self.field.press('Enter'); expect(self.field).to_have_value('/skill-052 ')
+        expect(self.menu).to_have_count(0)
         self.field.fill('/skill-052')
         expect(self.menu.get_by_role('option')).to_have_count(1)
         self.field.press('Enter'); expect(self.field).to_have_value('/skill-052 ')

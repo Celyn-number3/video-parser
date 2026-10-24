@@ -55,10 +55,11 @@ if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
 
     @unittest.skipUnless(shutil.which('powershell.exe'), 'Windows PowerShell required')
     def test_existing_workspace_is_reused_but_unrelated_port_is_not_touched(self):
-        state = {'workspace': True}
+        from video_parser.core.paths import instance_id
+        state = {'workspace': True, 'instance': instance_id()}
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                data = {'status': 'healthy'} if self.path == '/health' else (
+                data = {'status': 'healthy', 'instance': state['instance']} if self.path == '/health' else (
                     {'transcription_ready': True} if state['workspace'] else {'other': True})
                 payload = json.dumps(data).encode()
                 self.send_response(200)
@@ -76,6 +77,10 @@ if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
             result = subprocess.run(args, capture_output=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(b'already running', result.stdout)
+            state['instance'] = 'different-project'
+            result = subprocess.run(args, capture_output=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b'occupied by another service', result.stderr)
             state['workspace'] = False
             result = subprocess.run(args, capture_output=True, timeout=10)
             self.assertNotEqual(result.returncode, 0)

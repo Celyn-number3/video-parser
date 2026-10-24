@@ -133,7 +133,8 @@ def start(reference, target, consent, agent=None, output_confirmed=False):
     job = transcription.Job(uuid4().hex, path, title, 'auto', project_id=project_id, resource=resource)
     job.operation = 'translation'
     job.translation = {'reference': reference, 'sha256': library.digest(path), 'target': target,
-                       'agent': selected, **budget, 'batches': len(groups), 'timed': timed}
+                       'source_kind': (parent.translation.get('source_kind', 'transcription') if parent.operation == 'translation' else 'transcription') if parent else project['resources'][reference['resource']]['kind'],
+                       'agent': selected, 'api_binding': model_calls.api_binding(settings) if selected['engine'] == 'api' else None, **budget, 'batches': len(groups), 'timed': timed}
     job.destination = transcription.destination_of(parent) if parent else {'type': 'project', 'project_id': project_id}
     job.message = f"等待 AI 翻译（{PROFILE_NAMES[budget['profile']]}，共 {len(groups)} 批）；原字幕不会覆盖。"
     with transcription.jobs_lock:
@@ -141,7 +142,7 @@ def start(reference, target, consent, agent=None, output_confirmed=False):
             raise BlockingIOError('翻译或转录任务数量已达上限，请稍后重试。')
         transcription.jobs[job.id] = job
     try:
-        task_runtime.submit('transcriptions', job, worker, lambda: task_runtime.save(transcription.OUTPUT_ROOT / '.tasks', job))
+        task_runtime.submit('transcriptions', job, worker, lambda root=transcription.OUTPUT_ROOT / '.tasks': task_runtime.save(root, job))
     except BaseException:
         with transcription.jobs_lock: transcription.jobs.pop(job.id, None)
         raise
@@ -177,6 +178,7 @@ def worker(job):
         target = job.translation['target']
         selected = job.translation['agent']
         settings = ai_settings.current() if selected['engine'] == 'api' else {'model': selected['model'], 'provider': 'custom'}
+        if selected['engine'] == 'api': model_calls.check_api_binding(budget.get('api_binding'), settings)
         directory = transcription.OUTPUT_ROOT / job.id
         task_runtime.own_directory(directory, job.id)
         translated = {}
@@ -198,14 +200,21 @@ def worker(job):
         files = {}
         for fmt, body in contents.items():
             task_runtime.checkpoint()
-            name = library.safe_name(Path(path).stem) + '.AI翻译.' + target + '.' + fmt
+            source_kind = job.translation.get('source_kind')
+            if not source_kind:
+                ref = job.translation['reference']
+                source_kind = library.get(ref['project_id'])['resources'][ref['resource']]['kind'] if ref.get('project_id') else 'transcription'
+            suffix = '-B站平台字幕' if source_kind == 'subtitle' else '-本地转写'
+            stem = re.sub(r'(?:-B站平台字幕|-本地转写|\.平台字幕|\.本地转写)', '', library.safe_name(Path(path).stem))
+            name = stem + '.AI翻译.' + target + suffix + '.' + fmt
             file = directory / name
             with file.open('x', encoding='utf-8', newline='\n') as stream: stream.write(body)
             destination = transcription.destination_of(job); owner, relative = None, None
             if destination.get('type') == 'project':
                 owner = destination['project_id']
                 relative = library.import_file(owner, file, 'subtitles/' + name, 'translation',
-                    {'language': target, 'video_resource': job.resource, 'source_sha256': job.translation['sha256']})
+                    {'language': target, 'video_resource': job.resource, 'source_sha256': job.translation['sha256'],
+                     'source_resource': job.translation['reference'].get('resource')})
                 file = library.resource(owner, relative)
             elif destination.get('type') == 'folder':
                 from video_parser.services import folders

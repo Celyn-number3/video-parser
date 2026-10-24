@@ -1,6 +1,11 @@
 param([switch]$DownloadModel, [switch]$SkipFrontend)
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
+# Native uv emits UTF-8 even under Windows PowerShell 5.1. Restore host state below.
+$SavedConsoleEncoding = [Console]::OutputEncoding
+$SavedOutputEncoding = $OutputEncoding
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 function Checked {
     param([string]$Program, [string[]]$Arguments)
     & $Program @Arguments
@@ -26,8 +31,11 @@ try {
     $Python = Join-Path $Root 'runtimes/python/cpython-3.12-windows-x86_64-none/python.exe'
     if (!(Test-Path $Python)) {
         Checked 'uv' @('python','install','3.12.13')
-        $Python = (& uv python find --managed-python 3.12.13).Trim()
-        if ($LASTEXITCODE -ne 0 -or !$Python.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) { throw 'Managed Python must be inside this project.' }
+        $Found = & uv python find --managed-python 3.12.13
+        if ($LASTEXITCODE -ne 0) { throw 'Managed Python lookup failed.' }
+        $Python = [IO.Path]::GetFullPath(($Found | Select-Object -Last 1).Trim())
+        $ManagedRoot = [IO.Path]::GetFullPath($env:UV_PYTHON_INSTALL_DIR).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        if (!$Python.StartsWith($ManagedRoot, [StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Managed Python must be inside this project runtime directory.' }
     }
     Checked $Python @('-c','import sys; assert sys.version_info[:3] == (3,12,13)')
     $Main = Join-Path $Root '.venv/Scripts/python.exe'
@@ -42,9 +50,11 @@ try {
     Checked 'uv' @('pip','install','--python',$Main,'--no-deps','-e','.','--index-url','https://pypi.org/simple')
     Checked 'uv' @('pip','install','--python',$Whisper,'-r','configs/requirements/windows-whisper.lock.txt','--index-url','https://pypi.org/simple')
     Checked $Main @('-m','playwright','install','chromium')
-    $ModelArgs = @('-X','utf8','scripts/verify-whisper-model.py')
-    if ($DownloadModel) { $ModelArgs += '--download' }
-    Checked $Whisper $ModelArgs
+    if ($DownloadModel) {
+        Checked $Whisper @('-X','utf8','scripts/verify-whisper-model.py','--download')
+    } else {
+        Write-Output 'Optional Whisper model skipped. Use -DownloadModel before local transcription.'
+    }
     Checked $Main @('-m','pip','check')
     Checked $Whisper @('-m','pip','check')
     if (!$SkipFrontend) {
@@ -54,5 +64,7 @@ try {
     Write-Output 'Unified local tools ready. Start with start-web.cmd or python -m video_parser.'
 } finally {
     Pop-Location
+    [Console]::OutputEncoding = $SavedConsoleEncoding
+    $OutputEncoding = $SavedOutputEncoding
     foreach ($Name in $Names) { [Environment]::SetEnvironmentVariable($Name, $Saved[$Name], 'Process') }
 }

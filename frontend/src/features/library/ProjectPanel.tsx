@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import Icon from '../../components/Icon';
 import { request } from '../../lib/api';
 import type { VideoProject } from '../../lib/api';
+import { projectDisplayTitle } from '../../lib/projectTitles';
 import './project-panel.css';
 
 type Props = { project: VideoProject; onRenamed?: (project: VideoProject, renamed: string[]) => void };
@@ -12,7 +13,7 @@ export default function ProjectPanel({ project, onRenamed }: Props) {
   const [message, setMessage] = useState('');
   const [opening, setOpening] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(project.title);
+  const [title, setTitle] = useState(projectDisplayTitle(project));
   const [saving, setSaving] = useState(false);
   const active = useRef<AbortController | null>(null);
   const renaming = useRef<AbortController | null>(null);
@@ -34,7 +35,7 @@ export default function ProjectPanel({ project, onRenamed }: Props) {
     }
   }
   function startEditing() {
-    setTitle(project.title); setEditing(true); setMessage('');
+    setTitle(projectDisplayTitle(project)); setEditing(true); setMessage('');
     requestAnimationFrame(() => field.current?.select());
   }
   function stopEditing() {
@@ -45,7 +46,7 @@ export default function ProjectPanel({ project, onRenamed }: Props) {
     event.preventDefault();
     const next = title.replace(/\s+/g, ' ').trim();
     if (!next || renaming.current) return;
-    if (next === project.title) { stopEditing(); return; }
+    if (next === projectDisplayTitle(project)) { stopEditing(); return; }
     const controller = new AbortController();
     renaming.current = controller;
     setSaving(true); setMessage('');

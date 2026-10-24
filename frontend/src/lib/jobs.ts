@@ -1,11 +1,17 @@
 import { request } from './api';
 
 export interface TaskInfo {
+  created?: number; details?: { template?: string; source?: string; engine?: string; model?: string; frame_mode?: string; count?: number };
   id: string; state: string; message: string; kind?: string; title?: string; operation?: string;
   phase?: string; progress?: { done?: number; total?: number; bytes?: number; total_bytes?: number; speed_bytes_per_second?: number; eta_seconds?: number; sampled_at?: number; track?: number; tracks?: number; estimated_total?: number };
   error_code?: string; queue_position?: number; elapsed_seconds?: number; project_id?: string;
   /** Current title and episode of the linked project (renames show up in older task records too). */
   project_title?: string | null; part?: number | null;
+  file_names?: string[];
+  /** Linked source media, separate from subtitle/translation outputs. */
+  video_names?: string[];
+  subjects?: { project_id: string | null; part: number | null; title: string }[];
+  file_details?: { project_id: string | null; part: number | null; role: string; name: string }[];
 }
 export interface WorkflowJob<T> extends TaskInfo { result: T }
 export const isActive = (state?: string) => ['queued', 'running', 'cancelling'].includes(state || '');

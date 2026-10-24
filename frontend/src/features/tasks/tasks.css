@@ -27,3 +27,27 @@ button.danger-button:disabled { color: var(--color-text-disabled); background: v
 .task-filters .chip-count { margin-left: 6px; font-variant-numeric: tabular-nums; }
 .modern-app .task-filters button[aria-pressed=true] .chip-count { color: inherit; opacity: .85; }
 .task-part { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--color-border); border-radius: var(--radius-full, 999px); font-size: 11px; font-weight: 500; color: var(--color-text-secondary); vertical-align: 1px; }
+
+.modern-app .task-semantic-search { margin-bottom: var(--space-4); padding: var(--card-inset); min-width: 0; }
+.task-semantic-search h2 { margin: 0 0 var(--space-4); font-size: 18px; }
+.semantic-project-controls { display: flex; align-items: end; gap: var(--space-2); flex-wrap: wrap; }
+.semantic-project-controls label { display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 280px; min-width: 0; }
+.semantic-project-controls select { width: 100%; min-width: 0; }
+.modern-app .task-semantic-search .subtitle-scroll-panel { border: 0; border-radius: 0; padding: 0; margin-top: var(--space-4); }
+.task-semantic-search .subtitle-toolbar input { flex: 1 1 240px; min-width: 0; }
+.task-semantic-search .subtitle-scroll-panel > label { display: flex; align-items: center; gap: var(--space-2); margin-block: var(--space-3); }
+.task-semantic-search .subtitle-scroll-panel > label input { flex: 0 0 auto; }
+.task-semantic-search small { overflow-wrap: anywhere; }
+.subtitle-translation .translation-result > label { display: flex; flex-direction: column; gap: var(--space-2); margin-block: var(--space-3); min-width: 0; }
+.subtitle-translation .translation-result select { width: 100%; min-width: 0; }
+.task-semantic-search .subtitle-scroll-panel > p { overflow-wrap: anywhere; }
+.modern-app .task-semantic-search li button { max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; justify-content: flex-start; line-height: 1.6; }
+
+.task-file-count { color: var(--color-text-secondary); font-size: var(--font-size-xs, 12px); white-space: nowrap; }
+.task-files { margin-block: var(--space-2); font-size: var(--font-size-sm, 13px); }
+.task-files summary { cursor: pointer; color: var(--color-text-secondary); }
+.task-files ul { margin-block: var(--space-2); padding-left: var(--space-4); }
+.task-files li { overflow-wrap: anywhere; }
+
+.task-file-role { color: var(--color-text-secondary); }
+.task-subjects { margin-bottom: var(--space-3); }

@@ -13,7 +13,7 @@ import unicodedata
 from uuid import uuid4
 import os
 
-from video_parser.services import library, task_runtime
+from video_parser.services import library, task_runtime, library_layout, archive_layout
 
 NAME_FIELDS = ('storage_path', 'download_name')
 PROJECT_FIELDS = ('episode_title', 'hierarchical_name')
@@ -73,7 +73,7 @@ def history(identifier):
         for path in root.glob('*.json'):
             try: plan = load_plan(path.stem)
             except (ValueError, KeyError, OSError): continue
-            if plan.get('project_id') in ids:
+            if plan.get('project_id') in ids and plan.get('scope') != 'project_folder':
                 records.append({key: plan.get(key) for key in ('id', 'state', 'created_at', 'job_id', 'active_job_id', 'last_error')})
     ordered = sorted(records, key=lambda item: item.get('created_at') or '', reverse=True)
     pending = [item for item in ordered if item['state'] in ('applying', 'recovery_required')]
@@ -85,39 +85,72 @@ def _file_stat(path):
     return {'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns, 'inode': stat.st_ino, 'device': stat.st_dev}
 
 
+SUBTITLE_KINDS = {'subtitle', 'transcription', 'translation'}
+SUBTITLE_EXTENSIONS = {'.srt', '.vtt', '.ass', '.ssa', '.txt', '.md', '.json'}
+JOINT_SCOPE = 'video_subtitles'
+
+
+def _subtitle_suffix(project, name, info):
+    language = info.get('language') or ''
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,35}', language):
+        match = re.search(r'\.(zh(?:-CN|-TW)?|en|ja|ko)(?:[.\-]|$)', name, re.I)
+        language = match[1] if match else ''
+    kind = info['kind']
+    origin = project['resources'].get(info.get('source_resource'), {}).get('kind') if kind == 'translation' else kind
+    if kind == 'translation' and not origin:
+        origin = 'transcription' if '本地转写' in name else 'subtitle' if '平台字幕' in name else None
+    label = '本地转写' if origin == 'transcription' else ('B站平台字幕' if project['platform'] == 'bilibili' else '平台字幕') if origin == 'subtitle' else ''
+    return ('.' + language if language else '') + ('-AI翻译' if kind == 'translation' else '') + ('-' + label if label else '')
+
+
 def inventory(identifier):
     entries, signatures = [], []
     projects = scope(identifier)
     for project in projects:
-        files, transcripts = [], []
+        files, subtitles = [], []
         for name, info in project.get('resources', {}).items():
-            if info.get('kind') not in ('video', 'subtitle', 'transcription'): continue
+            if info.get('kind') not in {'video', *SUBTITLE_KINDS}: continue
             try:
                 path = library.resource_path(project, name)
                 stat = _file_stat(path)
                 if not path.is_file() or stat['size'] != info.get('size_bytes'): continue
             except (ValueError, OSError, KeyError, TypeError): continue
+            item = {'resource': name, 'source': path.relative_to(project['directory']).as_posix(),
+                    'filename': path.name, 'sha256': info['sha256'], 'stat': stat, 'kind': info['kind']}
             if info['kind'] == 'video':
-                files.append({'resource': name, 'source': path.relative_to(project['directory']).as_posix(),
-                              'filename': path.name, 'sha256': info['sha256'], 'stat': stat,
-                              'quality': (info.get('selected_quality') or {}).get('label') or ''})
-            elif path.suffix.lower() in ('.srt', '.vtt'):
-                transcripts.append({'resource': name, 'kind': info['kind'], 'sha256': info['sha256'], 'stat': stat,
-                                    'filename': info.get('download_name') or path.name})
-        transcripts.sort(key=lambda item: (item['kind'] != 'subtitle', item['resource']))
+                files.append({**item, 'quality': (info.get('selected_quality') or {}).get('label') or ''})
+            elif path.suffix.lower() in SUBTITLE_EXTENSIONS:
+                subtitles.append({**item, 'video_resource': info.get('video_resource'),
+                                  'download_name': info.get('download_name') or path.name,
+                                  'suffix': _subtitle_suffix(project, info.get('download_name') or path.name, info)})
+        video_keys = {file['resource'] for file in files}
+        subtitles = [item for item in subtitles if not item['video_resource'] or item['video_resource'] in video_keys]
+        # Keep languages, sources, formats and duplicate tracks distinct, with deterministic names.
+        for item in subtitles:
+            peers = [other for other in subtitles if (Path(other['source']).parent, other['suffix'].casefold(), Path(other['source']).suffix.lower()) ==
+                     (Path(item['source']).parent, item['suffix'].casefold(), Path(item['source']).suffix.lower())]
+            item['disambiguator'] = ' [' + hashlib.sha256(item['resource'].encode()).hexdigest()[:6] + ']' if len(peers) > 1 else ''
+        transcripts = [item for item in subtitles if Path(item['source']).suffix.lower() in ('.srt', '.vtt')]
+        transcripts.sort(key=lambda item: (item['kind'] == 'translation', item['kind'] != 'subtitle', item['resource']))
         entries.append({'project_id': project['id'], 'part': project.get('part'),
                         'title': project.get('episode_title') or next((episode['title'] for episode in library.normalize_episodes(project.get('episodes'))
                                                                      if episode['part'] == project.get('part')), project.get('title', '视频')),
                         'number': (project.get('hierarchical_name') or {}).get('number', ''),
-                        'files': files, 'transcript': transcripts[0]['resource'] if transcripts else None,
-                        'transcript_filename': transcripts[0]['filename'] if transcripts else None})
+                        'single_episode': library_layout.single_episode(project, projects),
+                        'files': files, 'subtitle_files': subtitles,
+                        'transcript': transcripts[0]['resource'] if transcripts else None,
+                        'transcript_filename': transcripts[0]['download_name'] if transcripts else None})
         signatures.append({'id': project['id'], 'platform': project.get('platform'), 'video_id': project.get('video_id'),
                            'part': project.get('part'), 'title': project.get('title'), 'episode_title': project.get('episode_title'),
-                           'hierarchical_name': project.get('hierarchical_name'), 'files': files, 'transcripts': transcripts})
+                           'hierarchical_name': project.get('hierarchical_name'), 'files': files, 'subtitles': subtitles})
     fingerprint = hashlib.sha256(json.dumps(signatures, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return {'project_id': identifier, 'title': library.get(identifier)['title'], 'entries': entries,
             'fingerprint': fingerprint, 'subtitle_count': sum(bool(item['transcript']) for item in entries),
             'ready_count': sum(bool(item['transcript'] and item['files']) for item in entries), 'max_selected': MAX_SELECTED}
+
+
+def plan_files(plan, entry):
+    return entry['files'] + (entry.get('subtitle_files', []) if plan.get('rename_scope') == JOINT_SCOPE else [])
 
 
 def clean_name(number, title, allow_empty_number=False):
@@ -161,7 +194,7 @@ def reuse_subtitles(identifier, selected_ids=None):
     entries = [item for item in current['entries'] if item['project_id'] in selected_ids]
     rows = [{'project_id': item['project_id'], 'number': '', 'title': subtitle_stem(item['transcript_filename'])} for item in entries]
     plan = {'version': 1, 'id': uuid4().hex, 'project_id': identifier, 'title': current['title'],
-            'created_at': now(), 'state': 'proposed', 'source': 'subtitle',
+            'created_at': now(), 'state': 'proposed', 'source': 'subtitle', 'rename_scope': JOINT_SCOPE,
             'fingerprint': current['fingerprint'], 'entries': entries, 'rows': rows, 'last_error': ''}
     save_plan(plan)
     return {'plan_id': plan['id'], 'state': plan['state']}
@@ -186,7 +219,7 @@ def adjust_plan(project_id, identifier):
         if (not 1 <= len(rows) <= MAX_SELECTED or len(selected) != len(rows) or
                 len(entries) != len(rows) or set(transaction['manifests']) != selected):
             raise NamingError('原命名结果或当前分集不完整，请重新读取课程清单。')
-        files = {(entry['project_id'], file['resource']): file for entry in entries for file in entry['files']}
+        files = {(entry['project_id'], file['resource']): file for entry in entries for file in plan_files(previous, entry)}
         for entry in entries:
             project = library.get(entry['project_id'])
             saved = transaction['manifests'][entry['project_id']]
@@ -201,7 +234,7 @@ def adjust_plan(project_id, identifier):
             if not file or file['source'] != move['target'] or file['stat'] != move['stat']:
                 raise NamingError('原视频位置或内容已变化，请重新核对后再调整。')
         plan = {'version': 1, 'id': uuid4().hex, 'project_id': project_id, 'title': current['title'],
-                'created_at': now(), 'state': 'proposed', 'source': 'manual', 'adjusted_from': identifier,
+                'created_at': now(), 'state': 'proposed', 'source': 'manual', 'adjusted_from': identifier, 'rename_scope': JOINT_SCOPE,
                 'fingerprint': current['fingerprint'], 'entries': entries,
                 'rows': [{key: row[key] for key in ('project_id', 'number', 'title')} for row in rows], 'last_error': ''}
         save_plan(plan)
@@ -210,11 +243,14 @@ def adjust_plan(project_id, identifier):
 
 def _filename(project, file, number, title, multiple):
     suffix = ''
-    if multiple:
+    if file.get('kind') in SUBTITLE_KINDS:
+        suffix = file.get('disambiguator', '') + file.get('suffix', '')
+    elif multiple:
         quality = library.safe_name(file.get('quality') or '画质')[:22]
         quality = ''.join('_' if unicodedata.category(char).startswith('C') else char for char in quality)
         suffix = f" [{quality}-{hashlib.sha256(file['resource'].encode()).hexdigest()[:6]}]"
     base = f'{number} {title}' if number else title
+    if file.get('kind') in SUBTITLE_KINDS and suffix and base.endswith(suffix): suffix = ''
     name = f'{base}{suffix}{Path(file["source"]).suffix}'
     path = library.contained(project['directory'], (Path(file['source']).parent / name).as_posix())
     if len(name.encode('utf-16-le')) // 2 > 180 or len(str(path).encode('utf-16-le')) // 2 > 240:
@@ -240,15 +276,17 @@ def preview(plan, rows):
             if row.get('number') != number or row.get('title') != title:
                 raise NamingError('复用字幕名时不能另拟视频标题，请重新读取对应字幕名称。')
         else:
-            number, title = clean_name(row.get('number'), row.get('title'), allow_empty_number=plan.get('source') == 'manual')
+            single = next(item for item in current['entries'] if item['project_id'] == identifier)['single_episode']
+            number, title = clean_name('' if single else row.get('number'), row.get('title'),
+                                       allow_empty_number=single or plan.get('source') == 'manual')
         if number:
             if number in numbers: raise NamingError('层级序号重复，请编辑后重新预览。')
             numbers.add(number)
         entry = allowed[identifier]; project = library.get(identifier)
-        for file in entry['files']:
+        for file in plan_files(plan, entry):
             source = library.contained(project['directory'], file['source'])
             target = _filename(project, file, number, title, len(entry['files']) > 1)
-            key = (identifier, unicodedata.normalize('NFC', target.name).casefold())
+            key = (identifier, unicodedata.normalize('NFC', str(target.relative_to(project['directory']))).casefold())
             if key in targets: raise NamingError('新文件名重复，不会覆盖文件。')
             targets.add(key)
             if source.name != target.name and target.exists():
@@ -263,10 +301,15 @@ def preview(plan, rows):
     moves = []
     for row in normalized:
         entry = allowed[row['project_id']]; project = library.get(row['project_id'])
-        for file in entry['files']:
+        for file in plan_files(plan, entry):
             target = _filename(project, file, row['number'], row['title'], len(entry['files']) > 1)
             moves.append({**file, 'project_id': row['project_id'], 'target': target.relative_to(project['directory']).as_posix()})
-    return {'rows': normalized, 'moves': moves, 'fingerprint': current['fingerprint']}
+    directory_moves = archive_layout.naming_moves({row['project_id']: library.get(row['project_id']) for row in normalized}, normalized)
+    for directory in directory_moves:
+        for move in moves:
+            if move['project_id'] == directory['project_id'] and len(str(library.LIBRARY_ROOT / directory['new'] / move['target']).encode('utf-16-le')) // 2 > 240:
+                raise NamingError('新文件与目录组合路径过长，请缩短名称。')
+    return {'rows': normalized, 'moves': moves, 'directory_moves': directory_moves, 'fingerprint': current['fingerprint']}
 
 
 def validate(identifier, rows):
@@ -331,6 +374,7 @@ def _restore(plan):
         if _fields(current, PROJECT_FIELDS) != saved['before']: writes.add(identifier)
         _set_fields(current, PROJECT_FIELDS, saved['before'])
         replacements[identifier] = current
+    for row in transaction.get('directory_moves', []): archive_layout.check_simple(row)
     for source, target, move in links: _checked_link(source, target, move)
     for identifier in writes:
         project = replacements[identifier]
@@ -343,6 +387,7 @@ def _restore(plan):
         if target.exists():
             if not source.samefile(target) or _file_stat(target) != move['stat']: raise NamingError('恢复时发现目标已被替换或修改，保留两份文件等待核对。')
             target.unlink()
+    archive_layout.rename_directories(transaction.get('directory_moves', []), undo=True)
 
 
 def _locked(plan, stack):
@@ -360,14 +405,15 @@ def apply(identifier, token):
             return {'plan_id': identifier, 'state': 'applied', 'changed': len(plan['transaction']['moves'])}
         if plan.get('state') != 'validated' or not token or token != plan.get('preview_token'):
             raise NamingError('需要先验证最终名称并明确确认；过期预览不能执行。')
+        stack.enter_context(library.file_lock(library.LIBRARY_ROOT / '.library.lock', timeout=3))
         _locked(plan, stack)
         checked = preview(plan, plan['preview']['rows'])
         for index, move in enumerate(checked['moves']):
             task_runtime.checkpoint()
             project = library.get(move['project_id'])
             _check_file(library.contained(project['directory'], move['source']), move)
-            task_runtime.progress('validating', '正在逐个校验原视频；校验完成前不会改名。', done=index + 1, total=len(checked['moves']))
-        transaction = {'moves': checked['moves'], 'manifests': {}}
+            task_runtime.progress('validating', '正在逐个校验视频与字幕；校验完成前不会改名。', done=index + 1, total=len(checked['moves']))
+        transaction = {'moves': checked['moves'], 'directory_moves': checked['directory_moves'], 'manifests': {}}
         projects = {row['project_id']: library.get(row['project_id']) for row in checked['rows']}
         for row in checked['rows']:
             project = projects[row['project_id']]
@@ -405,6 +451,7 @@ def apply(identifier, token):
                     if not source.samefile(target) or _file_stat(source) != move['stat']:
                         raise NamingError('删除旧文件名前检测到外部修改，保留两份文件等待恢复。')
                     source.unlink()
+            archive_layout.rename_directories(transaction['directory_moves'])
             plan.update(state='applied', applied_at=now(), last_error=''); save_plan(plan)
         except BaseException as error:
             try:
@@ -423,6 +470,7 @@ def restore(identifier):
         if plan['state'] == 'rolled_back': return {'plan_id': identifier, 'state': 'rolled_back'}
         if plan['state'] not in ('applied', 'applying', 'recovery_required') or not plan.get('transaction'):
             raise NamingError('这个计划没有可撤销或恢复的文件事务。')
+        stack.enter_context(library.file_lock(library.LIBRARY_ROOT / '.library.lock', timeout=3))
         _locked(plan, stack)
         task_runtime.progress('archiving', '正在恢复文件名与界面标题；本阶段不可中断，之后新增的学习内容保留。')
         task_runtime.checkpoint()

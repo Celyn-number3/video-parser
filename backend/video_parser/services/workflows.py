@@ -24,6 +24,7 @@ class Job:
     project_id:str
     title:str
     payload:dict=field(default_factory=dict)
+    details:dict=field(default_factory=dict)
     state:str='queued'
     message:str='已排队，等待执行…'
     phase:str='queued'
@@ -45,12 +46,20 @@ def get(identifier):
 
 def view(job):
     return {**task_runtime.metadata(job),'id':job.id,'kind':job.kind,'project_id':job.project_id,
-            'title':job.title,'state':task_runtime.public_state(job),'message':job.message,'result':job.result}
+            'title':job.title,'details':job.details,'state':task_runtime.public_state(job),'message':job.message,'result':job.result}
 
 
 def start(kind,project_id,title,payload):
     if kind not in {'video','analysis'}:raise ValueError('Unsupported task')
     job=Job(uuid4().hex,kind,project_id,title,payload)
+    if kind == 'analysis':
+        from video_parser.services import ai_settings, model_calls
+        agent = payload.get('agent') or {'engine': 'api'}
+        if agent.get('engine', 'api') == 'api':
+            settings = ai_settings.current()
+            job.payload = {**payload, 'api_binding': model_calls.api_binding(settings)}
+        job.details = {key: payload.get(key) for key in ('template', 'source', 'frame_mode', 'count')}
+        job.details.update(engine=agent.get('engine', 'api'), model=agent.get('model') or (settings.get('model', '') if agent.get('engine', 'api') == 'api' else ''))
     with lock:
         # Avoid duplicate downloads/paid requests caused by a second click or another browser tab.
         if any(j.project_id==project_id and j.kind==kind and j.state in task_runtime.ACTIVE for j in jobs.values()):
@@ -96,7 +105,12 @@ def worker(job):
             job.error_code=result.get('error_code','operation_failed')
             job.message=('视频准备失败：' if job.kind=='video' else '分析失败：')+result.get('message','请检查本机诊断。')
             job.state='failed';job.payload.clear();return
-        job.result=result['result'];job.state='completed';job.message='视频已校验归档。' if job.kind=='video' else '分析结果与画面已归档。'
+        job.result=result['result']
+        record = job.result.get('record') or {}
+        for key in ('template', 'source', 'model'):
+            if record.get(key): job.details[key] = record[key]
+        if record.get('frame_count') is not None: job.details['count'] = record['frame_count']
+        job.state='completed';job.message='视频已校验归档。' if job.kind=='video' else '分析结果与画面已归档。'
     # Only this task's owned scratch directory; no library/models/Cookies/transcription outputs.
     try:shutil.rmtree(directory)
     except OSError:job.message+=' 临时副本清理失败，可在缓存管理中查看。'

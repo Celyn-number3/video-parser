@@ -77,7 +77,7 @@ class UXImprovementsBrowserTests(unittest.TestCase):
 
     def learn(self):
         self.f.parse()
-        self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
         expect(self.page.locator('.study-sidebar')).to_be_visible()
 
     def chat(self):
@@ -173,6 +173,8 @@ class UXImprovementsBrowserTests(unittest.TestCase):
         self.page.keyboard.press('ArrowRight')
         expect(self.page.get_by_role('tab', name='个人笔记', exact=True)).to_be_focused()
         self.page.keyboard.press('End')
+        expect(self.page.get_by_role('tab', name='字幕', exact=True)).to_be_focused()
+        self.page.keyboard.press('ArrowLeft')
         expect(self.page.get_by_role('tab', name='AI 对话', exact=True)).to_be_focused()
         self.page.get_by_role('button', name='收起学习侧栏', exact=True).click()
         self.page.get_by_role('button', name='展开学习侧栏', exact=True).click()
@@ -203,12 +205,8 @@ class UXImprovementsBrowserTests(unittest.TestCase):
 
     def test_learning_actions_and_narrow_first_screen(self):
         self.learn()
-        more = self.page.locator('.video-context-more')
-        expect(more.get_by_role('button', name='字幕层级命名', exact=True)).to_be_hidden()
-        more.locator('summary').press('Enter')
-        expect(more.get_by_role('button', name='字幕层级命名', exact=True)).to_be_visible()
-        more.locator('summary').press('Escape')
-        expect(more).not_to_have_attribute('open', '')
+        expect(self.page.locator('.video-context-more')).to_have_count(0)
+        expect(self.page.get_by_role('button', name='视频工作台', exact=True)).to_be_visible()
         tools = self.page.locator('.learning-project-tools')
         tools.locator('summary').click()
         expect(self.page.get_by_role('searchbox', name='搜索学习项目', exact=True)).to_be_visible()
@@ -225,17 +223,17 @@ class UXImprovementsBrowserTests(unittest.TestCase):
     def test_ai_summaries_advanced_controls_and_unsaved_status(self):
         self.page.goto(self.f.url + '?page=settings&settings_section=ai')
         targets = self.page.locator('.learning-targets')
-        expect(targets.get_by_role('combobox', name='默认学习模型', exact=True)).to_be_visible()
-        expect(targets.locator('fieldset').first).to_be_hidden()
-        connection = self.page.locator('.ai-connection-details')
+        expect(targets.get_by_role('combobox', name='默认模型', exact=True)).to_be_visible()
+        expect(targets.locator('.learning-target-group').first).to_be_hidden()
+        connection = self.page.locator('.settings-ai')
         expect(self.page.locator('#ai-model')).to_be_hidden()
-        connection.locator(':scope > summary').click()
+        connection.get_by_role('button', name='配置 API 连接', exact=True).click()
         self.page.locator('#ai-model').fill('not-saved-fixture')
-        expect(self.page.locator('.ai-configuration-summary')).to_contain_text('有未保存的连接修改')
-        connection.locator(':scope > summary').click()
-        expect(self.page.locator('.ai-configuration-summary')).to_contain_text('有未保存的连接修改')
-        targets.locator('.learning-target-options > summary').click()
-        expect(targets.locator('fieldset')).to_have_count(3)
+        expect(self.page.locator('.settings-ai')).to_contain_text('有未保存的连接修改')
+        connection.get_by_role('button', name='配置 API 连接', exact=True).click()
+        expect(self.page.locator('.settings-ai')).to_contain_text('有未保存的连接修改')
+        targets.locator('button[aria-controls="models-codex"]').click()
+        expect(targets.locator('.learning-target-group')).to_have_count(3)
         targets.locator('#learning-default-model').select_option('codex|codex-fixture')
         expect(targets.locator('#learning-default-model option:checked')).to_contain_text('Codex fixture')
         for width in (1440, 390, 320, 280):
@@ -261,9 +259,11 @@ class UXImprovementsBrowserTests(unittest.TestCase):
         expect(self.page.locator('#ai-provider')).to_be_focused()
         self.assertFalse(any(method == 'POST' and path.startswith('/ai/') for method, path, _ in self.f.requests))
 
-    def test_unconfigured_connection_is_open_without_automatic_save(self):
+    def test_unconfigured_connection_is_collapsed_without_automatic_save(self):
         self.f.ai['configured'] = False
         self.page.goto(self.f.url + '?page=settings&settings_section=ai')
+        expect(self.page.locator('#ai-model')).to_be_hidden()
+        self.page.get_by_role('button', name='配置 API 连接', exact=True).click()
         expect(self.page.locator('#ai-model')).to_be_visible()
         self.assertFalse(any(method == 'POST' for method, _, _ in self.f.requests))
 

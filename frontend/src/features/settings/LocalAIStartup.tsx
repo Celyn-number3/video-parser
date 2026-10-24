@@ -114,11 +114,11 @@ export default function LocalAIStartup({ value, defaults, model, command, disabl
     <details className="local-ai-advanced"><summary>手动启动命令（备用）</summary>
     <label htmlFor="ai-launch-command">启动命令（自动生成，PowerShell）</label>
     <textarea id="ai-launch-command" className="local-ai-command" value={command} readOnly rows={2} spellCheck={false} />
+      <button type="button" onClick={() => { void copy(); }}>复制备用启动命令</button>
     <p className="settings-hint">优先使用本页的启动按钮。也可在保存后双击 start-ai.cmd，或复制这条命令。启动器会读取已保存的配置并安全传入访问令牌。</p>
     </details>
     <div className="settings-actions">
       <button type="button" disabled={!!error || !model.trim()} aria-busy={checking} onClick={() => { void check(); }}>{checking ? '检查中…' : '检查启动配置（不启动）'}</button>
-      <button type="button" onClick={() => { void copy(); }}>复制备用启动命令</button>
     </div>
     {error && <p className="error-text" role="alert">{error}</p>}
     {status && <p className="settings-hint" role="status" aria-live="polite">{status}</p>}

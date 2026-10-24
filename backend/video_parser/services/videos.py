@@ -247,13 +247,14 @@ def select_quality(parsed, quality='best'):
     return replace(parsed, metadata=metadata, video_urls=video_urls)
 
 
-def archived_videos(identifier):
+def archived_videos(identifier, *, use_validation_cache=False):
+    from video_parser.services import media_validation
     project = library.get(identifier)
     videos = []
     for relative, item in project['resources'].items():
         if item['kind'] != 'video': continue
         try:
-            path = library.resource(identifier, relative)
+            path = media_validation.resource(project, relative) if use_validation_cache else library.resource(identifier, relative)
             media = item.get('media') or probe(path)
             check_video(media, require_audio=project['platform'] == 'bilibili')
             track = next(stream for stream in media['streams'] if stream.get('codec_type') == 'video')

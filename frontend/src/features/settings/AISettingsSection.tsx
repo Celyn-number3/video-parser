@@ -11,7 +11,7 @@ const toDraft = (value: AISettings): Draft => ({ provider: value.provider, base_
 
 // Saved to .local/ai/settings.json by the local service; the key is never sent back to the page.
 export default function AISettingsSection({ onChange, onLoad, autoFocus = false, visible = true }: { onChange: (settings: AISettings) => void; onLoad?: (settings: AISettings) => void; autoFocus?: boolean; visible?: boolean }) {
-  const [configurationOpen, setConfigurationOpen] = useState<boolean | null>(null);
+  const [configurationOpen, setConfigurationOpen] = useState(false);
   const [saved, setSaved] = useState<AISettings | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [launchDraft, setLaunchDraft] = useState<LaunchDraft | null>(null);
@@ -29,12 +29,12 @@ export default function AISettingsSection({ onChange, onLoad, autoFocus = false,
   }, [autoFocus, loaded]);
   useEffect(() => {
     const current = controller.current;
-    // Report what was loaded so the 默认学习模型 status on the same page is right before any save.
+    // Report what was loaded so the 默认模型 status on the same page is right before any save.
     request<AISettings>('/ai/settings', current.signal).then(value => { onLoad?.(value); setSaved(value); setDraft(toDraft(value)); if (value.startup) setLaunchDraft(toLaunchDraft(value.startup)); if (value.startup_error) { setFailed(true); setStatus(value.startup_error); } })
       .catch((reason: unknown) => { if (!current.signal.aborted) { setFailed(true); setStatus(reason instanceof Error ? reason.message : '无法读取 AI 设置。'); } });
     return () => current.abort();
   }, []);
-  if (!saved || !draft) return <section aria-labelledby="settings-ai"><h3 id="settings-ai">AI 模型</h3><p className={failed ? 'error-text' : 'settings-hint'}>{status || '正在读取…'}</p></section>;
+  if (!saved || !draft) return <section className="model-source" aria-labelledby="settings-ai"><h4 id="settings-ai">API 连接（含本地模型）</h4><p role={failed ? 'alert' : 'status'} className={failed ? 'error-text' : 'settings-hint'}>{status || '正在读取…'}</p></section>;
 
   const preset: AIPreset = saved.presets[draft.provider] || saved.presets.custom || { name: draft.provider, base_url: draft.base_url, model: draft.model, models: [], key_required: true, hint: '' };
   const local = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(draft.base_url);
@@ -86,62 +86,60 @@ export default function AISettingsSection({ onChange, onLoad, autoFocus = false,
     } finally { setWorking(null); }
   }
 
-  return <section aria-labelledby="settings-ai" className="settings-ai"><h3 id="settings-ai" className="sr-only">模型连接与启动</h3>
-    <div className="ai-configuration-summary"><h3>模型连接</h3>
-      <p translate="no">{saved.configured ? `${saved.provider_name} · ${saved.model}` : ''}</p>
-      {!saved.configured && <p className="settings-hint">尚未配置连接，请填写下方必要参数。</p>}
-      {dirty && <p className="settings-hint" role="status">有未保存的连接修改，请展开配置并保存。</p>}
+  return <section aria-labelledby="settings-ai" className="settings-ai model-source">
+    <div className="model-source-row">
+      <div className="model-source-copy"><h4 id="settings-ai">API 连接（含本地模型）</h4>
+        <span className="model-source-state" translate={saved.configured ? 'no' : undefined}>{saved.configured ? `${saved.provider_name} · ${saved.model}` : '未配置'}</span></div>
+      <button type="button" aria-label="配置 API 连接" aria-expanded={configurationOpen} aria-controls="api-source-config"
+        onClick={() => setConfigurationOpen(value => !value)}>{configurationOpen ? '收起' : '配置'}</button>
     </div>
-    {draft.provider === 'llamacpp' && <LocalAIRuntime saved={saved} visible={visible} busy={working !== null}
-      invalid={launchInvalid || priceInvalid} dirty={dirty} onStart={startModel} />}
-    <details className="ai-connection-details" open={configurationOpen ?? !saved.configured}
-      onToggle={event => setConfigurationOpen(event.currentTarget.open)}><summary>连接与启动配置</summary>
-    <div className={'ai-settings-grid' + (draft.provider !== 'llamacpp' ? ' is-cloud' : '')}>
-    <div className="ai-connection-card"><h3>连接配置</h3>
-    <label htmlFor="ai-provider">服务</label>
-    <select disabled={working !== null} ref={provider} id="ai-provider" value={draft.provider} onChange={event => chooseProvider(event.target.value)}>
-      {Object.entries(saved.presets).map(([key, item]) => <option key={key} value={key}>{item.name}</option>)}
-    </select>
-    {preset.hint && <p className="settings-hint">{draft.provider === 'llamacpp'
-      ? '本机运行 GGUF 模型，画面和字幕不会发送到外部。保存后点击上方“启动本地模型”；模型 ID 会作为启动时的名称。' : preset.hint}</p>}
-    <label htmlFor="ai-base-url">接口地址</label>
-    <input disabled={working !== null} id="ai-base-url" type="url" value={draft.base_url} spellCheck={false} placeholder="https://…/v1" onChange={event => update({ base_url: event.target.value })} />
-    <label htmlFor="ai-model">模型 ID</label>
-    <input disabled={working !== null} id="ai-model" list="ai-model-options" value={draft.model} spellCheck={false} placeholder="支持图片输入的模型" onChange={event => update({ model: event.target.value })} />
-    <datalist id="ai-model-options">{preset.models.map(model => <option key={model} value={model} />)}</datalist>
-    <p className="settings-hint">可从列表选，也可以直接填写更大的模型 ID。只用字幕分析时，纯文本模型也可以。</p>
-    {!local && <>
-      <label htmlFor="ai-key">API Key</label>
-      <input id="ai-key" type="password" autoComplete="off" spellCheck={false} value={draft.api_key} placeholder={keyPlaceholder} onChange={event => update({ api_key: event.target.value })} />
-      {!sameService && saved.key_saved && <p className="settings-hint">换了服务地址，原来的密钥不会带过去，请填写新服务的密钥。</p>}
-    </>}
-    {!local && <div className="settings-price">
-      <label>输入单价<input type="number" min="0" max="10000" step="0.01" inputMode="decimal" value={draft.price_input} placeholder="选填" onChange={event => update({ price_input: event.target.value })} /></label>
-      <label>输出单价<input type="number" min="0" max="10000" step="0.01" inputMode="decimal" value={draft.price_output} placeholder="选填" onChange={event => update({ price_output: event.target.value })} /></label>
-      <span>元 / 百万 tokens，用于估算费用</span>
-    </div>}
-    <div className="settings-actions">
-      <button type="button" className="primary" disabled={!dirty || priceInvalid || launchInvalid || working !== null} aria-busy={working === 'save'} onClick={() => { void save(); }}>保存</button>
-      <button type="button" disabled={working !== null || priceInvalid || launchInvalid || (!saved.configured && !dirty)} aria-busy={working === 'test'} onClick={() => { void test(); }}>测试连接</button>
-      {saved.key_saved && saved.source === 'settings' && !local && <button type="button" className="link-button" disabled={working !== null} onClick={() => { void save(true); }}>清除密钥</button>}
+    {dirty && <p className="settings-hint" role="status">有未保存的连接修改，请展开配置并保存。</p>}
+    {status && <p role={failed ? 'alert' : 'status'} aria-live="polite" className={failed ? 'error-text' : 'settings-save-status'}>{status}</p>}
+      {priceInvalid && <p className="error-text" role="alert">单价须在 0 到 10000 之间，请检查高级连接设置。</p>}
+    {!configurationOpen && launchDraft && draft.provider === 'llamacpp' && launchError(launchDraft) && <p className="error-text" role="alert">{launchError(launchDraft)}</p>}
+    <div id="api-source-config" className="model-source-config" hidden={!configurationOpen}>
+      <div className="ai-common-fields">
+        <div><label htmlFor="ai-provider">服务</label>
+          <select disabled={working !== null} ref={provider} id="ai-provider" value={draft.provider} onChange={event => chooseProvider(event.target.value)}>
+            {Object.entries(saved.presets).map(([key, item]) => <option key={key} value={key}>{item.name}</option>)}
+          </select></div>
+        <div><label htmlFor="ai-model">模型 ID</label>
+          <input disabled={working !== null} id="ai-model" list="ai-model-options" value={draft.model} spellCheck={false} placeholder="支持图片输入的模型" onChange={event => update({ model: event.target.value })} />
+          <datalist id="ai-model-options">{preset.models.map(model => <option key={model} value={model} />)}</datalist></div>
+        <div className="ai-field-wide"><label htmlFor="ai-base-url">接口地址</label>
+          <input disabled={working !== null} id="ai-base-url" type="url" value={draft.base_url} spellCheck={false} placeholder="https://…/v1" onChange={event => update({ base_url: event.target.value })} /></div>
+        {draft.provider !== 'llamacpp' && <div className="ai-field-wide"><label htmlFor="ai-key">API Key</label>
+          <input disabled={working !== null} id="ai-key" type="password" autoComplete="off" spellCheck={false} value={draft.api_key} placeholder={keyPlaceholder} onChange={event => update({ api_key: event.target.value })} />
+          {!sameService && saved.key_saved && <p className="settings-hint">换了服务地址，原来的密钥不会带过去，请填写新服务的密钥。</p>}</div>}
+      </div>
+      {preset.hint && <p className="settings-hint">{draft.provider === 'llamacpp'
+        ? '本机运行 GGUF 模型，画面和字幕不会发送到外部。模型 ID 用作启动名称；端口在下方修改并同步接口地址。' : preset.hint}</p>}
+      <p className="settings-hint">可从列表选，也可以直接填写更大的模型 ID。只用字幕分析时，纯文本模型也可以。</p>
+      {draft.provider === 'llamacpp' && <>
+        <LocalAIRuntime saved={saved} visible={visible && configurationOpen} busy={working !== null}
+          invalid={launchInvalid || priceInvalid} dirty={dirty} onStart={startModel} />
+        {launchDraft && saved.startup_defaults && saved.startup_command ? <LocalAIStartup
+          onPicking={busy => setWorking(busy ? 'pick' : null)} value={launchDraft} defaults={saved.startup_defaults} model={draft.model} command={saved.startup_command} disabled={working !== null}
+          onChange={value => {
+            setLaunchDraft(value);
+            update(value.port !== launchDraft.port ? { base_url: `http://127.0.0.1:${value.port}/v1` } : {});
+          }} /> : <p className="error-text" role="alert">工作台后端尚未加载启动配置功能，请关闭旧工作台终端后重新打开 start-web.cmd；模型终端不用关闭。</p>}
+      </>}
+      <details className="ai-secondary-details"><summary>高级连接设置</summary>
+        {!local && <div className="settings-price">
+          <label>输入单价<input disabled={working !== null} type="number" min="0" max="10000" step="0.01" inputMode="decimal" value={draft.price_input} placeholder="选填" onChange={event => update({ price_input: event.target.value })} /></label>
+          <label>输出单价<input disabled={working !== null} type="number" min="0" max="10000" step="0.01" inputMode="decimal" value={draft.price_output} placeholder="选填" onChange={event => update({ price_output: event.target.value })} /></label>
+          <span>元 / 百万 tokens，用于估算费用</span>
+        </div>}
+        <p className="settings-hint">配置保存位置</p><code className="archive-root" translate="no">{saved.storage}</code>
+        {saved.source === 'env' && <p className="settings-hint">来自 .env；在这里保存后以这里为准。</p>}
+      </details>
+      <div className="settings-actions">
+        <button type="button" className="primary" disabled={!dirty || priceInvalid || launchInvalid || working !== null} aria-busy={working === 'save'} onClick={() => { void save(); }}>保存</button>
+        <button type="button" disabled={working !== null || priceInvalid || launchInvalid || (!saved.configured && !dirty)} aria-busy={working === 'test'} onClick={() => { void test(); }}>{dirty ? '保存并测试' : '测试连接'}</button>
+        {saved.key_saved && saved.source === 'settings' && draft.provider !== 'llamacpp' && <button type="button" className="link-button" disabled={working !== null} onClick={() => { void save(true); }}>清除密钥</button>}
+      </div>
+      <p className="settings-hint">{saved.local ? '本机运行，不需要同意发送' : saved.consented ? '已同意发送到这个服务' : '第一次分析时会询问是否同意发送'}</p>
     </div>
-    {status && <p role="status" aria-live="polite" className={failed ? 'error-text' : 'settings-save-status'}>{status}</p>}
-    <p className="settings-hint">
-      {saved.configured ? `当前：${saved.provider_name} · ${saved.model}` : '当前：未配置'}
-      {saved.source === 'env' ? '（来自 .env；在这里保存后以这里为准）' : ''}
-      {saved.local ? ' · 本机运行，不需要同意发送' : saved.consented ? ' · 已同意发送到这个服务' : ' · 第一次分析时会询问是否同意发送'}
-    </p>
-    <details className="ai-secondary-details"><summary>配置保存位置</summary><p className="settings-hint">{saved.storage}</p></details>
-    </div>
-    {draft.provider === 'llamacpp' && <div className="ai-startup-card">
-    {launchDraft && saved.startup_defaults && saved.startup_command ? <LocalAIStartup
-      onPicking={busy => setWorking(busy ? 'pick' : null)} value={launchDraft} defaults={saved.startup_defaults} model={draft.model} command={saved.startup_command} disabled={working !== null}
-      onChange={value => {
-        setLaunchDraft(value);
-        update(value.port !== launchDraft.port ? { base_url: `http://127.0.0.1:${value.port}/v1` } : {});
-      }} /> : <p className="error-text" role="alert">工作台后端尚未加载启动配置功能，请关闭旧工作台终端后重新打开 start-web.cmd；模型终端不用关闭。</p>}
-    </div>}
-    </div>
-    </details>
   </section>;
 }

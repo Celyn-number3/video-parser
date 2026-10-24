@@ -94,7 +94,15 @@ export default function Markdown({ text, onSeek, maxSeconds, className = '' }: {
       const items: { text: string; nested: string[] }[] = [];
       const base = listItem.exec(line)![1].length;
       while (index < lines.length) {
+        if (!lines[index].trim()) {
+          let next = index + 1;
+          while (next < lines.length && !lines[next].trim()) next++;
+          const following = next < lines.length ? listItem.exec(lines[next]) : null;
+          if (following && /^\d/.test(following[2]) === ordered) { index = next; continue; }
+          break;
+        }
         const current = listItem.exec(lines[index]);
+        if (current && current[1].length <= base + 1 && /^\d/.test(current[2]) !== ordered) break;
         if (current && current[1].length <= base + 1) items.push({ text: current[3], nested: [] });
         else if (current && items.length) items[items.length - 1].nested.push(current[3]);
         else if (lines[index].trim() && /^\s{2,}/.test(lines[index]) && items.length) items[items.length - 1].text += ' ' + lines[index].trim();

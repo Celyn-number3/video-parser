@@ -83,7 +83,7 @@ export default function PlaybackResume({ projectId, media, videoRef, onSeek, anc
   }, [projectId, media.resource, media.preview_url, media.duration, videoRef]);
   // The effect is keyed by immutable media identity; onSeek only performs a guarded player operation.
   // The resume offer only appears until the learner chooses.
-  return <section ref={anchorRef} className="playback-resume" aria-label="播放进度">
+  return <section ref={anchorRef} className={'playback-resume' + (offer === null && !error && !children ? ' is-empty' : '')} aria-label="播放进度">
     <div className="playback-resume-offer">
       {/* Routine saving is silent; only the resume offer and failures are shown. */}
       {offer !== null && <><p>上次学到 <strong>{chapterTime(offer)}</strong></p>

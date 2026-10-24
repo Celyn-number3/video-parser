@@ -1,7 +1,8 @@
 """Synthetic regressions for green archived-subtitle status and explicit AI translation."""
 import re
+from pathlib import Path
 import unittest
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 from playwright.sync_api import expect
 from tests.browser import browser_learning_workflow as learning
@@ -46,7 +47,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         return {'id': self.job_id, 'kind': 'transcriptions', 'project_id': self.pid, 'part': 1, 'operation': 'translation', 'state': 'completed',
                 'phase': 'completed', 'message': 'AI 翻译完成，原字幕保留；译文请人工校对。', 'title': '合成课程甲 P1',
                 'text': '我想知道你为何把自己描述为“咸”。\n那是什么意思？', 'language': 'zh', 'translation_target': 'zh',
-                'requested_language': 'auto', 'source_project_id': self.pid, 'source_resource': 'video/fixture.wav',
+                'translation_source': 'subtitles/original.srt', 'requested_language': 'auto', 'source_project_id': self.pid, 'source_resource': 'video/fixture.wav',
                 'files': [{'name': 'original.AI翻译.zh.srt', 'format': 'srt', 'url': f'/api/workspace/transcriptions/{self.job_id}/files/srt'}],
                 'saved_to': {'type': 'project', 'location': 'outputs/fixture/subtitles'}, 'progress': {}, 'created': 1}
 
@@ -62,7 +63,14 @@ class TranslationStatusBrowserTests(unittest.TestCase):
             self.calls.append((request.method, path, None))
             selected = {'resource': 'subtitles/original.srt', 'filename': 'P01_原始字幕.srt', 'kind': 'subtitle', 'language': self.language,
                         'url': f'/api/workspace/projects/{self.pid}/files/subtitles/original.srt'}
-            return route.fulfill(json={'project_id': self.pid, 'has_subtitles': True, 'files': [selected], 'selected': selected, 'text': self.text})
+            return route.fulfill(json={'project_id': self.pid, 'has_subtitles': True, 'files': [selected], 'selected': selected, 'text': self.text, 'translations': ([{'resource': 'subtitles/original.AI翻译.zh.srt', 'filename': 'original.AI翻译.zh.srt', 'language': 'zh', 'url': '/fixture', 'text': self.translation_job()['text']}] if self.completed else [])})
+        if path == f'/projects/{self.pid}/subtitle-cues':
+            original = {'resource': 'subtitles/original.srt', 'label': '本地转写（英文）', 'kind': 'transcription', 'language': 'en'}
+            translated = {'resource': 'subtitles/original.AI翻译.zh.srt', 'label': 'AI 翻译（中文）', 'kind': 'translation', 'language': 'zh'}
+            selected = parse_qs(url.query).get('resource', [''])[0] or (translated['resource'] if self.completed else original['resource'])
+            body = self.translation_job()['text'] if selected == translated['resource'] else self.text
+            return route.fulfill(json={'sources': [original, translated] if self.completed else [original], 'resource': selected,
+                                       'cues': [{'time': i * 4 + 1, 'text': text} for i, text in enumerate(body.splitlines())]})
         if path == '/translations' and request.method == 'POST':
             body = request.post_data_json
             self.calls.append((request.method, path, body))
@@ -89,7 +97,91 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(self.page.get_by_role('radiogroup', name='选择视频').get_by_role('radio')).to_have_count(2)
 
     def choose(self, index):
-        self.page.get_by_role('radiogroup', name='选择视频').get_by_role('radio').nth(index).check()
+        # Selection now commits after the shared workbench restore, not inside the click event.
+        radio = self.page.get_by_role('radiogroup', name='选择视频').get_by_role('radio').nth(index)
+        radio.click(); expect(radio).to_be_checked()
+
+    def test_learning_lists_saved_chinese_and_can_switch_back_to_original(self):
+        self.completed = True
+        self.base.open()
+        self.page.get_by_role('tab', name='字幕', exact=True).click()
+        panel = self.page.get_by_role('region', name='滚动字幕', exact=True)
+        choices = panel.get_by_role('combobox', name='字幕版本', exact=True)
+        expect(choices.locator('option')).to_have_text(['本地转写（英文）', 'AI 翻译（中文）'])
+        expect(choices).to_have_value('subtitles/original.AI翻译.zh.srt')
+        expect(panel).to_contain_text('我想知道你为何')
+        choices.select_option('subtitles/original.srt')
+        expect(panel).to_contain_text('I want to know')
+        choices.select_option('subtitles/original.AI翻译.zh.srt')
+        expect(panel).to_contain_text('我想知道你为何')
+        self.page.reload()
+        self.page.get_by_role('tab', name='字幕', exact=True).click()
+        expect(panel).to_contain_text('我想知道你为何')
+        expect(self.page.get_by_text('语义检索 · 当前视频字幕', exact=True)).to_have_count(0)
+        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
+        artifacts = Path(__file__).resolve().parents[2] / '.local/work/artifacts/subtitle-results'
+        artifacts.mkdir(parents=True, exist_ok=True)
+        self.page.evaluate('document.documentElement.setAttribute("data-theme", "dark")')
+        self.page.screenshot(path=str(artifacts / 'learning-chinese.png'), full_page=True, animations='disabled')
+
+    def test_saved_translation_survives_reload_without_any_remembered_task(self):
+        self.completed = True
+        self.open(); self.choose(0)
+        expect(self.page.get_by_label('译文', exact=True)).to_have_value(self.translation_job()['text'])
+        self.choose(1)
+        expect(self.page.get_by_label('译文', exact=True)).to_have_count(0)
+        self.choose(0)
+        expect(self.page.get_by_label('译文', exact=True)).to_have_value(self.translation_job()['text'])
+        self.page.evaluate("localStorage.removeItem('video-parser:task:transcriptions')")
+        self.page.reload()
+        self.page.get_by_role('button', name=re.compile(r'^已归档视频')).click(); self.choose(0)
+        expect(self.page.get_by_label('译文', exact=True)).to_have_value(self.translation_job()['text'])
+        self.page.get_by_role('button', name='AI 中英互译', exact=True).click()
+        expect(self.page.get_by_label('译文', exact=True)).to_have_value(self.translation_job()['text'])
+        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
+        artifacts = Path(__file__).resolve().parents[2] / '.local/work/artifacts/subtitle-results'
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for width, theme in [(1440, 'light'), (1440, 'dark'), (390, 'dark')]:
+            self.page.set_viewport_size({'width': width, 'height': 1000})
+            self.page.evaluate('(theme) => document.documentElement.setAttribute("data-theme", theme)', theme)
+            self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
+            self.page.screenshot(path=str(artifacts / f'translation-{theme}-{width}.png'), full_page=True, animations='disabled')
+
+    def test_source_rows_have_no_tooltips_and_switch_loading_is_silent(self):
+        original_sources = self.sources
+        self.sources = lambda: [{**row, 'has_subtitles': True, 'subtitle_count': 1} for row in original_sources()]
+        pid = self.base.identifier(2); held = []
+        self.page.route('**/api/workspace/projects/'+pid+'/subtitles?*', lambda route: held.append(route))
+        self.open()
+        rows = self.page.get_by_role('radiogroup', name='选择视频', exact=True)
+        expect(rows.locator('[title]')).to_have_count(0)
+        rows.locator('label').first.hover()
+        expect(rows.get_by_role('radio')).to_have_count(2)
+        self.choose(0)
+        expect(self.page.get_by_role('textbox', name='字幕原文', exact=True)).to_have_value(self.text)
+        self.choose(1)
+        panel = self.page.get_by_role('region', name='当前视频字幕', exact=True)
+        expect(panel).to_have_attribute('aria-busy', 'true')
+        expect(self.page.get_by_text('正在读取已有字幕…', exact=True)).to_have_count(0)
+        expect(panel.get_by_role('textbox', name='字幕原文', exact=True)).to_have_count(0)
+        self.assertTrue(held)
+        selected = {'resource':'subtitles/second.srt','filename':'第二集.srt','kind':'subtitle','language':'en','url':'/fixture'}
+        held.pop().fulfill(json={'project_id':pid,'has_subtitles':True,'files':[selected],'selected':selected,
+                                'text':'Second video subtitles.','translations':[]})
+        expect(panel.get_by_role('textbox', name='字幕原文', exact=True)).to_have_value('Second video subtitles.')
+        expect(panel).to_have_attribute('aria-busy', 'false')
+        self.choose(0)
+        expect(panel.get_by_role('textbox', name='字幕原文', exact=True)).to_have_value(self.text)
+        self.assertFalse(any(method == 'POST' and path in ('/transcriptions','/subtitles','/translations') for method,path,_ in self.calls))
+
+    def test_silent_archive_loading_still_shows_read_errors(self):
+        self.page.route('**/api/workspace/projects/'+self.pid+'/subtitles?*',
+                        lambda route: route.fulfill(status=503, json={'detail':'模拟字幕读取失败'}))
+        self.open(); self.choose(0)
+        panel = self.page.get_by_role('region', name='当前视频字幕', exact=True)
+        expect(panel.get_by_role('alert')).to_have_text('模拟字幕读取失败')
+        expect(panel).to_have_attribute('aria-busy','false')
+        expect(self.page.get_by_text('正在读取已有字幕…', exact=True)).to_have_count(0)
 
     def test_archived_subtitle_is_green_and_shown_without_download_or_transcription(self):
         self.open()
@@ -213,7 +305,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(result.get_by_role('combobox', name='翻译方向', exact=True)).to_have_value('zh')
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
 
-    def test_translation_requires_consent_keeps_original_and_reports_on_tasks_page(self):
+    def test_translation_explicit_start_keeps_original_and_reports_on_tasks_page(self):
         self.open(); self.choose(0)
         panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
         panel.get_by_role('button', name='AI 中英互译', exact=True).click()
@@ -221,10 +313,9 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(direction).to_have_value('zh')
         expect(direction.locator('option')).to_contain_text(['英文 → 中文', '中文 → 英文'])
         start = panel.get_by_role('button', name='开始 AI 翻译', exact=True)
-        expect(start).to_be_disabled()
-        panel.get_by_role('checkbox', name=re.compile('^同意本次')).check()
+        expect(panel.get_by_role('checkbox', name=re.compile('^同意本次'))).to_have_count(0)
         expect(start).to_be_enabled()
-        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls), 'no paid request before explicit consent')
+        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls), 'no paid request before explicit Start click')
         start.click()
         expect(panel.get_by_label('译文', exact=True)).to_have_value('我想知道你为何把自己描述为“咸”。\n那是什么意思？')
         expect(panel.get_by_role('button', name=re.compile('^下载译文'))).to_have_count(0)
@@ -239,6 +330,66 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         self.page.get_by_role('button', name=re.compile('^任务中心')).click()
         row = self.page.locator('.task-list > li').filter(has_text='AI 翻译')
         expect(row.locator('strong')).to_contain_text('AI 翻译')
+
+
+    def test_local_model_ignores_but_does_not_erase_cloud_batch_choice(self):
+        self.base.fixture.ai['provider'] = 'llamacpp'
+        self.open(); self.choose(0)
+        panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
+        panel.get_by_role('button', name='AI 中英互译', exact=True).click()
+        picker = panel.get_by_role('combobox', name='引擎与模型', exact=True)
+        batch = panel.get_by_role('checkbox', name=re.compile('^我已确认所选模型'))
+        expect(batch).to_have_count(0)
+        picker.select_option('codex|')
+        batch.check()
+        picker.select_option('api|')
+        expect(batch).to_have_count(0)
+        picker.select_option('codex|')
+        expect(batch).to_be_checked()
+        picker.select_option('api|')
+        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
+        panel.get_by_role('button', name='开始 AI 翻译', exact=True).click()
+        expect(panel.get_by_label('译文', exact=True)).to_be_visible()
+        body = next(body for method, path, body in self.calls if path == '/translations')
+        self.assertIs(body['output_confirmed'], False)
+
+    def test_large_batch_choice_survives_model_changes_and_is_centered(self):
+        self.open(); self.choose(0)
+        panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
+        panel.get_by_role('button', name='AI 中英互译', exact=True).click()
+        batch = panel.get_by_role('checkbox', name=re.compile('^我已确认所选模型'))
+        picker = panel.get_by_role('combobox', name='引擎与模型', exact=True)
+        expect(batch).not_to_be_checked()
+        batch.check()
+        picker.select_option('codex|')
+        expect(batch).to_be_checked()
+        picker.select_option('api|')
+        expect(batch).to_be_checked()
+        batch.uncheck()
+        picker.select_option('codex|')
+        expect(batch).not_to_be_checked()
+        picker.select_option('api|')
+        expect(batch).not_to_be_checked()
+        batch.check()
+        panel.get_by_role('button', name='AI 中英互译', exact=True).click()
+        panel.get_by_role('button', name='AI 中英互译', exact=True).click()
+        expect(batch).to_be_checked()
+        self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
+        artifacts = Path(__file__).resolve().parents[2] / '.local/work/artifacts/translation-controls'
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for width, theme in [(1440, 'light'), (1440, 'dark'), (390, 'dark')]:
+            self.page.set_viewport_size({'width': width, 'height': 1000})
+            self.page.evaluate('(theme) => document.documentElement.setAttribute("data-theme", theme)', theme)
+            label = panel.locator('.translation-batch-option > span')
+            box, text_box = batch.bounding_box(), label.bounding_box()
+            self.assertLessEqual(abs(box['y'] + box['height']/2 - text_box['y'] - text_box['height']/2), 1)
+            self.assertLessEqual(self.page.evaluate('document.documentElement.scrollWidth'), width)
+            panel.screenshot(path=str(artifacts / f'{theme}-{width}.png'), animations='disabled')
+        panel.get_by_role('button', name='开始 AI 翻译', exact=True).click()
+        expect(panel.get_by_label('译文', exact=True)).to_be_visible()
+        body = next(body for method, path, body in self.calls if path == '/translations')
+        self.assertIs(body['output_confirmed'], True)
+        self.assertIs(body['consent'], True)
 
 
 if __name__ == '__main__':

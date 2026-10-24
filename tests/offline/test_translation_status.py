@@ -47,9 +47,54 @@ class TranslationStatusTests(unittest.TestCase):
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             job = transcription.get(identifier)
-            if job.state not in task_runtime.ACTIVE: return job
+            if job.state not in task_runtime.ACTIVE and not task_runtime.active_id(job.id): return job
             time.sleep(.01)
         self.fail('synthetic translation did not finish')
+
+    def test_archive_restores_translation_without_task_and_learning_lists_chinese(self):
+        from video_parser.services import ai_analysis
+        from video_parser.web import analysis_routes
+        job = self.finish(translations.start(self.reference, 'zh', True))
+        self.assertEqual(job.state, 'completed')
+        transcription.jobs.pop(job.id, None)
+        result = self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'video_resource': self.video}).json()
+        self.assertEqual(result['text'], 'Hello world.\nHello world.')
+        self.assertEqual(len(result['translations']), 2)
+        self.assertTrue(all(row['language'] == 'zh' and '你好' in row['text'] for row in result['translations']))
+        cues = analysis_routes.subtitle_cues(self.pid)
+        self.assertEqual(len(cues['cues']), 2)
+        self.assertIn('你好', cues['cues'][0]['text'])
+        self.assertTrue(any(row['label'] == 'AI 翻译（中文）' for row in cues['sources']))
+        # AI analysis still defaults to the original; playback allows switching back.
+        self.assertTrue(all(row['kind'] != 'translation' for row in ai_analysis.transcript_sources(library.get(self.pid))))
+        original = analysis_routes.subtitle_cues(self.pid, self.resource)
+        self.assertIn('Hello', original['cues'][0]['text'])
+        self.model.assert_called_once()
+
+    def test_legacy_translation_hash_matches_but_wrong_original_does_not(self):
+        job = self.finish(translations.start(self.reference, 'zh', True))
+        project = library.get(self.pid)
+        for name, info in project['resources'].items():
+            if info['kind'] == 'translation':
+                # Older releases recorded the hash, not the original resource path.
+                library.update_details(self.pid, name, {'source_resource': None})
+        self.assertEqual(len(library.translation_records(library.get(self.pid), self.video, self.resource)), 2)
+        other = self.root / 'other.srt'; other.write_text(self.raw.replace('Hello world.', 'Different original.'), encoding='utf-8')
+        key = library.import_file(self.pid, other, 'subtitles/other.srt', 'subtitle', {'video_resource': self.video})
+        result = self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'video_resource': self.video, 'subtitle_resource': key}).json()
+        self.assertEqual(result['translations'], [])
+        # Invalid published file is not displayed as a finished translation.
+        Path(job.files['srt']['path']).write_text('corrupt', encoding='utf-8')
+        self.assertEqual(len(library.translation_records(library.get(self.pid), self.video, self.resource)), 1)
+
+    def test_generated_filenames_identify_source_and_download_name(self):
+        from video_parser.services import subtitles
+        self.assertEqual(subtitles.platform_name('8.08可解性和解的结构', '.srt'), '8.08可解性和解的结构-B站平台字幕.srt')
+        job = transcription.Job('a' * 32, self.subtitle, '8.08可解性和解的结构', 'auto', project_id=self.pid, resource=self.video)
+        job.detected_language = 'en'
+        self.assertEqual(transcription.output_name(job, 'srt'), '8.08可解性和解的结构.en-本地转写.srt')
+        job.files = {'srt': {'path': self.root / transcription.output_name(job, 'srt')}}
+        self.assertEqual(transcription.view(job)['files'][0]['name'], transcription.output_name(job, 'srt'))
 
     def test_translation_keeps_duplicate_cues_timestamps_original_and_persists(self):
         job = self.finish(translations.start(self.reference, 'zh', True))

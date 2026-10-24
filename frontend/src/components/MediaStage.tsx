@@ -17,7 +17,12 @@ export default function MediaStage({ projectId, title, coverURL, media, videoRef
   const state = media ? 'player' : preparing ? 'progress' : failed ? 'failure' : 'cover';
   const cancelled = task?.state === 'cancelled';
   return <div className={`media-stage unified-media-stage${failed && !media ? ' media-stage-failure' : ''}`} id="video-stage" data-state={state}>
-    {media ? <video ref={videoRef} key={`${projectId}:${media.preview_url}`} controls playsInline preload="metadata"
+    {media ? <video ref={videoRef} key={`${projectId}:${media.preview_url}`} controls playsInline preload="metadata" onKeyDownCapture={event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault(); event.stopPropagation();
+      const video = event.currentTarget;
+      video.currentTime = Math.max(0, Math.min(Number.isFinite(video.duration) ? video.duration : Infinity, video.currentTime + (event.key === 'ArrowRight' ? 5 : -5)));
+    }}
       poster={coverError ? undefined : coverURL || undefined} src={media.preview_url} onError={onVideoError} aria-label="视频播放器" />
       : preparing || failed ? <div className="empty-stage download-stage"><div className="download-preview-feedback">
         <div className="download-preview-heading"><Icon name={preparing ? 'loader-circle' : cancelled ? 'x' : 'circle-play'} className={preparing ? 'spinner' : ''} />

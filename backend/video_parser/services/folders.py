@@ -35,10 +35,15 @@ $owner.Close()
 '''
 
 
+def relocated(folder):
+    from video_parser.services.library_layout import restore_task_paths
+    return restore_task_paths({'path': str(folder)})['path']
+
+
 def remembered():
     try:
         data = json.loads(STATE.read_text(encoding='utf-8'))
-        return [item for item in data.get('folders', []) if isinstance(item, str)][:MAX_FOLDERS]
+        return [relocated(item) for item in data.get('folders', []) if isinstance(item, str)][:MAX_FOLDERS]
     except (OSError, ValueError, AttributeError):
         return []
 
@@ -51,6 +56,7 @@ def remember(path):
 
 
 def forget(path):
+    path = relocated(path)
     with state_lock:
         folders = [item for item in remembered() if Path(item) != Path(path)]
         STATE.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +97,7 @@ def check(folder):
     """A destination must be a folder the user picked before, and still exist."""
     if not folder:
         raise ValueError('请先选择保存文件夹。')
-    path = Path(folder)
+    path = Path(relocated(folder))
     if not path.is_absolute():
         raise ValueError('保存位置必须是完整路径。')
     if not any(Path(item) == path for item in remembered()):

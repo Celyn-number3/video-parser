@@ -8,18 +8,21 @@ import TimestampNotes from './TimestampNotes';
 import AIChat from './AIChat';
 import type { AIChatProps } from './AIChat';
 import './study-sidebar.css';
+import SubtitlePanel from './SubtitlePanel';
+import type { SubtitlePanelProps } from './SubtitlePanel';
 
 type Props = {
   projectId: string; media: Media; videoRef: RefObject<HTMLVideoElement | null>;
   timeline: AnalysisTimeline | null; enabled: boolean; collapsed: boolean;
   onToggle: () => void; onSeek: (time: number) => void; assistant: AIChatProps;
   /** alignTo is the playback bar whose bottom the sidebar matches. */
+  subtitles?: SubtitlePanelProps;
   active: boolean; alignTo: RefObject<HTMLElement | null>;
 };
-const tabs = [{ id: 'chapters', label: '章节' }, { id: 'notes', label: '个人笔记' }, { id: 'chat', label: 'AI 对话' }] as const;
+const tabs = [{ id: 'chapters', label: '章节' }, { id: 'notes', label: '个人笔记' }, { id: 'chat', label: 'AI 对话' }, { id: 'subtitles', label: '字幕' }] as const;
 type Tab = typeof tabs[number]['id'];
 const WIDE = '(min-width: 1171px)';
-export default function StudySidebar({ projectId, media, videoRef, timeline, enabled, collapsed, onToggle, onSeek, assistant, alignTo, active }: Props) {
+export default function StudySidebar({ projectId, media, videoRef, timeline, enabled, collapsed, onToggle, onSeek, assistant, alignTo, active, subtitles }: Props) {
   const [tab, setTab] = useState<Tab>('chapters');
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const aside = useRef<HTMLElement>(null);
@@ -46,7 +49,7 @@ export default function StudySidebar({ projectId, media, videoRef, timeline, ena
     const observer = new ResizeObserver(align);
     observer.observe(panel); wide.addEventListener('change', align); align();
     return () => { observer.disconnect(); wide.removeEventListener('change', align); reset(); };
-  }, [alignTo, collapsed, media.resource]);
+  }, [alignTo, collapsed, media.resource, projectId, active]);
   function move(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next = event.key === 'ArrowRight' ? (index+1)%tabs.length : event.key === 'ArrowLeft' ? (index+tabs.length-1)%tabs.length
       : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length-1 : null;
@@ -63,7 +66,7 @@ export default function StudySidebar({ projectId, media, videoRef, timeline, ena
         <button type="button" key={item.id} ref={element => { buttons.current[index] = element; }}
           id={`study-tab-${item.id}`} role="tab" aria-selected={tab === item.id} aria-controls={`study-panel-${item.id}`}
           tabIndex={tab === item.id ? 0 : -1} onClick={() => show(item.id)} onKeyDown={event => move(event,index)}>{item.label}</button>)}</div>
-      <div className="study-sidebar-body" ref={body} onScroll={event => { if (!collapsed && active && event.currentTarget.getClientRects().length) positions.current[tab] = event.currentTarget.scrollTop; }}>
+      <div className="study-sidebar-body" data-tab={tab} ref={body} onScroll={event => { if (!collapsed && active && event.currentTarget.getClientRects().length) positions.current[tab] = event.currentTarget.scrollTop; }}>
         <div id="study-panel-chapters" role="tabpanel" aria-labelledby="study-tab-chapters" hidden={tab !== 'chapters'}>
           {timeline ? <ChapterTimeline timeline={timeline} videoRef={videoRef} mediaKey={`${projectId}:${media.preview_url}`}
             duration={media.duration} enabled={enabled} view="directory" visible={!collapsed && tab === 'chapters'} onSeek={onSeek} />
@@ -72,6 +75,9 @@ export default function StudySidebar({ projectId, media, videoRef, timeline, ena
         <div id="study-panel-notes" role="tabpanel" aria-labelledby="study-tab-notes" hidden={tab !== 'notes'}>
           {/* Hidden rather than unmounted: switching tabs or collapsing must not lose the editor/draft. */}
           <TimestampNotes key={`${projectId}:${media.resource}`} projectId={projectId} media={media} videoRef={videoRef} onSeek={onSeek} />
+        </div>
+        <div id="study-panel-subtitles" role="tabpanel" aria-labelledby="study-tab-subtitles" hidden={tab !== 'subtitles'}>
+          {subtitles && <SubtitlePanel {...subtitles} />}
         </div>
         <div id="study-panel-chat" role="tabpanel" aria-labelledby="study-tab-chat" hidden={tab !== 'chat'}>
           <AIChat key={`chat:${projectId}:${media.resource}`} {...assistant} videoRef={videoRef} duration={media.duration} onSeek={onSeek}

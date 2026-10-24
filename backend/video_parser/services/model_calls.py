@@ -1,4 +1,6 @@
 """One dispatch seam for course materials, planning, answering and naming; legacy API stays unchanged."""
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from video_parser.core.paths import ROOT
 import hashlib
@@ -33,10 +35,37 @@ def provider(value, settings):
         settings['provider'], ai_settings.PRESETS['custom'])['name']
 
 
+_api_binding = ContextVar('api_config_binding', default=None)
+
+
+class ConfigurationChanged(RuntimeError):
+    code = 'model_config_changed'
+    user_message = '模型服务或配置自提交后已变化，未发送本次请求；请核对模型后重新提交。'
+
+
+def api_binding(settings):
+    """No key, signed URL or subtitle content is persisted in this fingerprint."""
+    fields = {key: settings.get(key) for key in ('provider', 'base_url', 'model', 'startup')}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def check_api_binding(expected, settings):
+    if expected and expected != api_binding(settings):
+        raise ConfigurationChanged(ConfigurationChanged.user_message)
+
+
+@contextmanager
+def bound_api(expected):
+    token = _api_binding.set(expected)
+    try: yield
+    finally: _api_binding.reset(token)
+
+
 def call(messages, settings, value, directory, *, purpose='material', workspace=None,
          session_id=None, rebuild_messages=None, question='', max_tokens=None):
     value = target(value)
     if value['engine'] == 'api':
+        check_api_binding(_api_binding.get(), settings)
         from video_parser.services.ai_analysis import call_model
         # Only translation batches set an output budget; other callers keep the provider default.
         text, usage = call_model(messages, settings, **({'max_tokens': max_tokens} if max_tokens else {}))

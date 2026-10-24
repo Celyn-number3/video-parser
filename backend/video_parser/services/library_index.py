@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import re
 from threading import RLock
+from video_parser.services.library_layout import manifest_paths
 
 _lock=RLock()
 _cache={}
@@ -39,7 +40,7 @@ def lookup(root,identifier,loader,writer):
                     return data
             except (OSError,ValueError,KeyError,TypeError):pass
         mapping={};found=None
-        for path in sorted(root.glob('*/*/project.json')):
+        for path in manifest_paths(root):
             try:
                 data=loader(_safe(root,path.relative_to(root).as_posix()))
                 if data['id'] in mapping:raise ValueError('Duplicate project identity')

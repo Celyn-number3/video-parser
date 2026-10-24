@@ -241,7 +241,6 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 .subtitle-fallback { margin: 10px 0 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
 .saved-to { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 10px 0 0; color: var(--color-text-secondary); font-size: var(--font-size-xs); }
 .saved-to code { overflow-wrap: anywhere; color: var(--color-text); }
-.modern-app .subtitle-entry { width: 100%; margin-top: 10px; justify-content: center; gap: 8px; }
 .quality-login .link-button { margin-left: 4px; }
 @media (max-width: 560px) {
   .option-row { grid-template-columns: 1fr; }

@@ -222,7 +222,7 @@ def base_name(job):
 
 
 def output_name(job, fmt):
-    return f'{base_name(job)}.本地转写.{job.detected_language or "auto"}.{fmt}'
+    return f'{base_name(job)}.{job.detected_language or "auto"}-本地转写.{fmt}'
 
 
 def destination_of(job):
@@ -253,13 +253,23 @@ def output_directory(job):
     return OUTPUT_ROOT / job.id
 
 
+def output_filename(job, item):
+    owner = item.get('project_id') or (job.project_id if item.get('relative') else None)
+    try:
+        if owner: return library.resource_path(library.get(owner), item['relative']).name
+    except (KeyError, ValueError, OSError): pass
+    return Path(item['path']).name
+
+
 def view(job):
     return {**task_runtime.metadata(job), 'id': job.id, 'state': task_runtime.public_state(job), 'message': job.message, 'title': job.title,
             'operation': job.operation, 'translation_target': job.translation.get('target'),
+            'translation_source': job.translation.get('reference', {}).get('resource'),
+            'translation_source_sha256': job.translation.get('sha256'),
             'text': job.text, 'language': job.detected_language, 'worker':job.worker, 'saved_to': saved_to(job),
             # When a language was forced, Whisper reports that language back; the UI must say "按X转写", not "识别为X".
             'requested_language': job.language, 'source_project_id': job.project_id, 'source_resource': job.resource,
-            'files': [{'name': library.safe_name(Path(job.title).stem) + '.' + fmt, 'format': fmt,
+            'files': [{'name': output_filename(job, job.files[fmt]), 'format': fmt,
                        'url': f'/api/workspace/transcriptions/{job.id}/files/{fmt}'} for fmt in job.files]}
 
 
@@ -292,7 +302,7 @@ def start(source, language='auto', title=None, project_id=None, resource=None, o
         jobs[job.id] = job
         task_runtime.trim_memory(jobs,keep=job.id)
     try:
-        task_runtime.submit('transcriptions',job,worker,lambda:task_runtime.save(OUTPUT_ROOT/'.tasks',job),cleanup=lambda:cleanup_input(job))
+        task_runtime.submit('transcriptions',job,worker,lambda root=OUTPUT_ROOT/'.tasks':task_runtime.save(root,job),cleanup=lambda:cleanup_input(job))
     except Exception:
         with jobs_lock: jobs.pop(job.id, None)
         raise
@@ -333,6 +343,10 @@ def worker(job):
                 elif destination.get('type') == 'folder':
                     from video_parser.services import folders
                     path = folders.publish(destination['path'], path, output_name(job, fmt))
+                else:
+                    named = path.with_name(output_name(job, fmt))
+                    if named != path: path.rename(named)
+                    path = named
                 files[fmt] = {'path': path, 'sha256': library.digest(path), 'relative': relative, 'project_id': owner}
             job.files = files
             state, message = 'completed', '转录完成。时间戳为片段级，请人工校对识别结果。'

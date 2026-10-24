@@ -19,6 +19,54 @@ class LibraryTests(unittest.TestCase):
         self.meta = {'platform': '哔哩哔哩', 'video_id': 'BV16NG96QEmA', 'title': '原标题',
                      'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA?p=3&token=private'}
 
+    def test_current_project_completion_without_multi_catalog_persists_only_learned(self):
+        variants = [
+            {**self.meta, 'video_id': 'BV1TaqYBcEJc', 'source_url': 'https://www.bilibili.com/video/BV1TaqYBcEJc', 'episodes': [{'part': 1, 'title': '单集', 'duration': 60}]},
+            self.meta,  # Unknown catalog: allow only current P3, without declaring the course single.
+            {'platform': 'YouTube', 'video_id': 'abcdefghijk', 'title': '单条视频', 'source_url': 'https://www.youtube.com/watch?v=abcdefghijk'},
+        ]
+        for meta in variants:
+            with self.subTest(platform=meta['platform'], source=meta['source_url']):
+                project = store.ensure(meta)
+                path = project['directory'] / 'project.json'
+                before = json.loads(path.read_text(encoding='utf-8'))
+                others = {p: p.read_bytes() for p in store.manifests() if p != path}
+                for learned in (True, False):
+                    self.assertEqual(store.set_learning_state(project['id'], project.get('part') or 1, learned), [])
+                    self.assertEqual(store.public(store.get(project['id']))['learned'], learned)
+                    after = json.loads(path.read_text(encoding='utf-8'))
+                    self.assertEqual({k:v for k,v in after.items() if k != 'learned'}, {k:v for k,v in before.items() if k != 'learned'})
+                    self.assertEqual(others, {p:p.read_bytes() for p in store.manifests() if p != path})
+                    self.assertEqual(store.get(project['id'])['directory'], project['directory'])
+
+    def test_current_project_completion_rejects_other_parts_and_invalid_values(self):
+        project = store.ensure(self.meta)
+        path = project['directory'] / 'project.json'; before = path.read_bytes()
+        for part, learned in [(1, True), (4, True), (0, True), (True, True), (3, 'true')]:
+            with self.subTest(part=part, learned=learned), self.assertRaises(ValueError):
+                store.set_learning_state(project['id'], part, learned)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(len(store.manifests()), 1)
+
+    def test_single_completion_api_returns_current_project_state_without_fake_catalog(self):
+        from video_parser.web.routes import LearningBody, update_learning
+        project = store.ensure({**self.meta, 'source_url': 'https://www.bilibili.com/video/BV16NG96QEmA'})
+        for learned in (True, False):
+            result = update_learning(project['id'], LearningBody(part=1, learned=learned))
+            self.assertEqual(result, {'episodes': [], 'learned': learned})
+            self.assertEqual(store.public(store.get(project['id']))['learned'], learned)
+
+    def test_episode_title_falls_back_to_selected_catalog_part(self):
+        catalog = [{'part': 3, 'title': '3. 向量空间', 'duration': 60}, {'part': 4, 'title': '4. 子空间', 'duration': 80}]
+        project = store.ensure({**self.meta, 'episodes': catalog})
+        before = (project['directory'] / 'project.json').read_bytes()
+        self.assertEqual(store.public(project)['episode_title'], '3. 向量空间')
+        self.assertEqual(store.public(project)['title'], '原标题')
+        self.assertEqual((project['directory'] / 'project.json').read_bytes(), before)
+        self.assertEqual(store.episode_title({**project, 'episode_title': '用户自定义章节'}), '用户自定义章节')
+        self.assertIsNone(store.episode_title({**project, 'part': 9}))
+        self.assertIsNone(store.episode_title({**project, 'platform': 'local'}))
+
     def test_identity_title_stability_and_parts(self):
         one = store.ensure(self.meta)
         again = store.ensure({**self.meta, 'title': '新标题', 'source_url': self.meta['source_url'] + '&other=1'})

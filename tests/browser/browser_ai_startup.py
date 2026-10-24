@@ -12,10 +12,11 @@ from unittest.mock import patch
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+DIST = Path(os.environ.get('VIDEO_PARSER_TEST_DIST', ROOT / 'frontend/dist'))
 
 
 def main():
-    assert (ROOT / 'frontend/dist/index.html').is_file(), 'Build the frontend first'
+    assert (DIST / 'index.html').is_file(), 'Build the frontend first'
     with tempfile.TemporaryDirectory(prefix='ai-startup-browser-中文 空格-') as directory:
         temporary = Path(directory)
         from fastapi import FastAPI
@@ -45,11 +46,11 @@ def main():
             ai_settings.save('llamacpp', ai_startup.endpoint(config), 'fixture-vl', startup=config)
             application = FastAPI()
             application.include_router(router)
-            application.mount('/assets', StaticFiles(directory=str(ROOT / 'frontend/dist/assets')), name='assets')
+            application.mount('/assets', StaticFiles(directory=str(DIST / 'assets')), name='assets')
 
             @application.get('/')
             def index():
-                return FileResponse(ROOT / 'frontend/dist/index.html')
+                return FileResponse(DIST / 'index.html')
 
             @application.get('/api/workspace/config')
             def configuration():
@@ -89,6 +90,8 @@ def main():
                         'warning': None, 'project': fixture_project, 'media': None,
                         'qualities': [{'id': '1080', 'label': '1080P', 'height': 1080, 'width': 1920, 'media': None}],
                         'default_quality_id': '1080', 'analysis': ''}
+                    page.route('**/api/workspace/embedding/settings', lambda route: route.fulfill(json={'base_url':'','model':'','key_saved':False,'configured':False}))
+                    page.route('**/api/workspace/ai/agents', lambda route: route.fulfill(json={'permission':'restricted-learning','engines':[]}))
                     page.route('**/api/workspace/parse', lambda route: route.fulfill(json=fixture_video))
                     page.route('**/api/workspace/projects/*/resume', lambda route: route.fulfill(json=fixture_video))
                     page.route('**/api/workspace/projects/*/analyses', lambda route: route.fulfill(json={'records': []}))
@@ -126,7 +129,7 @@ def main():
                     page.get_by_label('服务端口', exact=True).fill('18989')
                     expect(page.get_by_label('接口地址', exact=True)).to_have_value('http://127.0.0.1:18989/v1')
                     page.get_by_role('button', name='保存', exact=True).click()
-                    expect(page.locator('.ai-connection-card > [role="status"]')).to_contain_text('不会自动重启')
+                    expect(page.locator('.settings-ai > [role="status"]')).to_contain_text('不会自动重启')
                     stored = json.loads(ai_settings.SETTINGS_PATH.read_text(encoding='utf-8'))
                     assert stored['startup']['port'] == 18989
                     assert stored['api_key'] not in page.content()
@@ -160,7 +163,7 @@ def main():
                     page.get_by_label('同时处理数', exact=True).fill('2')
                     page.get_by_label('启用 Flash Attention 显卡加速').uncheck()
                     page.get_by_role('button', name='保存', exact=True).click()
-                    expect(page.locator('.ai-connection-card > [role="status"]')).to_contain_text('不会自动重启')
+                    expect(page.locator('.settings-ai > [role="status"]')).to_contain_text('不会自动重启')
                     stored = json.loads(ai_settings.SETTINGS_PATH.read_text(encoding='utf-8'))
                     assert stored['startup']['threads'] == 8 and not stored['startup']['flash_attention']
                     page.get_by_role('button', name='恢复推荐性能参数', exact=True).click()
@@ -176,11 +179,12 @@ def main():
                     expect(page.locator('.local-ai-startup')).to_contain_text('不能分析视频画面')
                     page.get_by_label('视觉文件路径（看图时需要）').fill(config['vision_path'])
                     page.get_by_role('button', name='保存', exact=True).click()
-                    expect(page.locator('.ai-connection-card > [role="status"]')).to_contain_text('不会自动重启')
+                    expect(page.locator('.settings-ai > [role="status"]')).to_contain_text('不会自动重启')
 
                     # Reload is backed by the real temporary JSON file, not browser storage.
                     page.reload(wait_until='networkidle')
                     settings.click()
+                    page.get_by_role('button', name='配置 API 连接', exact=True).click()
                     expect(page.get_by_label('服务端口', exact=True)).to_have_value('18989')
                     expect(switch).not_to_be_checked()
                     page.get_by_text('高级启动参数（通常不用改）', exact=True).click()
@@ -210,7 +214,7 @@ def main():
                     expect(page.locator('.ai-runtime-state')).to_contain_text('启动失败', timeout=8000)
                     model_state['fail_next'] = True
                     page.get_by_role('button', name='启动本地模型', exact=True).click()
-                    expect(page.locator('.ai-connection-card > [role="status"]')).to_contain_text('无法启动本机模型')
+                    expect(page.locator('.settings-ai > [role="alert"]')).to_contain_text('无法启动本机模型')
                     assert model_state['spawns'] == 1
                     page.get_by_role('button', name='启动本地模型', exact=True).click()
                     expect(page.locator('.ai-runtime-state')).to_contain_text('加载中')

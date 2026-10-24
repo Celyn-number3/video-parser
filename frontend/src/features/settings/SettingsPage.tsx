@@ -5,6 +5,7 @@ import type { Settings } from './settings';
 import CacheManager from './CacheManager';
 import AISettingsSection from './AISettingsSection';
 import LearningTargets from './LearningTargets';
+import EmbeddingSettings from './EmbeddingSettings';
 import { setLanguage, useLanguage } from '../../lib/i18n';
 import type { Language } from '../../lib/i18n';
 import './settings-page.css';
@@ -18,9 +19,9 @@ function groupFromURL(): Group {
 }
 type Props = { settings: Settings; onChange: (value: Settings) => void; config: Configuration | null;
   configError: string; saveStatus: string; activeCount: number | null; onAIChange: (value: AISettings) => void;
-  visible: boolean; focusAIRequest: number };
+  visible: boolean; focusAIRequest: number; focusAITarget?: 'api' | 'sources' };
 
-export default function SettingsPage({ settings, onChange, config, configError, saveStatus, activeCount, onAIChange, visible, focusAIRequest }: Props) {
+export default function SettingsPage({ settings, onChange, config, configError, saveStatus, activeCount, onAIChange, visible, focusAIRequest, focusAITarget = 'api' }: Props) {
   const [group, setGroup] = useState<Group>(() => focusAIRequest ? 'ai' : groupFromURL());
   const [aiVisited, setAIVisited] = useState(() => group === 'ai');
   const language = useLanguage();
@@ -52,7 +53,7 @@ export default function SettingsPage({ settings, onChange, config, configError, 
       aria-current={group === name ? 'page' : undefined} onClick={() => choose(name as Group)}>{label}</button>)}</nav>
     <div hidden={group !== 'general'}>
       <h2 className="settings-group-title" id="settings-group-general" tabIndex={-1}>常用设置</h2>
-      <div className="settings-card-grid">
+      <div className="settings-card-grid settings-general-grid">
         <section className="settings-card settings-card-wide" aria-labelledby="settings-language"><h3 id="settings-language">界面语言</h3>
           <div className="language-switch" role="radiogroup" aria-labelledby="settings-language">{LANGUAGES.map(([value, label, lang]) =>
             <label key={value} className={language === value ? 'checked' : ''} translate="no" lang={lang}>
@@ -61,7 +62,8 @@ export default function SettingsPage({ settings, onChange, config, configError, 
         <section className="settings-card" aria-labelledby="settings-preferences"><h3 id="settings-preferences">下载偏好</h3>
           <label htmlFor="default-quality">默认画质</label>
           <select id="default-quality" value={settings.qualityPreference} onChange={event => onChange({ ...settings, qualityPreference: event.target.value as Settings['qualityPreference'] })}>
-            <option value="best">最高可用</option><option value="1080p">优先 1080P</option><option value="720p">优先 720P</option>
+            <option value="best">最高可用</option><option value="1080p">1080P 高清</option><option value="720p">720P 准高清</option>
+            <option value="480p">480P 标清</option><option value="360p">360P 流畅</option>
           </select>
           <label className="settings-check"><input type="checkbox" checked={settings.completionReminder} onChange={event => onChange({ ...settings, completionReminder: event.target.checked })} />归档完成提醒</label>
           {saveStatus && <p role="status" className="settings-save-status" aria-live="polite">{saveStatus}</p>}
@@ -74,21 +76,29 @@ export default function SettingsPage({ settings, onChange, config, configError, 
       <div className="settings-actions"><button type="button" title="仅恢复常用偏好，不影响 AI 配置和归档数据" onClick={() => onChange({ ...DEFAULT_SETTINGS })}>恢复常用默认</button></div>
     </div>
     <div hidden={group !== 'ai'}>
-      <h2 className="settings-group-title" id="settings-group-ai" tabIndex={-1}>AI 模型</h2>
-      {(group === 'ai' || aiVisited) && <>
-        <LearningTargets api={config?.ai ?? loadedAI} />
-        <AISettingsSection onChange={onAIChange} onLoad={setLoadedAI} autoFocus={focusAI && visible} visible={visible && group === 'ai'} />
-      </>}
+      <h2 className="settings-group-title sr-only" id="settings-group-ai" tabIndex={-1}>AI 模型</h2>
+      {(group === 'ai' || aiVisited) && <div className="settings-section-stack">
+        <LearningTargets api={config?.ai ?? loadedAI} focusRequest={focusAI && visible && focusAITarget === 'sources' ? focusAIRequest : 0}>
+          <AISettingsSection onChange={onAIChange} onLoad={setLoadedAI} autoFocus={focusAI && visible && focusAITarget === 'api'} visible={visible && group === 'ai'} />
+        </LearningTargets>
+        <EmbeddingSettings />
+      </div>}
     </div>
     <div hidden={group !== 'maintenance'}>
       <h2 className="settings-group-title" id="settings-group-maintenance" tabIndex={-1}>存储与维护</h2>
-      <div className="settings-card-grid">
+      <div className="settings-card-grid settings-maintenance-grid">
         <section className="settings-card" aria-labelledby="settings-storage"><h3 id="settings-storage">归档位置</h3>
           <code className="archive-root">{config?.archive_root || (configError ? '无法读取归档位置' : '正在读取…')}</code>
           <p className="settings-hint">缓存清理不影响已归档内容。</p>
         </section>
         <section className="settings-card" aria-labelledby="settings-services"><h3 id="settings-services">服务状态</h3>
-          {config ? <ul className="service-status"><li>媒体工具：{config.media_ready ? '就绪' : '未就绪'}</li><li>字幕：{config.subtitles_ready ? '就绪' : '未就绪'}</li><li>转录：{config.transcription_ready ? '就绪' : '未安装'}</li><li>AI 连接配置：{config.ai_configured ? '已配置' : '未配置'}</li>{config.version && <li>版本：{config.version}</li>}</ul> : <p className="settings-hint">{configError || '正在读取…'}</p>}
+          {config ? <dl className="service-status">
+            <dt>媒体工具：</dt><dd>{config.media_ready ? '就绪' : '未就绪'}</dd>
+            <dt>字幕：</dt><dd>{config.subtitles_ready ? '就绪' : '未就绪'}</dd>
+            <dt>转录：</dt><dd>{config.transcription_ready ? '就绪' : '未安装'}</dd>
+            <dt>AI 连接配置：</dt><dd>{config.ai_configured ? '已配置' : '未配置'}</dd>
+            {config.version && <><dt>版本：</dt><dd>{config.version}</dd></>}
+          </dl> : <p className="settings-hint">{configError || '正在读取…'}</p>}
         </section>
         <div className="settings-card settings-card-wide"><CacheManager activeCount={activeCount} /></div>
       </div>

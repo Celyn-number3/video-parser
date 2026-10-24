@@ -169,11 +169,26 @@ class RecordTests(unittest.TestCase):
         library.remove(self.pid, [self.subtitle])
         with self.assertRaises(ai_analysis.AnalysisError) as caught:
             ai_analysis.run(self.pid, self.payload(template='script', source='transcript'), self.root / 'work')
-        self.assertIn('先生成字幕', str(caught.exception))
+        self.assertIn('生成转写字幕', str(caught.exception))
         code, message = task_runtime.classify(caught.exception)
         self.assertEqual((code, message), ('invalid_input', caught.exception.user_message))
-        # "both" quietly falls back to frames when there are no subtitles.
-        self.assertEqual(ai_analysis.run(self.pid, self.payload(), self.work)['source'], 'frames')
+        # Combined input must never silently downgrade to frames.
+        before = len(self.calls)
+        with self.assertRaises(ai_analysis.AnalysisError):
+            ai_analysis.run(self.pid, self.payload(), self.work)
+        self.assertEqual(len(self.calls), before)
+        self.assertEqual(ai_analysis.run(self.pid, self.payload(source='frames'), self.work)['source'], 'frames')
+
+    def test_ai_selected_frames_are_extracted_and_archived(self):
+        from video_parser.services import model_calls
+        from video_parser.services.local_agents.types import Result
+        replies = [Result('{"times":[1,4]}', usage={'prompt_tokens': 12}), Result('## 摘要\n[00:01] 说明', usage={}, model='fixture')]
+        with patch.object(model_calls, 'call', side_effect=replies) as call:
+            record = ai_analysis.run(self.pid, self.payload(frame_mode='ai'), self.work)
+        self.assertEqual([frame['time'] for frame in record['frames']], [1, 4])
+        self.assertEqual(call.call_count, 2)
+        self.assertEqual(call.call_args_list[0].kwargs['purpose'], 'frame-plan')
+        self.assertEqual(record['source'], 'both')
 
     def test_preview_selection_is_used_and_tokens_are_not_paths(self):
         preview = ai_analysis.create_preview(self.pid, self.video, 'uniform', 4)

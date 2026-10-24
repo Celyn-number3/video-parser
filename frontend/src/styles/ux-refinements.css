@@ -16,15 +16,15 @@
 .modern-app .workspace-source-editor > .source-panel { margin: 0; border: 0; border-top: 1px solid var(--color-border); border-radius: 0; background: transparent; }
 .workspace-source-editor > summary:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 3px; }
 
-.learning-context-header { display: grid; grid-template-columns: minmax(0, 1fr) 336px; align-items: center; gap: 10px 20px; margin: 0 0 16px; min-width: 0; }
-.learning-context-header > .video-context-heading { grid-column: 1; grid-row: 1; margin: 0; padding: 0; }
-.learning-context-header .video-context-heading > div:first-child { flex-basis: 150px; }
-.learning-context-header .video-context-heading strong { font-size: 16px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.learning-context-header .video-context-heading span { margin-top: 3px; font-size: 12px; }
-.learning-context-header > .learning-project-picker { grid-column: 2; grid-row: 1; margin: 0; }
-.learning-context-header > .error-text { grid-column: 1 / -1; margin: 0; }
-.learning-context-header.is-empty { grid-template-columns: minmax(0, 1fr); }
-.learning-context-header.is-empty > .learning-project-picker { grid-column: 1; }
+:is(.learning-context-header, .workspace-context-header) { display: grid; grid-template-columns: minmax(0, 1fr) 336px; align-items: center; gap: 10px 20px; margin: 0 0 16px; min-width: 0; }
+:is(.learning-context-header, .workspace-context-header) > .video-context-heading { grid-column: 1; grid-row: 1; margin: 0; padding: 0; }
+:is(.learning-context-header, .workspace-context-header) .video-context-heading > div:first-child { flex-basis: 150px; }
+:is(.learning-context-header, .workspace-context-header) .video-context-heading strong { font-size: 16px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+:is(.learning-context-header, .workspace-context-header) .video-context-heading span { margin-top: 3px; font-size: 12px; }
+:is(.learning-context-header, .workspace-context-header) > .learning-project-picker { grid-column: 2; grid-row: 1; margin: 0; }
+:is(.learning-context-header, .workspace-context-header) > .error-text { grid-column: 1 / -1; margin: 0; }
+:is(.learning-context-header, .workspace-context-header).is-empty { grid-template-columns: minmax(0, 1fr); }
+:is(.learning-context-header, .workspace-context-header).is-empty > .learning-project-picker { grid-column: 1; }
 .learning-project-picker.is-compact { position: relative; align-items: center; flex-wrap: wrap; gap: 8px; }
 .learning-project-picker.is-compact .learning-project-select { flex: 1 1 160px; }
 .learning-project-picker.is-compact .learning-project-select select { min-height: 38px; font-size: 12px; }
@@ -66,18 +66,18 @@
 }
 
 @media (max-width: 1170px) {
-  .learning-context-header { grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); }
+  :is(.learning-context-header, .workspace-context-header) { grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); }
   .modern-app .study-sidebar.is-collapsed .study-sidebar-heading { justify-content: space-between; padding: 8px 12px; }
   .modern-app .study-sidebar.is-collapsed .study-sidebar-heading h2 { display: block; }
   .modern-app .study-sidebar:not([data-aligned]) .study-sidebar-body { max-height: 320px; }
 }
 @media (max-width: 760px) {
-  .learning-context-header { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 12px; }
-  .learning-context-header > .video-context-heading { order: 0; }
-  .learning-context-header .video-context-heading > div:first-child { flex-basis: 120px; }
-  .learning-context-header .video-context-actions { width: auto; flex: none; }
-  .learning-context-header > .learning-project-picker { order: 1; }
-  .learning-context-header > .error-text { order: 2; }
+  :is(.learning-context-header, .workspace-context-header) { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 12px; }
+  :is(.learning-context-header, .workspace-context-header) > .video-context-heading { order: 0; }
+  :is(.learning-context-header, .workspace-context-header) .video-context-heading > div:first-child { flex-basis: 120px; }
+  :is(.learning-context-header, .workspace-context-header) .video-context-actions { width: auto; flex: none; }
+  :is(.learning-context-header, .workspace-context-header) > .learning-project-picker { order: 1; }
+  :is(.learning-context-header, .workspace-context-header) > .error-text { order: 2; }
   .learning-project-picker.is-compact .learning-project-select { flex-basis: 160px; }
   .learning-project-picker.is-compact .learning-project-tools { flex-basis: auto; }
   .workspace-source-editor > summary { padding-inline: 10px; gap: 6px; }
@@ -90,3 +90,84 @@
   .workspace-continue > button { width: 100%; }
   .chapter-timeline-player.is-compact .chapter-timeline-intro-meta { flex-basis: 100%; }
 }
+
+/* The completion control belongs to the current episode, beside (not inside) the picker. */
+.learning-context-header:not(.is-empty) { grid-template-columns: minmax(0, 1fr) auto 336px; }
+.learning-context-header:not(.is-empty) > .learning-project-picker { grid-column: 3; }
+.learning-header-completion { grid-column: 2; grid-row: 1; display: flex; align-items: center; }
+.learning-header-completion .learning-toggle { margin: 0; white-space: nowrap; }
+@media (max-width: 760px) {
+  .learning-context-header:not(.is-empty) { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+  .learning-context-header:not(.is-empty) > .video-context-heading { grid-column: 1 / -1; grid-row: 1; }
+  .learning-header-completion { grid-column: 1; grid-row: 2; }
+  .learning-context-header:not(.is-empty) > .learning-project-picker { grid-column: 2; grid-row: 2; }
+  .learning-context-header > .error-text { grid-row: 3; }
+}
+@media (max-width: 360px) {
+  .learning-header-completion { grid-column: 1 / -1; }
+  .learning-context-header:not(.is-empty) > .learning-project-picker { grid-column: 1 / -1; grid-row: 3; }
+  .learning-context-header > .error-text { grid-row: 4; }
+}
+
+/* Workbench feedback: one toolbar, shared card depth, aligned model source cards. */
+.modern-app .workspace-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 24px; border-bottom:1px solid var(--color-border); margin-bottom:20px; padding-bottom:10px; min-width:0; }
+.modern-app .workspace-toolbar > .tabs { margin:0; border:0; padding-bottom:0; min-width:0; flex:1 1 auto; }
+.modern-app .workspace-toolbar > .learning-project-picker { flex:0 1 336px; margin:0; min-width:0; }
+.modern-app .workspace-toolbar > .tabs button[aria-selected=true]::after { bottom:-11px; }
+.modern-app .workspace-context-header { display:block; }
+.modern-app :is(.panel, .subtitle-naming-panel, .project-folder-naming, .settings-card, .model-source, .study-sidebar, .project-panel, .learning-materials) { box-shadow:var(--shadow-md); }
+.modern-app .learning-materials :is(.analysis-record, .analysis-markdown) { font-size:var(--font-size-md); line-height:1.75; }
+.settings-page .learning-targets { display:grid; gap:20px; }
+.settings-page .learning-default-control { margin:0; padding:22px; }
+.settings-page .learning-default-control > select { max-width:none; }
+.settings-page .model-sources { display:grid; gap:16px; }
+.settings-page .model-source { margin:0; padding:18px 22px; border:1px solid var(--color-border); border-radius:var(--radius-lg); background:var(--color-surface-raised); }
+.settings-page .model-source-row { padding:0; min-height:44px; }
+.settings-page .model-source-config { padding:20px 0 0; }
+.settings-page .model-source-copy { display:grid; grid-template-columns:minmax(155px, 200px) minmax(0, 1fr); align-items:center; }
+.settings-page .embedding-settings { margin-top:0; }
+.settings-page .model-source-row > button { min-width:92px; }
+.settings-page .model-source-actions > button { min-width:92px; }
+/* The cue list, not a 300px inner box, owns the available vertical space. */
+.modern-app .study-sidebar-body[data-tab=subtitles] { display:flex; flex-direction:column; overflow:hidden; }
+.modern-app #study-panel-subtitles { display:flex; flex-direction:column; flex:1; min-height:0; }
+.modern-app .study-sidebar .subtitle-scroll-panel { display:flex; flex-direction:column; flex:1; min-height:0; margin:0; border:0; border-radius:0; padding:12px; }
+.modern-app .study-sidebar .subtitle-toolbar { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; margin:0; }
+.modern-app .subtitle-toolbar select { flex:1; min-width:0; width:0; }
+.modern-app .subtitle-toolbar button { flex:none; font-size:12px; padding-inline:8px; }
+.modern-app .subtitle-toolbar :is(select,button) { min-height:36px; }
+.modern-app .study-sidebar .subtitle-scroll-list { flex:1; min-height:0; max-height:none; overflow:auto; }
+@media(max-width:1170px) {
+ .modern-app .study-sidebar-body[data-tab=subtitles] { height:clamp(320px, 60dvh, 560px); max-height:none; }
+}
+@media(max-width:760px) {
+ .modern-app .workspace-toolbar > .learning-project-picker { flex:1 1 100%; }
+ .modern-app .workspace-toolbar > .tabs button[aria-selected=true]::after { bottom:-4px; }
+ .settings-page .model-source-copy { grid-template-columns:1fr; }
+ .settings-page :is(.learning-default-control,.model-source) { padding:17px; }
+}
+
+.project-folder-naming { min-width:0; padding:var(--card-inset,24px); margin-bottom:20px; border:1px solid var(--color-border); border-radius:var(--radius-lg); background:var(--color-surface-raised); display:grid; gap:12px; }
+.project-folder-naming h2 { margin:0; font-size:21px; }
+.project-folder-naming :is(p,label,code) { min-width:0; overflow-wrap:anywhere; }
+.project-folder-naming p { margin:0; }
+.project-folder-naming .naming-hint { font-size:12px; line-height:1.7; color:var(--color-text-secondary); }
+.folder-current { font-size:13px; display:grid; gap:6px; }
+.folder-title-label { display:grid; gap:8px; font-size:13px; }
+.folder-title-label input { min-width:0; width:100%; }
+.folder-model-label { font-size:14px; font-weight:600; margin-top:8px; }
+.project-folder-naming > button { justify-self:start; white-space:normal; max-width:100%; }
+.folder-preview { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:12px; padding:16px; background:var(--color-fill-hover); border-radius:var(--radius-md); font-size:12px; }
+.folder-preview p { grid-column:1 / -1; }
+@media(max-width:560px) { .folder-preview { grid-template-columns:minmax(0,1fr); } }
+
+/* Embedded layout-only containers do not create nested floating cards. */
+.modern-app :is(.subtitle-embedded, .workspace-source-editor > .source-panel, .details-panel .project-panel) { box-shadow:none; }
+
+/* Match the 6px gap above the player's chapter timeline, after the aligned playback bar. */
+@media (min-width: 1171px) {
+  .modern-app #workpanel[aria-labelledby="page-title-learning"] .study-context-rail { gap: 6px; }
+}
+
+/* Keep an anchor for sidebar measurement, but no blank row when there is no resume offer/error. */
+.modern-app .playback-resume.is-empty { padding: 0; }

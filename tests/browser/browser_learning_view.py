@@ -260,7 +260,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
             expect(page.get_by_role('heading', name='视频工作台', exact=True)).to_be_visible()
             learning_nav = page.locator('.app-sidebar').get_by_role('button', name='学习视图', exact=True)
             expect(learning_nav).to_be_visible()
-            expect(page.locator('.app-sidebar nav > button')).to_have_count(6)
+            expect(page.locator('.app-sidebar nav > button')).to_have_count(5)
             learning_nav.click()
             expect(learning_nav).to_have_attribute('aria-current', 'page')
             expect(page.get_by_test_id('page-learning')).to_be_visible()
@@ -277,10 +277,8 @@ def main(timeline_test=False, study_test=False, agent_test=False):
             learning_nav.click()
             expect(learning_nav).to_have_attribute('aria-current', 'page')
             def open_part(part):
-                more = page.locator('.video-context-more')
-                if more.is_visible() and more.get_attribute('open') is None:
-                    more.locator('summary').click()
-                page.get_by_role('button', name='返回视频准备', exact=True).click()
+                page.locator('.app-sidebar').get_by_role('button', name='视频工作台', exact=True).click()
+                page.get_by_role('tab', name='视频', exact=True).click()
                 page.get_by_role('button', name='清空链接', exact=True).click()
                 source.fill(f'https://www.bilibili.com/video/{VIDEO_ID}?p={part}')
                 page.get_by_role('button', name='解析视频', exact=True).click()
@@ -301,7 +299,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
             player_p2 = page.get_by_label('当前这一讲 P2 已学完')
             expect(player_p2).to_be_visible()
             expect(player_p2).not_to_be_checked()
-            expect(page.get_by_role('combobox', name='学习项目', exact=True).locator('option:checked')).to_contain_text('P2')
+            expect(page.get_by_role('combobox', name='学习项目', exact=True)).to_contain_text('P2')
             expect(page.get_by_label('标记 P1「第一讲」已学完')).to_be_checked()
             page.get_by_label('标记 P2「核心内容」已学完').click()
             expect(player_p2).to_be_checked()
@@ -545,8 +543,8 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                         chat.get_by_label('向 AI 提问',exact=True).fill('native-'+engine)
                         expect(chat.get_by_role('button',name='提问',exact=True)).to_be_enabled()
                         if engine=='claude':
-                            chat.get_by_role('button',name='读取本机模型与命令',exact=True).click()
-                            expect(chat.get_by_role('button',name='读取本机模型与命令',exact=True)).to_be_enabled()
+                            expect(chat.get_by_role('button',name='读取本机模型与命令',exact=True)).to_have_count(0)
+                            expect(chat.locator('.agent-manage, .agent-mode')).to_have_count(0)
                         if engine in ('claude','codex'):
                             chat.get_by_role('combobox',name='推理强度',exact=True).select_option('high')
                             command_input = chat.get_by_label('向 AI 提问',exact=True)
@@ -564,7 +562,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                         assert abs(state['agent_calls'][-1]['position']-7)<.1
                     assert len({item['conversation'] for item in state['agent_calls']})==3
                     assert api_session['messages']==old_messages
-                    assert state['agent_probes'] and all('question' not in body for body in state['agent_probes'])
+                    assert not state['agent_probes'], 'Removed inline refresh must not trigger model discovery'
                     # Keep the selected agent in the material generator, with no API configured.
                     page.get_by_role('button',name='生成/管理 AI 学习材料',exact=True).click()
                     material=page.locator('.analysis-form')
@@ -578,7 +576,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                     expect(page.get_by_role('combobox',name='选择分析记录',exact=True)).to_have_value('20261016-003000-abcd0005')
                     records[f'{2:032x}']=[row for row in records[f'{2:032x}'] if row['id']!='20261016-003000-abcd0005']
                     state['analysis_calls']=1
-                    page.get_by_role('button',name='返回学习',exact=True).click()
+                    page.get_by_role('button',name='学习视图',exact=True).click()
                     page.get_by_role('tab',name='AI 对话',exact=True).click()
                     for width in (1440,1280,390,320,280):
                         page.set_viewport_size({'width':width,'height':900})
@@ -614,16 +612,18 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 chat.locator('.ai-chat-answer .md-time').first.click()
                 page.wait_for_function('document.querySelector("video").currentTime >= 5 && document.querySelector("video").currentTime < 6')
                 page.locator('video').evaluate('(video) => video.pause()')
-                page.get_by_role('tab', name='章节', exact=True).click()
+                page.get_by_role('tab', name='AI 对话', exact=True).click()
+                page.locator('#ai-chat-question').fill('尚未发送的追问')
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
                 page.locator('#prompt').fill('管理参数草稿，不属于个人笔记')
-                page.locator('#analysis-conversation-question').fill('尚未发送的追问')
-                page.get_by_role('button', name='返回学习', exact=True).click()
+                expect(page.locator('.independent-conversations')).to_have_count(0)
+                page.get_by_role('button', name='学习视图', exact=True).click()
                 expect(page.locator('#prompt')).to_be_hidden()
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
                 expect(page.locator('#prompt')).to_have_value('管理参数草稿，不属于个人笔记')
-                expect(page.locator('#analysis-conversation-question')).to_have_value('尚未发送的追问')
-                page.get_by_role('button', name='返回学习', exact=True).click()
+                expect(page.locator('#analysis-conversation-question')).to_have_count(0)
+                page.get_by_role('button', name='学习视图', exact=True).click()
+                page.get_by_role('tab', name='AI 对话', exact=True).click()
                 expect(page.locator('#ai-chat-question')).to_have_value('尚未发送的追问')
                 # Missing either prerequisite hides the chat input; no implicit generation.
                 for missing, button in [(['subtitles'],'生成字幕'), (['chapters','summary'],'准备学习材料')]:
@@ -642,7 +642,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 page.get_by_role('button', name='章节时间轴', exact=True).click()
                 page.get_by_role('button', name='开始分析', exact=True).click()
                 expect(page.get_by_role('combobox', name='选择分析记录', exact=True)).to_have_value('20261016-003000-abcd0005')
-                page.get_by_role('button', name='返回学习', exact=True).click()
+                page.get_by_role('button', name='学习视图', exact=True).click()
                 expect(select).to_have_value('20261015-202200-abcd0004')
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
                 page.get_by_role('button', name='用于当前学习', exact=True).click()
@@ -667,7 +667,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
                 page.get_by_role('combobox', name='选择分析记录', exact=True).select_option('20261015-202300-abcd0003')
                 expect(page.get_by_role('button', name='用于当前学习', exact=True)).to_be_disabled()
-                page.get_by_role('button', name='返回学习', exact=True).click()
+                page.get_by_role('button', name='学习视图', exact=True).click()
                 expect(timeline).to_be_visible()  # Current-video chapters are independent of the chosen summary.
                 select.select_option('20261015-202500-abcd0001')
                 for width in (1440, 1024, 760, 390, 320, 280):
@@ -710,12 +710,19 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                     assert ownership == {'body': True, 'list': False, 'overflow': 'visible'}, (width, ownership)
                     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width
                 page.set_viewport_size({'width': 1440, 'height': 1000})
-                page.evaluate("window.scrollTo(0,0);const v=document.querySelector('video');v.currentTime=18.4;v.dispatchEvent(new Event('timeupdate'))")
-                page.wait_for_function("document.querySelector('.study-sidebar-body').scrollTop > 0")
-                item = directory.locator('[aria-current]').bounding_box()
-                listing = page.locator('.study-sidebar-body').bounding_box()
+                page.wait_for_function("Math.abs(document.querySelector('.playback-resume').getBoundingClientRect().bottom - document.querySelector('.study-sidebar').getBoundingClientRect().bottom) <= 1")
+                page.evaluate("window.scrollTo(0,0);const v=document.querySelector('video');v.pause();v.currentTime=18.4;v.dispatchEvent(new Event('timeupdate'))")
+                bounds = page.wait_for_function('''() => {
+                    const active = document.querySelector('.chapter-timeline-list [aria-current]');
+                    if (!active?.textContent.includes('第18章')) return false;
+                    const item = active.getBoundingClientRect();
+                    const body = document.querySelector('.study-sidebar-body').getBoundingClientRect();
+                    return item.top >= body.top - 1 && item.bottom <= body.bottom + 1
+                        ? {item:item.toJSON(),body:body.toJSON(),scrollY} : false;
+                }''').json_value()
+                item, listing = bounds['item'], bounds['body']
                 assert item['y'] >= listing['y']-1 and item['y']+item['height'] <= listing['y']+listing['height']+1
-                assert page.evaluate('scrollY') == 0
+                assert bounds['scrollY'] == 0
                 directory.locator('.chapter-timeline-list button').first.click()
                 page.wait_for_function('document.querySelector("video").currentTime < 1')
                 page.locator('video').evaluate('v => v.pause()')

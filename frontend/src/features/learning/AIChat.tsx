@@ -139,7 +139,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
   return <><section className="ai-chat" aria-label="AI 对话">
     {!chat?.ready ? <div className="ai-chat-empty">{chat?.failure ? <><p role="alert">{chat.failure}</p><button type="button" onClick={chat.retry}>重新载入对话</button></> : '正在读取对话…'}</div>
       : !chat.available ? <div className="ai-chat-empty">
-        <p>{chat.missing.includes('subtitles') ? '当前视频缺少字幕，准备字幕后即可继续。' : '当前视频没有可用的学习材料；章节时间轴或内容摘要有一份即可。'}</p>
+        <p>{chat.missing.includes('subtitles') ? (chat.missing.includes('chapters') || chat.missing.includes('summary') ? '请先准备字幕（中文或英文均可），再生成章节时间轴或内容摘要。' : '当前视频缺少字幕，中文或英文字幕均可。') : '已找到字幕；还需生成章节时间轴或内容摘要后才能对话。'}</p>
         <button type="button" onClick={chat.missing.includes('subtitles') ? onGenerateSubtitles : onManage}>
           {chat.missing.includes('subtitles') ? '生成字幕' : '准备学习材料'}</button></div>
       : <>

@@ -13,7 +13,7 @@ import time
 import tempfile
 
 from video_parser.core.paths import ROOT
-from video_parser.services import task_runtime
+from video_parser.services import task_runtime, agent_controls
 from .transport import AgentError, NAMES, available
 from .types import Result, IDENTIFIER, prepare, valid_session
 
@@ -43,6 +43,8 @@ def normalize(target=None):
 
 def require(target=None):
     target = normalize(target)
+    if not agent_controls.enabled(target['engine']):
+        raise AgentError('所选 Agent 已关闭，请在设置中开启或明确选择其他工具。')
     if target['engine'] != 'api' and not available(target['engine']):
         raise AgentError('未找到本地 agent，请先在本机安装并登录，再刷新模型列表。')
     return target
@@ -65,7 +67,7 @@ def inventory():
     engines = []
     for engine, name in NAMES.items():
         entry = cache.get(engine, {})
-        engines.append({'id': engine, 'name': name, 'installed': available(engine),
+        engines.append({'id': engine, 'name': name, 'installed': available(engine), 'enabled': agent_controls.enabled(engine),
             'discovered': bool(entry.get('updated_at')), 'updated_at': entry.get('updated_at'),
             'models': entry.get('models', []), 'commands': entry.get('commands', []),
             'error': entry.get('error', '')})
@@ -87,6 +89,8 @@ def _runtime(engine, workspace, target=None, turn=None, session_id=None, persist
 
 def _discover(engine, model=''):
     target = normalize({'engine': engine, 'model': model})
+    if not agent_controls.enabled(engine):
+        return {'models': [], 'commands': [], 'error': 'Agent 已关闭。'}
     if not available(engine):
         return {'models': [], 'commands': [], 'error': '未找到本地 agent，请先安装并登录。'}
     runtime = None
@@ -116,7 +120,9 @@ def _discover(engine, model=''):
 def discover(engine='all', model=''):
     if engine not in ('all', *NAMES):
         raise ValueError('未知本地 agent。')
-    targets = list(NAMES) if engine == 'all' else [engine]
+    targets = [name for name in NAMES if agent_controls.enabled(name)] if engine == 'all' else [engine]
+    if engine != 'all' and not agent_controls.enabled(engine):
+        raise AgentError('所选 Agent 已关闭。')
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(lambda value: _discover(value, model if value == engine else ''), targets))
     with _lock:

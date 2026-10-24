@@ -96,7 +96,7 @@ class ChatIMEBrowserTests(unittest.TestCase):
 
     def learn(self):
         self.f.parse()
-        self.page.get_by_role('button', name='开始学习', exact=True).click()
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
         self.field = self.chat()
         self.field.focus()
         self.page.evaluate('''()=>{window.imeEvents=[];const e=document.querySelector('#ai-chat-question');

@@ -12,12 +12,14 @@ from pathlib import Path
 import re
 import threading
 import unittest
+from tests.browser.project_picker import select_project
 import wave
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', str(ROOT / 'runtimes/browsers'))
 VIDEO_ID = 'BV1TaqYBcEJc'
 PROJECT_ID = f'{3:032x}'
 PREFERENCES = 'video-parser:agent-preferences'
@@ -136,12 +138,16 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
                 return route.fulfill(json={'platforms': ['哔哩哔哩'], 'ai_configured': True, 'media_ready': True,
                     'subtitles_ready': True, 'transcription_ready': True, 'transcription_upload_limit': 1000000,
                     'archive_root': 'fixture/library', 'ai': self.ai})
+            if path == '/embedding/settings':
+                return route.fulfill(json={'base_url': '', 'model': '', 'key_saved': False, 'configured': False})
+            if path.endswith('/subtitle-cues'):
+                return route.fulfill(json={'sources': [], 'resource': None, 'cues': []})
             if path == '/ai/settings':
                 return route.fulfill(json=self.ai)
             if path == '/ai/agents':
                 return route.fulfill(json=self.catalog)
             if path == '/tasks':
-                return route.fulfill(json={'jobs': [{**job, 'title': '旧平台标题',
+                return route.fulfill(json={'jobs': [{**job, 'file_names': job.get('file_names', ['fixture.wav']), 'title': '旧平台标题',
                     'project_title': self.title if job['project_id'] else None,
                     'phase': job['state'], 'message': '', 'created': 1, 'progress': {}} for job in self.jobs]})
             if path == '/accounts':
@@ -181,7 +187,9 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
                 self.assertEqual(body, {})
                 return route.fulfill(json={'conversations': []})
             if path == '/ai/agents/discover':
-                self.assertEqual(body, {'confirm': True, 'engine': 'all', 'model': ''})
+                self.assertEqual(set(body), {'confirm', 'engine', 'model'})
+                self.assertIs(body['confirm'], True); self.assertEqual(body['model'], '')
+                self.assertIn(body['engine'], {'all', 'claude', 'codex', 'opencode'})
                 return route.fulfill(json=self.catalog)
             if path == '/parse':
                 return route.fulfill(json=self.parsed())
@@ -213,10 +221,10 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         page.goto(self.url + '?page=settings&settings_section=ai')
         targets = page.locator('.learning-targets')
         expect(targets).to_be_visible()
-        targets.locator('.learning-target-options > summary').click()
-        expect(targets.locator('fieldset')).to_have_count(3)
-        for group in targets.locator('.learning-engine-group').all():
-            if group.get_attribute('open') is None: group.locator(':scope > summary').click()
+        for engine in ('claude', 'codex', 'opencode'):
+            targets.locator(f'button[aria-controls="models-{engine}"]').click()
+        expect(targets.locator('.learning-target-group')).to_have_count(3)
+        expect(targets.get_by_role('switch')).to_have_count(3)
         return targets
 
     @staticmethod
@@ -240,7 +248,8 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
 
     def subtitle_panel(self):
         self.parse()
-        self.page.get_by_role('button', name='生成字幕', exact=True).click()
+        self.page.get_by_role('tab', name='AI 分析', exact=True).click()
+        self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio').check()
         panel = self.page.locator('.subtitle-panel')
@@ -250,24 +259,24 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
     def test_default_model_is_primary_and_visibility_management_is_optional(self):
         self.page.goto(self.url + '?page=settings&settings_section=ai')
         targets = self.page.locator('.learning-targets')
-        default = targets.get_by_role('combobox', name='默认学习模型', exact=True)
+        default = targets.get_by_role('combobox', name='默认模型', exact=True)
         expect(default).to_be_visible(); expect(default).to_have_value('api|')
         expect(targets.get_by_text('跟随工具默认不代表离线或免费，联网与费用由对应工具配置决定。', exact=True)).to_have_count(0)
-        self.assertIsNone(targets.locator('.learning-target-options').get_attribute('open'))
+        expect(targets.locator('#models-codex')).to_be_hidden()
         expect(targets.get_by_role('radio')).to_have_count(0)
         self.assertFalse(any(method == 'POST' for method, _, _ in self.requests))
         default.select_option('codex|codex-fixture')
         saved = self.page.evaluate('(key)=>JSON.parse(localStorage.getItem(key))', PREFERENCES)
         self.assertEqual(saved['target'], {'engine': 'codex', 'model': 'codex-fixture', 'effort': ''})
         self.assertIn('codex|codex-fixture', saved['enabled'])
-        targets.locator('.learning-target-options > summary').click()
-        search = targets.get_by_role('searchbox', name='搜索可见模型', exact=True)
+        targets.locator('button[aria-controls="models-codex"]').click()
+        search = targets.get_by_role('searchbox', name='搜索 Codex 模型', exact=True)
         search.fill('codex-fixture')
-        expect(targets.locator('.learning-engine-group')).to_have_count(1)
+        expect(targets.locator('#models-codex li')).to_have_count(1)
         row = self.model_row(targets, 'Codex fixture')
         expect(row.get_by_role('checkbox')).to_be_checked()
         expect(row.locator('code')).to_have_count(0)
-        targets.get_by_label('显示调用 ID', exact=True).check()
+        targets.locator('#models-codex').get_by_label('显示调用 ID', exact=True).check()
         expect(row.locator('code')).to_have_text('codex-fixture')
         self.assertEqual(self.page.evaluate('(key)=>JSON.parse(localStorage.getItem(key))', PREFERENCES), saved)
         self.assertFalse(any(method == 'POST' for method, _, _ in self.requests))
@@ -285,13 +294,16 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.with_media = True
         self.page.get_by_role('button', name='继续已有学习', exact=True).click()
         picker = self.page.get_by_role('combobox', name='学习项目', exact=True)
-        expect(picker).to_be_enabled(); picker.select_option(PROJECT_ID)
+        expect(picker).to_be_enabled(); select_project(picker, PROJECT_ID)
         expect(self.page.locator('video')).to_be_visible()
         self.assertFalse(any(method == 'POST' and path in {'/parse', '/ai/agents/discover'} for method, path, _ in self.requests))
 
     def test_archived_workspace_keeps_learning_primary_and_source_edit_explicit(self):
         self.with_media = True; self.parse()
-        expect(self.page.get_by_role('button', name='开始学习', exact=True)).to_be_visible()
+        expect(self.page.locator('.study-start-bar')).to_have_count(0)
+        expect(self.page.get_by_role('button', name='开始学习', exact=True)).to_have_count(0)
+        expect(self.page.get_by_text('视频已归档，可以开始学习', exact=True)).to_have_count(0)
+        expect(self.page.get_by_role('button', name='学习视图', exact=True)).to_be_visible()
         expect(self.page.locator('.workspace-start')).to_have_count(0)
         expect(self.page.locator('.workspace-source-editor')).to_have_count(0)
         expect(self.page.locator('.workspace-source-url')).to_have_count(0)
@@ -309,7 +321,7 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         expect(targets).not_to_contain_text('本机默认')
         expect(targets).to_contain_text('不代表离线或免费')
         expect(targets.locator('#learning-default-model option:checked')).to_have_text('Codex · 跟随工具默认模型')
-        group = targets.locator('fieldset').filter(has_text='Codex')
+        group = targets.locator('fieldset[aria-label="Codex"]')
         row = self.model_row(group, '跟随工具默认模型')
         expect(row.get_by_role('checkbox')).to_be_checked()
         expect(row.get_by_text('当前默认', exact=True)).to_be_visible()
@@ -337,7 +349,7 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.context.add_init_script(f"localStorage.setItem('vp-language','en');localStorage.setItem('{PREFERENCES}',JSON.stringify({json.dumps(seed)}))")
         targets = self.settings()
         expect(targets.get_by_text('Use tool default model', exact=True)).to_have_count(3)
-        expect(targets.get_by_role('combobox', name='Default learning model', exact=True)).to_have_value('opencode|')
+        expect(targets.get_by_role('combobox', name='Default model', exact=True)).to_have_value('opencode|')
         expect(targets.locator('#learning-default-model option:checked')).to_have_text('OpenCode · Use tool default model')
         expect(targets).to_contain_text('does not mean offline or free')
         for width in (390, 280):
@@ -347,12 +359,12 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate('(key)=>JSON.parse(localStorage.getItem(key))', PREFERENCES), seed)
         self.assertFalse(any(method == 'POST' for method, _, _ in self.requests))
 
-    def test_settings_default_visibility_persistence_and_api_fallback(self):
+    def test_settings_default_visibility_persistence_and_explicit_switch(self):
         targets = self.settings()
-        default = targets.get_by_role('combobox', name='默认学习模型', exact=True)
+        default = targets.get_by_role('combobox', name='默认模型', exact=True)
         expect(default).to_have_value('api|')
         expect(default.locator('option[value="api|"]')).to_be_enabled()
-        expect(targets.locator('.learning-fixed-source')).to_contain_text('固定入口')
+        expect(targets.locator('.settings-ai')).to_contain_text('API 连接（含本地模型）')
         self.assertFalse(any(method == 'POST' for method, _, _ in self.requests), 'Opening Settings must not discover models or save config')
         codex = self.model_row(targets, 'Codex fixture')
         default.select_option('codex|codex-fixture')
@@ -360,12 +372,12 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         target = self.page.evaluate('(key) => JSON.parse(localStorage.getItem(key))', PREFERENCES)
         self.assertEqual(target['target'], {'engine': 'codex', 'model': 'codex-fixture', 'effort': ''})
         self.assertNotIn('claude|claude-fixture', target['enabled'])
-        targets.get_by_role('button', name='读取本机模型', exact=True).click()
+        targets.locator('#models-codex').get_by_role('button', name='读取本机模型', exact=True).click()
         expect(targets.get_by_role('status')).to_contain_text('已读取本机模型列表')
         expect(targets.get_by_role('radio')).to_have_count(0)
         self.fit('settings')
         self.page.reload()
-        self.page.locator('.learning-target-options > summary').click()
+        self.page.locator('button[aria-controls="models-codex"]').click()
         expect(self.page.locator('#learning-default-model')).to_have_value('codex|codex-fixture')
         self.with_media = True
         self.parse()
@@ -375,6 +387,9 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         expect(picker.locator('option[value="claude|claude-fixture"]')).to_have_count(0)
         expect(picker.locator('option[value="api|"]')).to_contain_text('llama-fixture')
         targets = self.settings()
+        expect(self.model_row(targets, 'Codex fixture').get_by_role('checkbox')).to_be_disabled()
+        expect(targets.locator('#learning-default-model')).to_have_value('codex|codex-fixture')
+        targets.locator('#learning-default-model').select_option('api|')
         self.model_row(targets, 'Codex fixture').get_by_role('checkbox').uncheck()
         expect(targets.locator('#learning-default-model')).to_have_value('api|')
         self.assertFalse(any(path in {'/ai/settings', '/ai/runtime/start', '/ai/settings/test'} and method == 'POST' for method, path, _ in self.requests))
@@ -430,19 +445,22 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         expect(self.page.get_by_role('heading', name='重命名 课程', exact=True)).to_be_visible()
         self.page.get_by_role('button', name='取消', exact=True).click()
         self.page.get_by_role('button', name=re.compile('^任务中心')).click()
-        expect(self.page.locator('.task-list > li').filter(has_text='P3').locator('strong')).to_contain_text('重命名 课程')
+        expect(self.page.locator('.task-list > li').filter(has_text='P3').locator('strong')).to_contain_text('fixture.wav')
+        expect(self.page.locator('.task-list > li').filter(has_text='P3').locator('strong')).not_to_contain_text('重命名 课程')
 
     def test_generate_subtitles_keeps_archived_video_preselected(self):
         self.with_media = True
         self.parse()
-        self.page.get_by_role('button', name='生成字幕', exact=True).click()
+        self.page.get_by_role('tab', name='AI 分析', exact=True).click()
+        self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         expect(self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio')).to_be_checked()
         expect(self.page.locator('.subtitle-panel')).to_be_visible()
 
     def test_generate_subtitles_preserves_pending_source_after_refresh(self):
         self.parse()
-        self.page.get_by_role('button', name='生成字幕', exact=True).click()
+        self.page.get_by_role('tab', name='AI 分析', exact=True).click()
+        self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         expect(self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio')).to_be_checked()
         expect(self.page.locator('.subtitle-panel')).to_be_visible()

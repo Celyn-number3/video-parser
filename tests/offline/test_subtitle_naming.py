@@ -85,8 +85,9 @@ class SubtitleNamingTests(unittest.TestCase):
             self.assertEqual(study.load(self.pid, self.resource), self.progress_before)
             self.assertEqual(study.notes(self.pid, self.resource), self.notes_before)
             self.assertEqual(conversations.get(self.pid, self.conversation['id'])['video_resource'], self.resource)
-            self.assertEqual(library.resource(self.pid, 'subtitles/fixture.srt'), subtitle)
-            self.assertEqual(subtitle.read_bytes(), original)
+            renamed_subtitle = library.resource(self.pid, 'subtitles/fixture.srt')
+            self.assertNotEqual(renamed_subtitle, subtitle)
+            self.assertEqual(renamed_subtitle.read_bytes(), original)
             names.restore(plan['id'])
             self.assertEqual(library.resource(self.pid, self.resource).name, 'original.mp4')
             self.assertNotIn('episode_title', library.get(self.pid))
@@ -120,7 +121,7 @@ class SubtitleNamingTests(unittest.TestCase):
     def test_reuse_multiple_qualities_remain_distinct(self):
         library.import_file(self.pid, self.sources[0], 'videos/second.mp4', 'video', {'selected_quality': {'label': '1080p'}})
         plan, preview = self.reuse('方程组.srt')
-        targets = [move['target'] for move in preview['moves']]
+        targets = [move['target'] for move in preview['moves'] if move['resource'].startswith('videos/')]
         self.assertEqual(len(set(targets)), 2)
         self.assertTrue(all(Path(name).stem.startswith('方程组 [') and name.endswith('.mp4') for name in targets))
         names.apply(plan['id'], preview['preview_token'])
@@ -154,7 +155,7 @@ class SubtitleNamingTests(unittest.TestCase):
         preview = names.validate(original['id'], edited)
         names.apply(original['id'], preview['preview_token'])
         old_record = names.plan_path(original['id']).read_bytes()
-        manifests = {project['id']: (project['directory'] / 'project.json').read_bytes() for project in self.projects}
+        manifests = {project['id']: (library.get(project['id'])['directory'] / 'project.json').read_bytes() for project in self.projects}
         fingerprint = names.inventory(self.pid)['fingerprint']
         with patch.object(model_calls, 'require', side_effect=AssertionError('No model selection')), \
              patch.object(model_calls, 'call', side_effect=AssertionError('No model calls')):
@@ -174,7 +175,7 @@ class SubtitleNamingTests(unittest.TestCase):
         self.assertEqual(names.plan_path(original['id']).read_bytes(), old_record)
         self.assertEqual(names.inventory(self.pid)['fingerprint'], fingerprint)
         for project in self.projects:
-            self.assertEqual((project['directory'] / 'project.json').read_bytes(), manifests[project['id']])
+            self.assertEqual((library.get(project['id'])['directory'] / 'project.json').read_bytes(), manifests[project['id']])
 
     def test_adjust_apply_restore_preserves_the_prior_result_and_undo_chain(self):
         original, first = self.confirmed(); names.apply(original['id'], first['preview_token'])
@@ -368,7 +369,7 @@ class SubtitleNamingTests(unittest.TestCase):
 
     def test_partial_manifest_failure_rolls_back_files_and_metadata(self):
         plan, preview = self.confirmed()
-        before = {project['id']: (project['directory'] / 'project.json').read_bytes() for project in self.projects}
+        before = {project['id']: (library.get(project['id'])['directory'] / 'project.json').read_bytes() for project in self.projects}
         atomic = library.atomic_json; failed = False
         second = self.projects[1]['directory'] / 'project.json'
         def fail_once(path, data):
@@ -439,17 +440,21 @@ class SubtitleNamingTests(unittest.TestCase):
             with self.assertRaises(ValueError): naming_routes.SuggestBody(consent=value)
             with self.assertRaises(ValueError): naming_routes.ConfirmBody(confirm=value)
 
-    def test_proposals_use_all_series_subtitles_but_exclude_notes_paths_and_chat(self):
+    def test_proposals_use_sequential_context_but_exclude_future_subtitles_notes_and_paths(self):
         for engine in ('api', 'codex'):
             with self.subTest(engine=engine):
                 plan = self.plan(); plan['agent'] = {'engine': engine, 'model': '' if engine == 'api' else 'fixture', 'effort': ''}; names.save_plan(plan)
-                response = SimpleNamespace(text=json.dumps({'items': [{'index': 1, 'number': '1.1', 'title': '变量基础'}, {'index': 2, 'number': '1.2', 'title': '条件与类型'}]}), model='fixture')
+                replies = [SimpleNamespace(text=json.dumps({'items': [{'index': 1, 'number': f'1.{index}', 'title': title}]}), model='fixture')
+                           for index, title in [(1, '变量基础'), (2, '条件与类型')]]
                 workspace = self.root / 'empty-native-workspace'
-                with patch.object(ai_settings, 'current', return_value={'model': 'fixture', 'provider': 'custom'}), patch.object(model_calls, 'call', return_value=response) as call, patch.object(model_calls, 'workspace', return_value=workspace) as cwd:
+                with patch.object(ai_settings, 'current', return_value={'model': 'fixture', 'provider': 'custom'}), patch.object(model_calls, 'call', side_effect=replies) as call, patch.object(model_calls, 'workspace', return_value=workspace) as cwd:
                     result = naming.propose(plan, self.root / 'scratch')
-                self.assertEqual(result['state'], 'proposed'); call.assert_called_once()
-                messages = call.call_args.args[0]; serialized = json.dumps(messages, ensure_ascii=False)
-                self.assertIn('第3讲的合成字幕', serialized)
+                self.assertEqual(result['state'], 'proposed'); self.assertEqual(call.call_count, 2)
+                serialized = json.dumps(call.call_args.args[0], ensure_ascii=False)
+                self.assertIn('第2讲的合成字幕', serialized)
+                self.assertIn('1.1 变量基础.mp4', serialized)
+                self.assertNotIn('第1讲的合成字幕', serialized)
+                self.assertNotIn('第3讲的合成字幕', serialized)
                 self.assertNotIn('不应发送的合成个人笔记', serialized)
                 self.assertNotIn(str(self.projects[0]['directory']), serialized)
                 self.assertEqual(call.call_args.kwargs['purpose'], 'naming')
@@ -491,7 +496,7 @@ class SubtitleNamingTests(unittest.TestCase):
     def test_external_replacement_during_restore_is_not_deleted(self):
         plan, preview = self.confirmed(); names.apply(plan['id'], preview['preview_token'])
         renamed = library.resource(self.pid, self.resource)
-        original_path = self.projects[0]['directory'] / self.resource
+        original_path = library.get(self.pid)['directory'] / self.resource
         original = renamed.read_bytes(); external = b'new external synthetic restoration content'
         link = os.link; changed = False
         def replace_after_link(old, new):
@@ -557,9 +562,8 @@ class SubtitleNamingTests(unittest.TestCase):
         from video_parser.web.app import app
         client = TestClient(app, base_url='http://127.0.0.1:15001', client=('127.0.0.1', 1234))
         prefix = '/api/workspace'
-        response = SimpleNamespace(text=json.dumps({'items': [
-            {'index': 1, 'number': '1.1', 'title': '变量基础'},
-            {'index': 2, 'number': '1.2', 'title': '条件与类型'}]}), model='fixture')
+        replies = [SimpleNamespace(text=json.dumps({'items': [{'index': 1, 'number': f'1.{index}', 'title': title}]}), model='fixture')
+                   for index, title in [(1, '变量基础'), (2, '条件与类型')]]
         identifiers = []
         def completed(initial):
             self.assertEqual(initial.status_code, 202, initial.text)
@@ -577,7 +581,7 @@ class SubtitleNamingTests(unittest.TestCase):
             with patch.object(naming, 'RECORD_ROOT', self.root / 'http-tasks'), patch.object(naming, 'CACHE_ROOT', self.root / 'http-cache'), \
                  patch.object(ai_settings, 'current', return_value={'model': 'fixture', 'provider': 'custom'}), \
                  patch.object(model_calls, 'require', return_value={'engine': 'api', 'model': '', 'effort': ''}) as require, \
-                 patch.object(model_calls, 'call', return_value=response) as model:
+                 patch.object(model_calls, 'call', side_effect=replies) as model:
                 inventory = client.get(prefix + f'/projects/{self.pid}/naming')
                 self.assertEqual(inventory.status_code, 200)
                 self.assertEqual(inventory.json()['ready_count'], 2)
@@ -605,7 +609,7 @@ class SubtitleNamingTests(unittest.TestCase):
                 self.assertEqual(restored['result']['state'], 'rolled_back')
                 self.assertEqual(library.resource(self.pid, self.resource).name, 'original.mp4')
                 self.assertEqual(study.load(self.pid, self.resource), self.progress_before)
-                model.assert_called_once(); require.assert_called_once()
+                self.assertEqual(model.call_count, 2); require.assert_called_once()
         finally:
             client.close()
             for identifier in identifiers: naming.jobs.pop(identifier, None)

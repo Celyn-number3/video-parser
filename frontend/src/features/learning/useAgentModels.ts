@@ -26,6 +26,12 @@ export default function useAgentModels(api: AISettings | null, fallbackConfigure
     });
     return () => { controller.abort(); probe.current?.abort(); };
   }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const reload = () => { request<AgentCatalog>('/ai/agents', controller.signal).then(setCatalog).catch(() => {}); };
+    window.addEventListener('video-parser:agents-changed', reload);
+    return () => { controller.abort(); window.removeEventListener('video-parser:agents-changed', reload); };
+  }, []);
   const select = useCallback((next: AgentTarget) => {
     if (!engines.includes(next.engine)) return;
     setSelected(old => old.engine === next.engine && old.model === next.model && old.effort === next.effort ? old : next);
@@ -55,10 +61,10 @@ export default function useAgentModels(api: AISettings | null, fallbackConfigure
     const model = provider?.models.find(item => item.id === selected.model);
     return { selected, select, catalog, error, refreshing, refresh, native, model,
       key: [selected.engine, selected.model, selected.effort].join('|'),
-      configured: native ? !!provider?.installed : api?.configured ?? fallbackConfigured,
+      configured: native ? !!provider?.installed && provider?.enabled !== false : api?.configured ?? fallbackConfigured,
       name: native ? provider?.name || selected.engine : api?.provider_name || 'API',
       apiModel: api?.model || '', commands: provider?.commands || [], efforts: model?.efforts || [],
-      enabled: (target: Pick<AgentTarget, 'engine' | 'model'>) => isEnabled(preferences, target),
+      enabled: (target: Pick<AgentTarget, 'engine' | 'model'>) => (target.engine === 'api' || catalog?.engines.find(item => item.id === target.engine)?.enabled !== false) && isEnabled(preferences, target),
     };
   }, [selected, select, catalog, error, refreshing, refresh, preferences, api?.configured, api?.provider_name, api?.model, fallbackConfigured]);
 }

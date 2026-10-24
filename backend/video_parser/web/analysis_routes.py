@@ -83,7 +83,7 @@ class AnalysisTaskBody(routes.PrepareBody):
     template: Literal[tuple(ai_analysis.TEMPLATES)] = 'summary'
     source: Literal['both', 'transcript', 'frames'] = 'both'
     transcript_resource: str | None = Field(default=None, max_length=500)
-    frame_mode: Literal['scene', 'uniform'] = 'scene'
+    frame_mode: Literal['scene', 'uniform', 'ai'] = 'scene'
     count: int = Field(default=0, ge=0, le=16, strict=True)
     preview_token: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
     frames: list[Annotated[str, Field(pattern=r'^frame_\d{3}\.jpg$')]] | None = Field(default=None, min_length=1, max_length=16)
@@ -157,6 +157,7 @@ def archived_video(identifier, quality_id):
 
 
 def start_analysis(entry, choice, body):
+    handled(ai_analysis.validate_material, entry.project_id, body.source, body.transcript_resource, body.frame_mode)
     agent = selected_agent(body.agent)
     if body.template == 'custom' and not body.prompt.strip():
         raise HTTPException(400, '自定义分析需要写下分析要求。')
@@ -167,6 +168,19 @@ def start_analysis(entry, choice, body):
     if agent['engine'] != 'api':
         payload['agent'] = agent
     return handled(workflows.start, 'analysis', entry.project_id, entry.parsed.metadata['title'], payload)
+
+
+class AgentEnabledBody(BaseModel):
+    model_config = {'extra': 'forbid'}
+    engine: Literal['claude', 'codex', 'opencode']
+    enabled: bool = Field(strict=True)
+
+
+@router.post('/ai/agents/enabled')
+def set_agent_enabled(body: AgentEnabledBody):
+    from video_parser.services import agent_controls
+    handled(agent_controls.save, body.engine, body.enabled)
+    return handled(local_agents.inventory)
 
 
 # ---- Model settings -------------------------------------------------------------
@@ -220,6 +234,34 @@ def test_settings():
 
 
 # ---- Material, preview and analysis ---------------------------------------------
+
+@router.post('/projects/{project_id}/episodes/refresh')
+def refresh_episodes(project_id: str, body: ConfirmBody):
+    from video_parser.services import videos
+    project = handled(library.get, project_id)
+    if project.get('platform') != 'bilibili':
+        raise HTTPException(400, '当前分集解析支持哔哩哔哩多 P 视频；其他平台暂按单集处理。')
+    parsed = handled(videos.parse_link, project['source_url'], False)
+    if library.identity(parsed.metadata)['key'] != project['key']:
+        raise HTTPException(400, '分集解析返回了不同视频，未更新当前项目。')
+    handled(library.ensure, parsed.metadata)
+    return {'episodes': handled(library.learning_episodes, project_id)}
+
+
+@router.get('/projects/{project_id}/subtitle-cues')
+def subtitle_cues(project_id: str, resource: str = ''):
+    project = handled(library.get, project_id)
+    sources = handled(ai_analysis.transcript_sources, project, True)
+    preferred = next((row['resource'] for row in library.translation_records(project) if row['language'] == 'zh' and any(source['resource'] == row['resource'] for source in sources)), '')
+    chosen = resource or preferred or (sources[0]['resource'] if sources else '')
+    if not chosen:
+        return {'sources': sources, 'resource': '', 'cues': []}
+    if not any(row['resource'] == chosen for row in sources):
+        raise HTTPException(404, '字幕已变化，请刷新字幕列表。')
+    path = handled(library.resource_from_project, project, chosen)
+    cues = handled(ai_analysis.parse_cues, path.read_text(encoding='utf-8', errors='replace'), True)
+    return {'sources': sources, 'resource': chosen, 'cues': [{'time': time, 'text': text} for time, text in cues]}
+
 
 @router.get('/projects/{project_id}/analysis/context')
 def analysis_context(project_id: str, resource: str = ''):

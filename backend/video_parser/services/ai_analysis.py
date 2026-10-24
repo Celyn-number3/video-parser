@@ -105,7 +105,7 @@ CUE_TIME = re.compile(r'(?:(\d+):)?(\d{1,2}):(\d{2})[,.](\d{1,3})\s*-->')
 CJK = r'\u3000-\u303f\u3400-\u9fff\uff00-\uffef'
 
 
-def parse_cues(text):
+def parse_cues(text, preserve_duplicates=False):
     """SRT or WebVTT → [(start_seconds, text)]."""
     cues, current = [], None
     for raw in str(text).splitlines():
@@ -122,7 +122,7 @@ def parse_cues(text):
     result = []
     for start, lines in cues:
         body = join_text(item for item in lines if item)
-        if body and (not result or result[-1][1] != body):
+        if body and (preserve_duplicates or not result or result[-1][1] != body):
             result.append((start, body))
     return result
 
@@ -163,13 +163,13 @@ def transcript_label(item):
     if item['kind'] == 'subtitle':
         return '平台字幕'
     language = item.get('language') or ''
-    return '本地转写' + (f'（{LANGUAGES.get(language, language)}）' if language else '')
+    return ('AI 翻译' if item['kind'] == 'translation' else '本地转写') + (f'（{LANGUAGES.get(language, language)}）' if language else '')
 
 
-def transcript_sources(project):
+def transcript_sources(project, include_translations=False):
     rows = []
     for name, item in project['resources'].items():
-        if item['kind'] not in ('subtitle', 'transcription') or Path(name).suffix.lower() not in ('.srt', '.vtt'):
+        if item['kind'] not in (('subtitle', 'transcription', 'translation') if include_translations else ('subtitle', 'transcription')) or Path(name).suffix.lower() not in ('.srt', '.vtt'):
             continue
         try:
             cues = parse_cues(library.resource_from_project(project, name).read_text(encoding='utf-8', errors='replace'))
@@ -415,6 +415,15 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
+def validate_material(project_id, source, transcript_resource=None, frame_mode='scene'):
+    if source in ('both', 'transcript') or frame_mode == 'ai':
+        project = library.get(project_id)
+        chosen = transcript_resource or next((row['resource'] for row in transcript_sources(project)), None)
+        if not chosen:
+            raise AnalysisError('当前视频暂无可用字幕，请先获取平台字幕或生成转写字幕。')
+        load_transcript(project, chosen)
+
+
 def run(project_id, payload, directory):
     """One analysis: gather material, call the model, archive frames and the report."""
     from video_parser.services import model_calls
@@ -434,22 +443,37 @@ def run(project_id, payload, directory):
         chosen = payload.get('transcript_resource') or next((row['resource'] for row in transcript_sources(project)), None)
         if chosen:
             transcript = load_transcript(project, chosen)
-        elif source == 'transcript' or spec.get('requires') == 'transcript':
-            raise AnalysisError('这个视频还没有字幕，请先生成字幕，或改为只用画面分析。')
         else:
-            source = 'frames'
+            raise AnalysisError('当前视频暂无可用字幕，请先获取平台字幕或生成转写字幕。不会自动切换为只用画面。')
     if spec.get('requires') == 'transcript' and not transcript:
         raise AnalysisError('提取口播文案需要字幕，请先生成字幕。')
+    planning_usage = {}
+    frame_mode = payload.get('frame_mode') or 'scene'
+    if frame_mode == 'ai' and transcript is None:
+        validate_material(project_id, source, payload.get('transcript_resource'), frame_mode)
+        chosen = payload.get('transcript_resource') or transcript_sources(project)[0]['resource']
+        planning_transcript = load_transcript(project, chosen)
+    else:
+        planning_transcript = transcript
     frames = []
     frames_dir = Path(directory) / 'frames'
     shutil.rmtree(frames_dir, ignore_errors=True)
     if source in ('both', 'frames'):
         video = video_path(project, resource)
-        if payload.get('preview_token'):
+        if payload.get('preview_token') and frame_mode != 'ai':
             frames = use_preview(payload['preview_token'], payload.get('frames'), project_id, resource, frames_dir)
         if not frames:
             _progress('extracting', '正在挑选并截取画面…')
-            frames = extract_frames(video, plan_times(video, info['duration'], payload.get('frame_mode') or 'scene', payload.get('count') or 0), frames_dir)
+            if frame_mode == 'ai':
+                from video_parser.services.frame_planning import plan
+                _progress('analyzing', '正在根据字幕规划画面时间点与数量（额外一次模型调用）…')
+                try:
+                    times, planning_usage = plan(planning_transcript, info['duration'], settings, selected, directory)
+                except ValueError as error:
+                    raise AnalysisError(str(error)) from None
+            else:
+                times = plan_times(video, info['duration'], frame_mode, payload.get('count') or 0)
+            frames = extract_frames(video, times, frames_dir)
         if not frames:
             raise AnalysisError('没能从视频里截取画面，请检查 ffmpeg。', 'operation_failed')
     elif spec.get('requires') == 'frames':
@@ -465,7 +489,7 @@ def run(project_id, payload, directory):
                'quality_id': payload.get('quality_id'), 'transcript_resource': transcript and transcript['resource'],
                'transcript_label': transcript and transcript['label'], 'transcript_merged': bool(transcript and transcript['merged']),
                'frames': [{'path': path, 'time': frame['time']} for path, frame in zip(paths, frames)],
-               'frame_count': len(frames), 'model': reply.model or settings['model'],
+               'frame_count': len(frames), 'frame_mode': frame_mode, 'planning_usage': planning_usage, 'model': reply.model or settings['model'],
                'provider': model_calls.provider(selected, settings), 'agent': selected,
                'usage': usage, 'created_at': now()}
     report = library.save_text(project_id, 'analysis', text, details)

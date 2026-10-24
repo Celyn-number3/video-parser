@@ -1,0 +1,92 @@
+/* Shared spacing contract. Use existing tokens; compact navigation/icon controls keep their own sizes. */
+:root {
+  --section-gap: var(--space-6);
+  --card-inset: var(--space-6);
+  --field-gap: var(--space-4);
+  --label-gap: var(--space-2);
+  --action-gap: var(--space-2);
+}
+
+/* Consistent default form controls, including inputs with an implicit text type. */
+.modern-app input:where(:not([type]), [type=text], [type=url], [type=search], [type=password], [type=number], [type=date], [type=datetime-local]),
+.modern-app select,
+.modern-app .settings-page input:where(:not([type]), [type=text], [type=url], [type=search], [type=password], [type=number]),
+.modern-app .settings-page select {
+  min-height: var(--control-height-md);
+  min-width: 0;
+  max-width: 100%;
+  padding: calc((var(--control-height-md) - 20px - 2px) / 2) var(--space-3);
+  line-height: 20px;
+  border: var(--border-width-thin) solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+.modern-app :is(.settings-actions, .subtitle-toolbar, .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) {
+  gap: var(--action-gap);
+  flex-wrap: wrap;
+}
+.modern-app :is(.settings-actions, .subtitle-toolbar, .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) > :is(button, a.button) {
+  min-height: var(--control-height-md);
+  padding: calc((var(--control-height-md) - 20px - 2px) / 2) var(--space-3);
+  line-height: 20px;
+  white-space: normal;
+  max-width: 100%;
+}
+
+/* Settings use an explicit stack, not incidental child margins. */
+.settings-section-stack { display: grid; gap: var(--section-gap); min-width: 0; }
+.settings-section-stack > .settings-card { margin: 0; }
+.settings-card-grid, .ai-settings-grid { gap: var(--section-gap); }
+.settings-page :is(.settings-card, .ai-connection-card, .ai-startup-card, .ai-runtime-card) { padding: var(--card-inset); }
+.settings-page .settings-group-title { margin-bottom: var(--space-4); }
+.settings-page .settings-section-nav { gap: var(--space-2); margin-bottom: var(--section-gap); }
+.settings-page .ai-configuration-summary { margin: 0 0 var(--space-4); padding: var(--card-inset); }
+.settings-page .settings-actions { margin-top: var(--space-4); }
+.settings-page .settings-check { gap: var(--space-2); margin-top: var(--space-4); line-height: 1.6; }
+.settings-page .settings-form-fields { display: grid; gap: var(--field-gap); margin-top: var(--space-4); }
+.settings-page .settings-field { display: grid; gap: var(--label-gap); min-width: 0; }
+.settings-page .settings-field > label { margin: 0; }
+.settings-page .settings-field > input { margin: 0; }
+.modern-app .settings-ai input:not([type=checkbox]) { margin-bottom: 0; }
+.settings-save-status:empty { display: none; }
+.settings-page .learning-targets-title { gap: var(--space-2) var(--space-4); margin-bottom: var(--space-4); }
+.settings-page .agent-switches { display: grid; gap: var(--space-2); padding: var(--space-4); margin: 0 0 var(--space-4); border-color: var(--color-border); border-radius: var(--radius-lg); min-width: 0; }
+.settings-page .agent-switches > .settings-hint { margin: 0 0 var(--space-1); }
+.settings-page .agent-switches > .settings-check { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-height: var(--control-height-sm); margin: 0; }
+
+/* Task filters share field rhythm and align controls rather than stretching the reset button. */
+.task-advanced-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; gap: var(--space-3); padding-block: var(--space-4); }
+.modern-app .task-advanced-filters > label { min-width: 0; gap: var(--label-gap); }
+.modern-app .task-advanced-filters :is(input, select) { width: 100%; max-width: none; }
+.modern-app .task-advanced-filters > button { min-height: var(--control-height-md); padding: 7px var(--space-3); line-height: 20px; }
+
+/* Analysis cards and subtitle tools follow the same section/field scale. */
+.learning-notes-panel > :is(.analysis-records, .independent-conversations) { margin-top: var(--section-gap); }
+.modern-app .subtitle-scroll-panel { margin-top: var(--space-4); padding: var(--space-3); border-color: var(--color-border); border-radius: var(--radius-lg); }
+.modern-app .subtitle-toolbar { gap: var(--action-gap); margin-bottom: var(--space-3); }
+.modern-app .subtitle-toolbar input { flex: 1 1 200px; }
+.modern-app .subtitle-scroll-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-3); }
+.modern-app .subtitle-scroll-list > button { --button-edge: transparent; flex-shrink: 0; padding: var(--space-3); min-height: var(--control-height-lg); gap: var(--space-3); box-shadow: none; border: 0; border-radius: var(--radius-md); }
+.modern-app .subtitle-scroll-list > button[aria-current=true] { background: var(--color-fill-hover); outline: 1px solid var(--color-border-strong); outline-offset: -1px; }
+
+@media (max-width: 560px) {
+  :root { --section-gap: var(--space-4); --card-inset: var(--space-4); }
+  .task-advanced-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .task-advanced-filters > button { grid-column: 1 / -1; }
+}
+
+/* Inspector actions also need an explicit gap; adjacent block wrappers do not provide one. */
+.episode-refresh { margin-top: var(--action-gap); }
+.modern-app .episode-refresh > button { width: 100%; min-height: var(--control-height-md); padding: 7px var(--space-3); line-height: 20px; }
+.episode-refresh > p { margin: var(--space-2) 0 0; }
+.episode-refresh > p:empty { display: none; }
+
+/* Keep controls separated after wrapping, including dialogs and the narrow subtitle rail. */
+.modern-app .subtitle-scroll-panel > select + button { display: block; margin-top: var(--space-2); }
+.modern-app .frame-lightbox > img + button { margin-top: var(--space-4); }
+.modern-app .episode-refresh + .learning-progress { margin-top: var(--space-4); }
+.modern-app input:where([type=date], [type=datetime-local]) { color: var(--color-text); background: var(--color-bg); }
+
+/* Center the translation batch checkbox against its label, including wrapped mobile text. */
+.modern-app .subtitle-translation .translation-batch-option { display: flex; align-items: center; gap: var(--space-2); margin-block: var(--space-4); }
+.modern-app .translation-batch-option > input[type=checkbox] { flex: 0 0 auto; align-self: center; margin: 0; }
+.modern-app .translation-batch-option > span { min-width: 0; line-height: 1.6; }

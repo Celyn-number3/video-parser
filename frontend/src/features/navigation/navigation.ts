@@ -10,5 +10,6 @@ export const pageIcons: Record<Page, IconName> = {
 
 export function pageFromSearch(search: string): Page {
   const value = new URLSearchParams(search).get('page');
+  if (value === 'transcription') return 'workspace';
   return value && Object.hasOwn(pageNames, value) ? value as Page : 'workspace';
 }

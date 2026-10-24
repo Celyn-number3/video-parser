@@ -1,4 +1,4 @@
-"""One persistent directory per video. Standard library only; no credentials or signed URLs."""
+"""Persistent projects: one course directory with stable per-episode subdirectories."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -54,10 +54,32 @@ def safe_name(text):
     return name
 
 
+def _project_lock_path(path):
+    """Project locks must not be open children of a directory being renamed on Windows.
+
+    All existing writers share an identity-keyed lock outside movable project trees.
+    Callers still reload the project after acquiring their usual manifest/study lock.
+    """
+    if not path.name.endswith('.lock') or not path.is_relative_to(LIBRARY_ROOT):
+        return path
+    parent = path.parent
+    if not (parent / 'project.json').is_file() and parent != LIBRARY_ROOT:
+        from video_parser.services.library_layout import restore_task_paths
+        parent = Path(restore_task_paths({'path': str(parent)})['path'])
+    if (parent / 'project.json').is_file():
+        project = load(contained(parent, 'project.json'))
+        if not re.fullmatch('[a-f0-9]{32}', project.get('id', '')):
+            raise ValueError('Invalid project lock identity')
+        return contained(LIBRARY_ROOT, '.project-locks/' + project['id'] + '/' + path.name)
+    return path
+
+
 @contextmanager
 def file_lock(path, timeout=60):
     """OS releases this lock on process exit, including interrupted CLI runs."""
     path = Path(path)
+    if path.is_symlink(): raise ValueError('Unsafe lock path')
+    path = _project_lock_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink(): raise ValueError('Unsafe lock path')
     with path.open('a+b') as stream:
@@ -143,8 +165,8 @@ def identity(metadata):
 
 
 def manifests():
-    if not LIBRARY_ROOT.exists(): return []
-    return sorted(LIBRARY_ROOT.glob('*/*/project.json'))
+    from video_parser.services.library_layout import manifest_paths
+    return manifest_paths(LIBRARY_ROOT)
 
 
 def load(path):
@@ -175,13 +197,29 @@ def ensure(metadata):
                     atomic_json(project['directory'] / 'project.json', {k: v for k, v in project.items() if k != 'directory'})
                     project = get(identifier)
             return project
-        suffix = info['video_id'] + (f"__P{info['part']:03d}" if info['part'] else '')
-        directory = LIBRARY_ROOT / info['platform'] / (safe_name(metadata.get('title') or 'video') + '__' + suffix)
-        if directory.exists():
-            directory = directory.with_name(directory.name + '__' + identifier[:8])
+        project_title = str(metadata.get('title') or 'video')
+        if info['platform'] == 'bilibili':
+            from video_parser.services.library_layout import series_directory, single_episode, episode_folder
+            siblings = list(_bilibili_projects(info['video_id']).values())
+            if siblings:
+                project_title = min(siblings, key=lambda item: item['part'])['title']
+            parent = series_directory(info, metadata.get('title'), siblings)
+            contained(parent, 'project.json')
+            known_parent = any(item['directory'].parent == parent for item in siblings)
+            if parent.exists() and any(parent.iterdir()) and not known_parent:
+                raise FileExistsError('项目父目录包含未知内容，未合并或覆盖。')
+            candidate = {**info, 'episodes': episodes}
+            title = next((item['title'] for item in episodes if item['part'] == info['part']), project_title)
+            directory = parent if single_episode(candidate, siblings) else parent / episode_folder(info['part'], title)
+            if directory.exists():
+                raise FileExistsError('分集目录已存在但身份无法确认，未覆盖。')
+        else:
+            directory = LIBRARY_ROOT / info['platform'] / (safe_name(metadata.get('title') or 'video') + '__' + info['video_id'])
+            if directory.exists():
+                directory = directory.with_name(directory.name + '__' + identifier[:8])
         contained(directory, 'project.json')
         directory.mkdir(parents=True, exist_ok=False)
-        data = {'schema_version': 1, 'id': identifier, **info, 'title': str(metadata.get('title') or 'video'),
+        data = {'schema_version': 1, 'id': identifier, **info, 'title': project_title,
                 'created_at': datetime.now(timezone.utc).isoformat(), 'resources': {},
                 'identity_status': 'pending' if info['platform'] in ('unknown', 'local') else 'confirmed',
                 'learned': False}
@@ -203,6 +241,10 @@ def import_file(identifier, source, relative, kind, details=None):
     with file_lock(contained(project['directory'], '.manifest.lock')):
         project = get(identifier)
         directory = project['directory']
+        if relative not in project['resources']:
+            # Re-importing a renamed physical filename must reuse its stable logical key.
+            relative = next((key for key, info in project['resources'].items()
+                             if info.get('kind') == kind and info.get('storage_path') == relative), relative)
         known = project['resources'].get(relative)
         target = resource_path(project, relative) if known else contained(directory, relative)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -243,9 +285,9 @@ def resource_path(project, relative):
     storage = info.get('storage_path', relative)
     if not isinstance(storage, str) or '\\' in storage or '\0' in storage:
         raise ValueError('Unsafe resource storage path')
-    if storage != relative and (info.get('kind') != 'video' or Path(storage).parent != Path(relative).parent
+    if storage != relative and (info.get('kind') not in ('video', 'subtitle', 'transcription', 'translation') or Path(storage).parent != Path(relative).parent
                                 or Path(storage).suffix.lower() != Path(relative).suffix.lower()):
-        raise ValueError('Storage aliases may only rename a video within its original folder')
+        raise ValueError('Storage aliases may only rename a registered media resource within its original folder')
     return contained(project['directory'], storage)
 
 
@@ -301,9 +343,21 @@ def owner(path):
     return None
 
 
+def episode_title(project):
+    """Prefer explicit user naming, otherwise resolve the current part without rewriting data."""
+    if project.get('episode_title'):
+        return project['episode_title']
+    if project.get('platform') != 'bilibili':
+        return None
+    return next((item['title'] for item in normalize_episodes(project.get('episodes'))
+                 if item['part'] == project.get('part')), None)
+
+
 def public(project):
-    return {'id': project['id'], 'title': project['title'], 'platform': project['platform'],
-            'video_id': project.get('video_id'), 'episode_title': project.get('episode_title'),
+    from video_parser.services.project_folder_naming import display_title
+    from video_parser.services.library_layout import single_episode
+    return {'id': project['id'], 'title': project['title'], 'display_title': display_title(project), 'platform': project['platform'],
+            'video_id': project.get('video_id'), 'episode_title': episode_title(project), 'is_single': single_episode(project),
             'part': project['part'], 'location': project['directory'].relative_to(LIBRARY_ROOT).as_posix(),
             'identity_status': project['identity_status'], 'learned': project.get('learned') is True,
             'resources': [{'path': name, 'kind': item['kind'], 'size_bytes': item['size_bytes'],
@@ -370,21 +424,25 @@ def set_learning_state(identifier, part, learned):
     projects = _bilibili_projects(project.get('video_id')) if project.get('platform') == 'bilibili' else {}
     episodes = _learning_catalog(project, projects)
     if project.get('platform') != 'bilibili' or len(episodes) <= 1:
-        raise ValueError('当前项目没有可用的多分集学习列表。')
-    episode = next((item for item in episodes if item['part'] == part), None)
-    if episode is None:
-        raise ValueError('所选分集不属于当前视频。')
-    target = projects.get(part)
-    if target is None and not learned:
-        return learning_episodes(identifier)
-    if target is None:
-        source_url = f"https://www.bilibili.com/video/{project['video_id']}?p={part}"
-        target = ensure({'platform': '哔哩哔哩', 'video_id': project['video_id'], 'source_url': source_url,
-                         'title': project.get('title') or episode['title'], 'episodes': episodes})
+        # No catalog is not evidence of a single-part course. Only mark this existing project.
+        if part != (project.get('part') or 1):
+            raise ValueError('所选分集不属于当前视频。')
+        target = project
+    else:
+        episode = next((item for item in episodes if item['part'] == part), None)
+        if episode is None:
+            raise ValueError('所选分集不属于当前视频。')
+        target = projects.get(part)
+        if target is None and not learned:
+            return learning_episodes(identifier)
+        if target is None:
+            source_url = f"https://www.bilibili.com/video/{project['video_id']}?p={part}"
+            target = ensure({'platform': '哔哩哔哩', 'video_id': project['video_id'], 'source_url': source_url,
+                             'title': project.get('title') or episode['title'], 'episodes': episodes})
     with file_lock(contained(target['directory'], '.manifest.lock')):
         target = get(target['id'])
         target['learned'] = learned
-        if episodes and episodes != normalize_episodes(target.get('episodes')): target['episodes'] = episodes
+        if project.get('platform') == 'bilibili' and len(episodes) > 1 and episodes != normalize_episodes(target.get('episodes')): target['episodes'] = episodes
         atomic_json(target['directory'] / 'project.json', {k: v for k, v in target.items() if k != 'directory'})
     return learning_episodes(identifier)
 
@@ -409,8 +467,11 @@ def rename(identifier, title):
     for target in targets.values():
         with file_lock(contained(target['directory'], '.manifest.lock')):
             current = get(target['id'])
-            if current.get('title') != title:
+            from video_parser.services.project_folder_naming import root_location
+            location = root_location(current)
+            if current.get('title') != title or current.get('title_override_location') != location:
                 current['title'] = title
+                current['title_override_location'] = location
                 atomic_json(current['directory'] / 'project.json', {k: v for k, v in current.items() if k != 'directory'})
     return get(identifier), sorted(targets)
 
@@ -427,8 +488,32 @@ def subtitle_records(project, video_resource=None):
             if not path.stat().st_size or path.stat().st_size > 2 * 1024 * 1024: continue
         except (OSError, ValueError, KeyError, TypeError): continue
         records.append({'resource': name, 'kind': info['kind'], 'filename': info.get('download_name') or path.name,
-                        'language': info.get('language') or '', 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
+                        'language': info.get('language') or '', 'sha256': info.get('sha256'), 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
     return sorted(records, key=lambda row: (row['kind'] != 'subtitle', Path(row['resource']).suffix.lower() == '.txt', row['resource']))
+
+
+def translation_records(project, video_resource=None, source_resource=None):
+    """Verified published translations. Never infer association from a filename/title."""
+    source = project.get('resources', {}).get(source_resource, {}) if source_resource else None
+    if source is not None and source.get('kind') not in ('subtitle', 'transcription'): return []
+    if source is not None:
+        try: source_hash = digest(resource_from_project(project, source_resource))
+        except (OSError, ValueError, KeyError): return []
+    else: source_hash = None
+    rows = []
+    for name, info in project.get('resources', {}).items():
+        if info.get('kind') != 'translation' or Path(name).suffix.lower() not in ('.srt', '.vtt', '.txt'): continue
+        if video_resource and info.get('video_resource') not in (None, '', video_resource): continue
+        if source_hash and info.get('source_sha256') != source_hash: continue
+        if source_resource and info.get('source_resource') not in (None, '', source_resource): continue
+        try:
+            path = resource_from_project(project, name)
+            if not 0 < path.stat().st_size <= 2 * 1024 * 1024: continue
+        except (OSError, ValueError, KeyError): continue
+        rows.append({'resource': name, 'filename': path.name, 'kind': 'translation', 'language': info.get('language') or '',
+                     'url': f"/api/workspace/projects/{project['id']}/files/{name}",
+                     'location': 'outputs/' + path.relative_to(LIBRARY_ROOT).as_posix(), 'modified': path.stat().st_mtime})
+    return sorted(rows, key=lambda row: (-row['modified'], Path(row['resource']).suffix.lower() == '.txt', row['resource']))
 
 
 def subtitle_inventory(video_id):

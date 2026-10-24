@@ -1,36 +1,51 @@
-.learning-targets { margin-bottom: 20px; }
-.learning-targets-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 20px; }
-.settings-page .learning-targets-title h3 { margin: 0; }
-.learning-targets-title > span { color: var(--color-text-secondary); font-size: 12px; }
-.learning-default-control { min-width: 0; }
-.settings-page .learning-default-control > label { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
-.settings-page .learning-default-control > select { min-height: 44px; max-width: 680px; font-size: 14px; }
-.learning-target-options { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--color-border); }
-.learning-target-options > summary > small { margin-left: 8px; color: var(--color-text-secondary); font-weight: 400; font-size: 12px; }
+.learning-targets { min-width: 0; }
+.learning-default-control { min-width: 0; padding-bottom: 24px; }
+.learning-targets-title { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.settings-page .learning-default-control .learning-targets-title > label { margin: 0; font-size: 15px; font-weight: var(--font-weight-semibold); }
+.learning-targets-title > small { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.settings-page .learning-default-control > select { min-height: var(--control-height-md); max-width: 720px; }
+.settings-page .model-sources > h3 { margin: 8px 0 4px; }
+.model-source { min-width: 0; border-bottom: 1px solid var(--color-border); }
+.model-source-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 74px; padding: 14px 0; }
+.model-source-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; min-width: 0; flex: 1; }
+.settings-page .model-source-copy > :is(h3, h4) { margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); }
+.model-source-state { font-size: var(--font-size-xs); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.model-source-actions { display: flex; align-items: center; gap: 20px; flex: none; flex-wrap: wrap; }
+.settings-page .model-source-row button { min-height: var(--control-height-md); min-width: 76px; flex: none; }
+.settings-page .model-source-actions .agent-tool-switch { margin: 0; white-space: normal; flex-wrap: wrap; gap: 7px; }
+.agent-tool-switch small { font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.model-source-config { padding: 0 0 24px; min-width: 0; }
+.model-source > :is(.error-text, .settings-hint, .settings-save-status) { margin-bottom: 12px; }
 .learning-targets-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
 .settings-page .learning-targets-heading .learning-model-search { flex: 1 1 220px; margin: 0; min-width: 0; }
-.learning-targets-heading > button { flex: 0 0 auto; min-height: 38px; }
-.learning-model-meta-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 12px; }
-.settings-page .learning-model-meta-tools .settings-check { margin: 0; font-size: 12px; color: var(--color-text-secondary); }
-.learning-fixed-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
-.learning-fixed-source strong { font-size: 13px; font-weight: 500; }
-.learning-fixed-source > span { font-size: 12px; color: var(--color-text-secondary); }
-.learning-engine-group { min-width: 0; border-bottom: 1px solid var(--color-border); }
-.settings-page .learning-engine-group > summary { padding: 13px 0; font-size: 14px; color: var(--color-text); }
-.learning-engine-group > summary > span { font-weight: 600; }
-.learning-engine-group > summary > small { margin-left: 10px; color: var(--color-text-secondary); font-size: 12px; }
-.learning-target-group { min-width: 0; border: 0; padding: 0; margin: 0 0 8px; }
-.learning-target-group ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 0 16px; }
+.learning-targets-heading > button { flex: 0 0 auto; min-height: var(--control-height-md); }
+.learning-model-meta-tools { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.settings-page .learning-model-meta-tools .settings-check { margin: 0; font-size: var(--font-size-xs); }
+.learning-target-group { min-width: 0; border: 0; padding: 0; margin: 0; }
+.learning-target-group legend { font-size: var(--font-size-sm); margin-bottom: 6px; }
+.learning-target-group ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .learning-target-group li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 8px; border-radius: var(--radius-sm); }
 .learning-target-group li.is-default { background: var(--color-surface-sunken); }
-.settings-page .learning-target-group .settings-check { flex: 1 1 auto; align-items: flex-start; min-width: 0; margin: 0; font-size: 13px; line-height: 1.6; }
-.learning-target-group .settings-check input { margin-top: 4px; }
+.settings-page .learning-target-group .settings-check { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--font-size-sm); line-height: 1.6; }
 .learning-model-copy { display: grid; min-width: 0; gap: 3px; overflow-wrap: anywhere; }
-.learning-model-copy > code { white-space: normal; overflow-wrap: anywhere; color: var(--color-text-secondary); font-size: 11px; }
-.learning-model-default-badge { flex: none; padding: 2px 6px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-secondary); font-size: 11px; }
+.learning-model-copy > code { white-space: normal; overflow-wrap: anywhere; color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.learning-model-default-badge { flex: none; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.ai-common-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.ai-field-wide { grid-column: 1 / -1; }
+.settings-page .model-source-config :is(input:not([type=checkbox]), select) { min-height: var(--control-height-md); }
+.settings-page .model-source-config .ai-runtime-card { margin: 20px 0; padding: 16px; border: 0; border-radius: var(--radius-sm); background: var(--color-surface-sunken); }
+.settings-page .model-source-config .local-ai-startup { margin-top: 20px; }
+.settings-page .model-source-config .settings-actions { margin-top: 16px; }
+.embedding-settings { margin-top: 0; border-top: 1px solid var(--color-border); border-bottom: 0; }
+.embedding-clear-confirm { margin-top: 16px; padding: 12px; background: var(--color-surface-sunken); border-radius: var(--radius-sm); }
+@media (max-width: 760px) {
+  .ai-common-fields, .learning-target-group ul { grid-template-columns: minmax(0, 1fr); }
+  .model-source-copy { display: grid; gap: 6px; }
+  .model-source-actions { gap: 12px; }
+}
 @media (max-width: 560px) {
-  .learning-targets-title { gap: 6px; margin-bottom: 16px; }
-  .learning-targets-title > span { flex-basis: 100%; }
+  .model-source-row { flex-wrap: wrap; gap: 12px; padding: 16px 0; }
+  .model-source-actions { width: 100%; justify-content: space-between; }
   .learning-targets-heading > button { width: 100%; }
-  .learning-model-default-badge { max-width: 70px; white-space: normal; }
+  .settings-page .model-source-config .settings-price { grid-template-columns: 1fr; }
 }

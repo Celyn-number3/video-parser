@@ -1,5 +1,6 @@
 """Synthetic naming UI regressions; every workspace API is intercepted, no real model/files."""
 import copy
+from pathlib import Path
 import re
 import unittest
 from urllib.parse import urlsplit
@@ -38,6 +39,12 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
         self.fail_resume = False
         self.preview = None
         self.preview_count = 0
+        self.hold_next_preview = False
+        self.held_preview = None
+        self.rename_scope = 'video_subtitles'
+        self.unready_parts = set()
+        self.fail_generate = False
+        self.fail_apply_request = False
         self.adjusted_from = None
         self.saved_plans = {}
         self.applied_rows = None
@@ -46,6 +53,7 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
         self.operation = 'plan'
         self.rows = [{'project_id': self.base.identifier(part), 'number': f'1.{part}', 'title': title}
                      for part, title in [(1, '变量基础'), (2, '条件与类型')]]
+        self.all_rows = copy.deepcopy(self.rows)
         original_project = self.base.project
         def project(part):
             value = original_project(part)
@@ -68,8 +76,9 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
 
     def entries(self):
         return [{'project_id': self.base.identifier(part), 'part': part, 'title': self.base.project(part).get('episode_title') or f'合成第{part}讲',
-                 'number': self.applied_row(part)['number'] if self.applied and self.applied_row(part) else '', 'transcript': 'subtitles/fixture.srt',
+                 'number': self.applied_row(part)['number'] if self.applied and self.applied_row(part) else '', 'transcript': None if part in self.unready_parts else 'subtitles/fixture.srt',
                  'transcript_filename': f'P0{part}_分集主题.srt',
+                 'subtitle_files': [{'resource': 'subtitles/fixture.srt', 'source': 'subtitles/fixture.srt', 'filename': f'P0{part}_分集主题.srt'}],
                  'files': [{'resource': 'video/fixture.wav', 'source': 'video/fixture.wav', 'filename': 'fixture.wav'}]}
                 for part in (1, 2)]
 
@@ -86,7 +95,7 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
     def public_plan(self):
         return {'id': self.plan_id, 'project_id': self.base.identifier(3 if self.foreign_plan else 1), 'title': '合成课程甲',
                 'source': 'manual' if self.adjusted_from else 'subtitle' if self.reused else None, 'adjusted_from': self.adjusted_from,
-                'state': self.plan_state, 'rows': self.rows if self.plan_state not in ('analyzing', 'failed') else [],
+                'rename_scope': self.rename_scope, 'state': self.plan_state, 'rows': self.rows if self.plan_state not in ('analyzing', 'failed') else [],
                 'entries': self.original_entries, 'preview': self.preview, 'preview_token': (self.preview or {}).get('preview_token'),
                 'job_id': None if self.adjusted_from and self.plan_state in ('proposed', 'validated') else self.task_ids[self.operation],
                 'last_error': '合成中断，可恢复' if self.plan_state == 'recovery_required' else ''}
@@ -96,6 +105,10 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
         if url.hostname != '127.0.0.1' or url.port != self.base.fixture.server.server_port:
             return self.base.route(route)
         path = url.path.removeprefix('/api/workspace')
+        if request.method == 'GET' and path == '/embedding/settings':
+            return route.fulfill(json={'configured': False, 'base_url': '', 'model': '', 'key_saved': False})
+        if request.method == 'GET' and path.endswith('/subtitle-cues'):
+            return route.fulfill(json={'sources': [], 'resource': '', 'cues': []})
         if self.fail_resume and re.fullmatch(r'/projects/[a-f0-9]{32}/resume', path):
             return route.fulfill(status=404, json={'detail': '合成归档已不可用'})
         match = re.fullmatch(r'/naming/tasks/([a-f0-9]{32})', path)
@@ -111,10 +124,11 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
         self.calls.append((request.method, path, body))
         if request.method == 'GET':
             if is_inventory:
+                if getattr(self, 'fail_inventory', False): return route.fulfill(status=503, json={'detail': '合成分集读取失败。'})
                 history = [{'id': self.plan_id, 'state': self.plan_state, 'created_at': '2026-10-17T01:00:00Z'}] if self.plan_created else []
                 history += [{'id': item['id'], 'state': item['state'], 'created_at': '2026-10-17T00:59:00Z'} for item in self.saved_plans.values()]
                 return route.fulfill(json={'title': getattr(self, 'inventory_title', '合成课程甲'), 'entries': self.entries(), 'subtitle_count': 2, 'ready_count': 2,
-                                           'max_selected': 150, 'fingerprint': 'fixture', 'history': history})
+                                           'max_selected': getattr(self, 'max_selected', 150), 'fingerprint': 'fixture', 'history': history})
             if match:
                 operation = next(key for key, value in self.task_ids.items() if value == match[1])
                 if operation == 'plan' and self.finished and not self.cancelled and self.plan_state == 'analyzing': self.plan_state = 'proposed'
@@ -147,6 +161,10 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
                 self.rows = [{'project_id': self.base.identifier(part), 'number': '', 'title': f'P0{part}_分集主题'} for part in (1, 2)]
                 return route.fulfill(status=201, json={'plan_id': self.plan_id, 'state': 'proposed'})
             if is_start:
+                if self.fail_generate: return route.fulfill(status=503, json={'detail': '合成模型请求失败，不会自动重试。'})
+                self.rows = copy.deepcopy([row for row in self.all_rows if row['project_id'] in body['selected_ids']])
+                self.original_entries = [entry for entry in self.entries() if entry['project_id'] in body['selected_ids']]
+                self.preview = None
                 self.plan_created = True; self.operation = 'plan'; self.plan_state = 'analyzing' if self.background else 'proposed'
                 self.base.fixture.jobs = [self.job('plan')]
                 return route.fulfill(status=202, json=self.job('plan'))
@@ -160,10 +178,18 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
                 entries = {entry['project_id']: entry for entry in self.original_entries}
                 moves = [{'project_id': row['project_id'], 'resource': 'video/fixture.wav', 'source': entries[row['project_id']]['files'][0]['source'],
                           'target': 'video/' + (row['number'] + ' ' if row['number'] else '') + row['title'] + '.wav'} for row in edited]
+                moves += [{'project_id': row['project_id'], 'resource': 'subtitles/fixture.srt', 'source': 'subtitles/fixture.srt', 'target': 'subtitles/' + (row['number'] + ' ' if row['number'] else '') + row['title'] + '-B站平台字幕.srt'} for row in edited]
                 self.preview = {'plan_id': self.plan_id, 'preview_token': f'{self.preview_count:032x}', 'rows': edited, 'moves': moves, 'fingerprint': 'fixture'}
                 self.plan_state = 'validated'
+                if self.hold_next_preview:
+                    self.hold_next_preview = False
+                    self.held_preview = (route, copy.deepcopy(self.preview))
+                    return
                 return route.fulfill(json=self.preview)
             if path.endswith('/apply'):
+                if self.fail_apply_request: return route.fulfill(status=409, json={'detail': '合成来源文件已变化，未执行改名。'})
+                if not body.get('confirm') or body.get('preview_token') != (self.preview or {}).get('preview_token'):
+                    return route.fulfill(status=409, json={'detail': '合成预览令牌已失效。'})
                 self.applied = True; self.operation = 'apply'; self.plan_state = 'applied'
                 self.applied_rows = copy.deepcopy((self.preview or {'rows': self.rows})['rows'])
                 return route.fulfill(status=202, json=self.job('apply'))
@@ -175,355 +201,339 @@ class SubtitleNamingBrowserTests(unittest.TestCase):
 
     def open(self):
         self.base.open()
-        self.page.locator('.video-context-more > summary').click()
-        self.page.get_by_role('button', name='字幕层级命名', exact=True).click()
-        self.dialog = self.page.get_by_role('dialog', name='字幕层级命名', exact=True)
-        expect(self.dialog).to_contain_text('可改名 2 讲')
+        self.page.get_by_role('button', name='视频工作台', exact=True).click()
+        self.page.get_by_role('tab', name='文件重命名', exact=True).click()
+        self.dialog = self.page.get_by_role('region', name='文件重命名', exact=True)
+        expect(self.dialog.get_by_role('heading', name='选择分集', exact=True)).to_be_visible()
 
     def suggest(self):
-        button = self.dialog.get_by_role('button', name='生成命名建议', exact=True)
-        expect(button).to_be_disabled()
-        self.dialog.get_by_label(re.compile('同意本次由所选模型处理课程字幕')).check()
-        expect(button).to_be_enabled(); button.click()
-        if not self.background: expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('变量基础')
+        self.dialog.get_by_role('button', name=re.compile('^(重新)?生成新名字$')).click()
+        if not self.background and not self.fail_generate:
+            expect(self.dialog.locator('.naming-rows input').first).to_be_visible()
 
     def validate(self):
-        self.dialog.get_by_role('button', name='验证并预览最终文件名', exact=True).click()
         expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_be_visible()
+        expect(self.dialog.get_by_role('button', name='确认并重命名', exact=True)).to_be_enabled()
 
     def count_post(self, suffix):
         return sum(method == 'POST' and path.endswith(suffix) for method, path, _ in self.calls)
 
+    def from_task_center(self, operation='plan'):
+        self.base.fixture.jobs = [self.job(operation)]
+        self.page.get_by_role('button', name=re.compile('^任务中心')).click()
+        self.page.get_by_role('button', name=re.compile('^查看命名(进度|记录)$')).click()
+        expect(self.dialog).to_be_visible()
+        expect(self.page.get_by_role('tab', name='文件重命名', exact=True)).to_have_attribute('aria-selected', 'true')
+
     def open_completed(self):
         self.plan_created = True; self.plan_state = 'applied'; self.applied = True; self.operation = 'apply'
-        self.open()
-        self.dialog.locator('.naming-history summary').click()
-        self.dialog.get_by_role('button', name=re.compile('^真实文件名已同步')).click()
+        self.open(); self.from_task_center('apply')
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成', exact=True)).to_be_visible()
 
-    def open_restore(self):
-        detail = self.dialog.locator('.naming-restore')
-        if detail.get_attribute('open') is None:
-            detail.locator('summary').click()
+    def assert_removed(self):
+        for text in ('撤销这次命名', '最近预览与恢复记录', '使用说明', '1 选择分集', '2 编辑建议', '3 确认改名'):
+            expect(self.dialog.get_by_text(text, exact=True)).to_have_count(0)
+        expect(self.dialog.locator('details, .naming-steps')).to_have_count(0)
 
-    def test_completed_six_rows_are_compact_readonly_and_details_are_opt_in(self):
-        self.plan_created = True; self.plan_state = 'applied'; self.applied = True; self.operation = 'apply'
-        self.rows = [{'project_id': self.base.identifier(i), 'number': f'1.{i}', 'title': f'第{i}讲的合成标题'} for i in range(1, 7)]
-        self.original_entries = [{**copy.deepcopy(self.original_entries[0]), 'project_id': self.base.identifier(i), 'part': i} for i in range(1, 7)]
-        self.open()
-        self.dialog.locator('.naming-history summary').click()
-        self.dialog.get_by_role('button', name=re.compile('^真实文件名已同步')).click()
-        expect(self.dialog.get_by_role('heading', name='真实文件名已同步')).to_be_visible()
-        expect(self.dialog.locator('.naming-results li')).to_have_count(6)
-        expect(self.dialog.get_by_role('textbox')).to_have_count(0)
-        expect(self.dialog.get_by_role('region', name='命名任务状态')).to_have_count(0)
-        self.assertIsNone(self.dialog.locator('.naming-help').get_attribute('open'))
-        self.assertIsNone(self.dialog.locator('.naming-restore').get_attribute('open'))
-        for width in (1440, 760, 390, 280):
-            self.page.set_viewport_size({'width': width, 'height': 900})
-            self.assertTrue(self.dialog.evaluate('e=>e.scrollWidth<=e.clientWidth+1'), width)
-        self.page.set_viewport_size({'width': 1440, 'height': 900})
-        self.page.screenshot(path=str(self.base.fixture.output / 'naming-completed-compact.png'))
-        self.page.evaluate("document.documentElement.setAttribute('data-theme','dark')")
-        self.page.screenshot(path=str(self.base.fixture.output / 'naming-completed-dark.png'))
-        self.assertFalse(any(method == 'POST' for method, _, _ in self.calls))
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        expect(self.dialog.get_by_role('textbox')).to_have_count(12)
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('第1讲的合成标题')
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_be_focused()
-        expect(self.dialog.get_by_role('button', name='生成命名建议', exact=True)).to_have_count(0)
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_have_count(0)
-        for width in (390, 280):
-            self.page.set_viewport_size({'width': width, 'height': 900})
-            self.assertTrue(self.dialog.evaluate('e=>e.scrollWidth<=e.clientWidth+1'), width)
-        self.assertEqual(self.count_post('/adjust'), 1)
+    def assert_controls(self):
+        expect(self.dialog.get_by_role('combobox', name='引擎与模型')).to_be_visible()
+        expect(self.dialog.locator('.naming-scope')).to_be_visible()
+        self.assertLess(self.dialog.locator('.naming-analysis').bounding_box()['y'], self.dialog.locator('.naming-scope').bounding_box()['y'])
+        self.assert_removed()
+
+    def test_inventory_failure_does_not_show_permanent_loading_or_mutate(self):
+        self.fail_inventory = True; self.base.open()
+        self.page.get_by_role('button', name='视频工作台', exact=True).click()
+        self.page.get_by_role('tab', name='文件重命名', exact=True).click()
+        panel = self.page.get_by_role('region', name='文件重命名', exact=True)
+        expect(panel.get_by_role('alert')).to_contain_text('分集读取失败')
+        expect(panel.get_by_role('status')).to_have_text('无法读取分集，请刷新页面重试。')
         self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
 
-    def test_completed_preview_uses_only_applied_subset_and_can_expand_paths(self):
-        self.plan_created = True; self.plan_state = 'applied'; self.applied = True; self.operation = 'apply'
-        self.preview = {'rows': self.rows[:1], 'moves': [{'project_id': self.rows[0]['project_id'], 'resource': 'video/fixture.wav',
-            'source': 'video/fixture.wav', 'target': 'video/1.1 变量基础.wav'}], 'preview_token': 'f' * 32, 'fingerprint': 'fixture'}
-        self.assertEqual(self.base.project(2), learning.LearningWorkflowBrowserTests.project(self.base, 2))
-        self.open()
-        self.dialog.locator('.naming-history summary').click()
-        self.dialog.get_by_role('button', name=re.compile('^真实文件名已同步')).click()
-        expect(self.dialog.locator('.naming-results li')).to_have_count(1)
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_be_hidden()
-        self.dialog.locator('.naming-preview-details summary').click()
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('video/1.1 变量基础.wav')
-        self.open_restore()
-        expect(self.dialog.get_by_role('button', name='恢复原命名', exact=True)).to_be_disabled()
-        self.assertEqual(self.count_post('/apply'), 0); self.assertEqual(self.count_post('/restore'), 0)
-
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('变量基础')
-        expect(self.dialog.get_by_role('textbox', name='P2 语义标题')).to_have_count(0)
-        self.dialog.get_by_role('button', name='取消调整', exact=True).click()
-        expect(self.dialog.locator('.naming-results li')).to_have_count(1)
-        expect(self.dialog.get_by_role('textbox')).to_have_count(0)
-
-    def test_long_course_heading_keeps_the_close_button_on_one_line(self):
-        self.inventory_title = '麻省理工学院—线性代数课（完整版72讲）通俗易懂，绝对是线性代数课程天花板！'
-        self.open_completed()
-        close = self.dialog.get_by_role('button', name='关闭字幕层级命名', exact=True)
-        for width in (390, 280):
-            self.page.set_viewport_size({'width': width, 'height': 900})
-            value = close.evaluate("e=>{const r=document.createRange();r.selectNodeContents(e);const s=getComputedStyle(e);return {textHeight:r.getBoundingClientRect().height,lineHeight:parseFloat(s.lineHeight)||parseFloat(s.fontSize)*1.5}}")
-            self.assertLessEqual(value['textHeight'], value['lineHeight'] + 1, (width, value))
-            self.assertTrue(self.dialog.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
-
-    def test_adjust_can_cancel_without_replaying_model_or_file_operations(self):
-        self.rows[0].update(number='2.1', title='已经编辑过的标题')
-        self.open_completed()
-        previous_id = self.plan_id
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        expect(self.dialog.get_by_role('textbox', name='P1 层级序号')).to_have_value('2.1')
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('已经编辑过的标题')
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('未确认的草稿')
-        self.dialog.get_by_role('button', name='取消调整', exact=True).click()
-        expect(self.dialog.locator('.naming-results li').first).to_contain_text('已经编辑过的标题')
-        expect(self.dialog.get_by_role('textbox')).to_have_count(0)
-        expect(self.dialog.get_by_role('button', name='调整命名', exact=True)).to_be_enabled()
-        self.assertEqual(self.saved_plans[previous_id]['state'], 'applied')
-        self.assertEqual(self.count_post('/adjust'), 1)
-        for suffix in ('/plan', '/reuse', '/preview', '/apply', '/restore'):
-            self.assertEqual(self.count_post(suffix), 0, suffix)
-
-    def test_adjust_requires_new_preview_and_confirmation_and_restores_prior_result(self):
-        self.open(); self.suggest(); self.validate()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True).click()
-        expect(self.dialog.get_by_role('heading', name='真实文件名已同步')).to_be_visible()
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('变量基础')
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_have_count(0)
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('二次修订')
-        self.validate()
-        expect(self.dialog.get_by_label(re.compile('我已检查以上最终清单'))).not_to_be_checked()
-        expect(self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)).to_be_disabled()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('二次修订的最终版')
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_have_count(0)
-        self.validate()
-        expect(self.dialog.get_by_label(re.compile('我已检查以上最终清单'))).not_to_be_checked()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True).click()
-        expect(self.page.locator('.video-context-heading')).to_contain_text('1.1 二次修订的最终版')
-        self.open_restore()
-        expect(self.dialog.get_by_role('button', name='恢复原命名', exact=True)).to_be_disabled()
-        self.dialog.get_by_label(re.compile('确认恢复这次操作前')).check()
-        self.dialog.get_by_role('button', name='恢复原命名', exact=True).click()
-        expect(self.page.locator('.video-context-heading')).to_contain_text('1.1 变量基础')
-        expect(self.dialog.locator('.naming-results li').first).not_to_contain_text('1.1 1.1')
-        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/adjust'), 1)
-        applied = [body for method, path, body in self.calls if method == 'POST' and path.endswith('/apply')]
-        self.assertEqual(len(applied), 2)
-        self.assertNotEqual(applied[0]['preview_token'], applied[1]['preview_token'])
-        self.assertTrue(all(body['confirm'] is True for body in applied))
-
-    def test_adjusted_validated_draft_resumes_from_history_without_model_request(self):
-        self.open_completed()
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('可恢复的调整草稿')
-        self.validate()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('button', name='关闭字幕层级命名').click()
-        self.page.locator('.video-context-more > summary').click()
-        self.page.get_by_role('button', name='字幕层级命名', exact=True).click()
-        self.dialog.locator('.naming-history summary').click()
-        self.dialog.get_by_role('button', name=re.compile('^已验证，尚未改名')).click()
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('可恢复的调整草稿')
-        expect(self.dialog.get_by_label(re.compile('我已检查以上最终清单'))).not_to_be_checked()
-        expect(self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)).to_be_disabled()
-        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
-
-    def test_adjust_subtitle_result_becomes_editable_without_model_consent(self):
-        self.open()
-        self.dialog.get_by_role('button', name='复用字幕名生成视频改名预览', exact=True).click()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True).click()
-        expect(self.dialog.get_by_role('heading', name='真实文件名已同步')).to_be_visible()
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        title = self.dialog.get_by_role('textbox', name='P1 语义标题')
-        expect(title).to_be_enabled(); expect(title).to_have_value('P01_分集主题')
-        expect(self.dialog.get_by_role('textbox', name='P1 层级序号')).to_have_value('')
-        title.fill('手动字幕标题'); self.validate()
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('video/手动字幕标题.wav')
-        expect(self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)).to_be_disabled()
-        self.assertEqual(self.count_post('/reuse'), 1); self.assertEqual(self.count_post('/adjust'), 1)
+    def test_single_page_controls_remain_before_and_after_generation(self):
+        self.open(); self.assert_controls()
+        expect(self.dialog).to_contain_text('可能联网并产生费用')
         self.assertEqual(self.count_post('/plan'), 0)
+        self.suggest(); self.validate(); self.assert_controls()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('变量基础')
+        expect(self.dialog.get_by_role('button', name='验证并预览最终文件名')).to_have_count(0)
+        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
+        body = next(body for method, path, body in self.calls if method == 'POST' and path.endswith('/plan'))
+        self.assertTrue(body['consent']); self.assertEqual(len(body['selected_ids']), 2)
+        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('subtitles/1.1 变量基础-B站平台字幕.srt')
 
-    def test_adjust_failure_preserves_the_completed_view(self):
-        self.open_completed(); self.fail_adjust = True
-        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
-        expect(self.dialog.get_by_role('alert')).to_contain_text('来源已变化')
+    def test_fourth_tab_preserves_draft_keyboard_navigation_and_no_learning_menu(self):
+        self.open(); self.suggest(); self.validate()
+        tabs = self.page.get_by_role('tablist', name='内容类型')
+        expect(tabs.get_by_role('tab')).to_have_text(['视频', '字幕与转写', 'AI 分析', '文件重命名'])
+        expect(tabs.get_by_role('tab', name='文件重命名')).to_have_attribute('aria-controls', 'naming-workpanel')
+        expect(self.page.get_by_role('dialog', name='文件重命名')).to_have_count(0)
+        self.dialog.get_by_role('textbox', name='P1 新名称').fill('保留的命名草稿')
+        tabs.get_by_role('tab', name='视频', exact=True).click(); self.page.keyboard.press('End')
+        expect(tabs.get_by_role('tab', name='文件重命名')).to_be_focused()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('保留的命名草稿')
+        self.page.get_by_role('button', name='学习视图', exact=True).click()
+        expect(self.page.locator('.video-context-more')).to_have_count(0)
+        expect(self.page.locator('#naming-workpanel')).to_be_hidden()
+        self.page.get_by_role('button', name='视频工作台', exact=True).click()
+        self.validate(); self.assert_controls()
+        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_fourth_tab_without_project_has_no_mutation(self):
+        self.page.goto(self.base.fixture.url)
+        self.page.get_by_role('tab', name='文件重命名', exact=True).click()
+        panel = self.page.get_by_role('tabpanel', name='文件重命名', exact=True)
+        expect(panel).to_contain_text('请先选择视频项目')
+        expect(self.page.get_by_role('dialog')).to_have_count(0)
+        expect(panel.get_by_role('button', name='返回视频', exact=True)).to_have_count(0)
+        self.assertFalse(any(method == 'POST' for method, _, _ in self.calls))
+
+    def test_only_explicit_confirmation_applies_and_refreshes_titles(self):
+        self.open(); self.suggest(); self.validate()
+        self.dialog.get_by_role('textbox', name='P1 新名称').fill('用户确认的标题')
+        expect(self.dialog.get_by_role('button', name='确认并重命名')).to_be_disabled()
+        self.validate()
+        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('video/1.1 用户确认的标题.wav')
+        self.assertEqual(self.count_post('/apply'), 0)
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_be_visible()
+        expect(self.page.locator('.video-context-heading')).to_contain_text('1.1 用户确认的标题')
+        self.assert_controls()
         expect(self.dialog.locator('.naming-results li')).to_have_count(2)
         expect(self.dialog.get_by_role('textbox')).to_have_count(0)
-        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+        expect(self.dialog.get_by_role('button', name='恢复未完成操作')).to_have_count(0)
+        applied = [body for method, path, body in self.calls if method == 'POST' and path.endswith('/apply')]
+        self.assertEqual(len(applied), 1); self.assertTrue(applied[0]['confirm'])
+        self.assertEqual(applied[0]['preview_token'], self.preview['preview_token'])
+        self.assertEqual(self.count_post('/restore'), 0)
 
-    def test_english_adjust_prefills_content_and_can_cancel(self):
-        self.plan_created = True; self.plan_state = 'applied'; self.applied = True; self.operation = 'apply'
-        self.page.add_init_script("localStorage.setItem('vp-language', 'en')")
-        self.page.goto(self.base.fixture.url + f'?project={self.base.identifier(1)}&page=learning')
-        expect(self.page.get_by_role('combobox', name='Learning project', exact=True)).to_be_visible()
-        self.page.locator('.video-context-more > summary').click()
-        self.page.get_by_role('button', name='Subtitle hierarchy naming', exact=True).click()
-        dialog = self.page.get_by_role('dialog', name='Subtitle hierarchy naming', exact=True)
-        dialog.locator('.naming-history summary').click(); dialog.locator('.naming-history button').first.click()
-        dialog.get_by_role('button', name='Adjust naming', exact=True).click()
-        expect(dialog.get_by_role('textbox', name='P1 descriptive title')).to_have_value('变量基础')
-        expect(dialog.get_by_role('textbox', name='P1 hierarchy number')).to_have_attribute('placeholder', 'Optional')
-        expect(dialog).to_contain_text('without another model call')
-        dialog.get_by_role('button', name='Cancel adjustment', exact=True).click()
-        expect(dialog.get_by_role('list', name='Naming results')).to_be_visible()
-        expect(dialog.get_by_role('textbox')).to_have_count(0)
-        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
-
-    def test_reuse_subtitle_names_without_model_consent_syncs_heading_and_picker(self):
+    def test_selection_before_generation_is_exact_and_missing_suggestions_block_apply(self):
         self.open()
-        self.dialog.get_by_role('button', name='复用字幕名生成视频改名预览', exact=True).click()
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('P01_分集主题')
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_be_disabled()
-        expect(self.dialog.get_by_role('textbox', name='P1 层级序号')).to_have_count(0)
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_be_visible()
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('video/P01_分集主题.wav')
-        expect(self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)).to_be_disabled()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True).click()
-        expect(self.dialog.get_by_role('heading', name='真实文件名已同步')).to_be_visible()
-        expect(self.page.locator('.video-context-heading strong')).to_have_text('P01_分集主题')
-        expect(self.page.get_by_role('combobox', name='学习项目', exact=True).locator('option:checked')).to_have_text(re.compile('^P01_分集主题'))
-        self.assertEqual(self.count_post('/reuse'), 1)
-        self.assertEqual(self.count_post('/plan'), 0)
-        self.open_restore()
-        self.dialog.get_by_label(re.compile('确认恢复这次操作前')).check()
-        self.dialog.get_by_role('button', name='恢复原命名', exact=True).click()
-        expect(self.dialog.get_by_role('heading', name='已恢复原命名')).to_be_visible()
-        expect(self.page.locator('.video-context-heading strong')).to_have_text('合成课程甲')
-
-    def test_open_requires_consent_and_has_no_mutation_or_overflow(self):
-        self.open()
-        expect(self.dialog.get_by_role('button', name='生成命名建议', exact=True)).to_be_disabled()
-        for width in (1440, 760, 390, 280):
-            self.page.set_viewport_size({'width': width, 'height': 900})
-            self.assertTrue(self.dialog.evaluate('(e) => e.scrollWidth <= e.clientWidth + 1'), width)
-            self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), width)
-        self.dialog.get_by_role('button', name='关闭字幕层级命名').click()
-        self.assertFalse(any(method == 'POST' for method, _, _ in self.calls))
-
-    def test_edited_preview_explicit_apply_refreshes_titles_and_can_restore(self):
-        self.open(); self.suggest()
-        self.dialog.get_by_role('textbox', name='P1 层级序号').fill('2.2.1')
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('基础类型')
-        self.validate()
-        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('2.2.1 基础类型.wav')
-        apply = self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)
-        expect(apply).to_be_disabled(); self.assertEqual(self.count_post('/apply'), 0)
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check(); apply.click()
-        expect(self.dialog.get_by_role('heading', name='真实文件名已同步')).to_be_visible()
-        expect(self.page.locator('.video-context-heading')).to_contain_text('2.2.1 基础类型')
-        self.open_restore()
-        expect(self.dialog.get_by_role('button', name='恢复原命名', exact=True)).to_be_disabled()
-        self.open_restore()
-        self.dialog.get_by_label(re.compile('确认恢复这次操作前')).check()
-        self.dialog.get_by_role('button', name='恢复原命名', exact=True).click()
-        expect(self.dialog.get_by_role('heading', name='已恢复原命名')).to_be_visible()
-        expect(self.page.locator('.video-context-heading')).not_to_contain_text('2.2.1 基础类型')
-        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 1); self.assertEqual(self.count_post('/restore'), 1)
-        start = next(body for method, path, body in self.calls if method == 'POST' and path.endswith('/plan'))
-        self.assertIs(start['consent'], True)
-        self.assertEqual(start['selected_ids'], [self.base.identifier(1), self.base.identifier(2)])
-        applied = next(body for _, path, body in self.calls if path.endswith('/apply'))
-        self.assertEqual(applied, {'confirm': True, 'preview_token': f'{1:032x}'})
-
-    def test_edit_invalidates_confirmation_and_validation_failure_does_not_replay_model(self):
-        self.open(); self.suggest(); self.validate()
-        self.dialog.get_by_label(re.compile('我已检查以上最终清单')).check()
-        self.dialog.get_by_role('textbox', name='P1 语义标题').fill('修订后的合成标题')
+        self.dialog.locator('.naming-scope input').nth(1).uncheck()
+        self.suggest(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P2 新名称')).to_have_count(0)
+        self.dialog.locator('.naming-scope input').nth(1).check()
+        expect(self.dialog).to_contain_text('分集选择已变化，请重新生成新名字。')
+        expect(self.dialog.get_by_role('button', name='确认并重命名')).to_be_disabled()
         expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_have_count(0)
-        self.fail_preview = True
-        self.dialog.get_by_role('button', name='验证并预览最终文件名', exact=True).click()
-        expect(self.dialog.get_by_role('alert')).to_contain_text('合成目标重名')
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('修订后的合成标题')
-        self.fail_preview = False; self.validate()
-        expect(self.dialog.get_by_label(re.compile('我已检查以上最终清单'))).not_to_be_checked()
-        expect(self.dialog.get_by_role('button', name='确认执行真实文件改名', exact=True)).to_be_disabled()
+        self.assertEqual(self.count_post('/plan'), 1)
+        self.suggest(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P2 新名称')).to_have_value('条件与类型')
+        selected = [body['selected_ids'] for method, path, body in self.calls if method == 'POST' and path.endswith('/plan')]
+        self.assertEqual([len(ids) for ids in selected], [1, 2]); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_deselecting_after_generation_validates_only_selected_subset(self):
+        self.open(); self.suggest(); self.validate()
+        self.dialog.locator('.naming-scope input').nth(1).uncheck(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P2 新名称')).to_have_count(0)
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_be_visible()
+        expect(self.dialog.locator('.naming-results li')).to_have_count(1)
+        self.assertEqual([row['project_id'] for row in self.applied_rows], [self.base.identifier(1)])
+        self.assertEqual(self.base.project(2), learning.LearningWorkflowBrowserTests.project(self.base, 2))
+        # Selecting another episode for the next run must not claim it was already renamed.
+        self.dialog.locator('.naming-scope input').nth(1).check()
+        expect(self.dialog.locator('.naming-results li')).to_have_count(1)
+        self.dialog.get_by_role('button', name='调整命名').click()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_be_visible()
+        expect(self.dialog.get_by_role('textbox', name='P2 新名称')).to_have_count(0)
+        self.assertEqual(self.count_post('/apply'), 1)
+
+    def test_empty_selection_and_missing_subtitles_never_start_model(self):
+        self.unready_parts = {2}; self.open()
+        expect(self.dialog.locator('.naming-scope input').nth(1)).to_be_disabled()
+        expect(self.dialog).to_contain_text('缺少字幕，请先生成字幕')
+        self.dialog.locator('.naming-scope input').first.uncheck()
+        expect(self.dialog.get_by_role('button', name='生成新名字', exact=True)).to_be_disabled()
+        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_selection_limit_blocks_generation(self):
+        self.max_selected = 1; self.open()
+        expect(self.dialog).to_contain_text('一次最多选择 1 集。')
+        expect(self.dialog.get_by_role('button', name='生成新名字', exact=True)).to_be_disabled()
+        self.dialog.locator('.naming-scope input').nth(1).uncheck()
+        expect(self.dialog.get_by_role('button', name='生成新名字', exact=True)).to_be_enabled()
+        self.assertEqual(self.count_post('/plan'), 0)
+
+    def test_model_change_preserves_episode_selection_and_never_auto_generates(self):
+        self.open(); self.dialog.locator('.naming-scope input').nth(1).uncheck()
+        picker = self.dialog.get_by_role('combobox', name='引擎与模型')
+        picker.select_option('codex|codex-fixture')
+        expect(self.dialog.locator('.naming-scope input').nth(1)).not_to_be_checked()
+        self.assertEqual(self.count_post('/plan'), 0)
+        self.suggest(); self.validate()
+        body = next(body for method, path, body in self.calls if method == 'POST' and path.endswith('/plan'))
+        self.assertEqual(body['agent']['engine'], 'codex'); self.assertEqual(body['selected_ids'], [self.base.identifier(1)])
+        picker.select_option('api|')
         self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
 
-    def test_background_task_survives_close_and_resumes_from_task_center(self):
+    def test_preview_conflict_never_replays_model_and_can_retry_local_check(self):
+        self.fail_preview = True; self.open(); self.suggest()
+        expect(self.dialog.get_by_role('alert')).to_contain_text('目标重名')
+        expect(self.dialog.get_by_role('button', name='确认并重命名')).to_be_disabled()
+        self.fail_preview = False
+        self.dialog.get_by_role('button', name='重新校验文件名').click(); self.validate()
+        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_stale_preview_response_cannot_authorize_newer_edit(self):
+        self.open(); self.suggest(); self.validate()
+        self.hold_next_preview = True
+        title = self.dialog.get_by_role('textbox', name='P1 新名称')
+        with self.page.expect_request(lambda request: request.method == 'POST' and request.url.endswith('/preview')):
+            title.fill('旧的在途草稿')
+        expect(self.dialog.get_by_text('正在校验文件名…', exact=True)).to_be_visible()
+        self.assertIsNotNone(self.held_preview)
+        title.fill('最新确认草稿'); self.validate()
+        held, response = self.held_preview
+        held.fulfill(json=response)
+        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).to_contain_text('最新确认草稿')
+        expect(self.dialog.get_by_role('region', name='真实文件改名预览')).not_to_contain_text('旧的在途草稿')
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_be_visible()
+        self.assertNotEqual(next(body['preview_token'] for method, path, body in self.calls if method == 'POST' and path.endswith('/apply')), response['preview_token'])
+
+    def test_generation_failure_does_not_auto_retry_or_modify_files(self):
+        self.fail_generate = True; self.open(); self.suggest()
+        expect(self.dialog.get_by_role('alert')).to_contain_text('模型请求失败')
+        self.assert_controls()
+        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
+        expect(self.dialog.get_by_role('button', name='确认并重命名')).to_have_count(0)
+
+    def test_apply_conflict_does_not_retry_or_claim_completion(self):
+        self.open(); self.suggest(); self.validate(); self.fail_apply_request = True
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.dialog.get_by_role('alert')).to_contain_text('来源文件已变化')
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_have_count(0)
+        self.assertEqual(self.count_post('/apply'), 1); self.assertEqual(self.count_post('/plan'), 1)
+        self.assertFalse(self.applied)
+
+    def test_adjust_preserves_previous_result_and_can_cancel_without_model_or_apply(self):
+        self.open_completed()
+        self.dialog.get_by_role('button', name='调整命名', exact=True).click()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('变量基础')
+        self.dialog.get_by_role('textbox', name='P1 新名称').fill('未确认的调整')
+        self.validate(); self.assert_controls()
+        self.dialog.get_by_role('button', name='取消调整', exact=True).click()
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_be_visible()
+        expect(self.dialog.locator('.naming-results li').first).to_contain_text('变量基础')
+        self.assertEqual(self.count_post('/adjust'), 1)
+        for suffix in ('/plan', '/apply', '/restore'): self.assertEqual(self.count_post(suffix), 0)
+
+    def test_adjust_requires_fresh_preview_then_explicit_confirmation(self):
+        self.open(); self.suggest(); self.validate()
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.dialog.get_by_role('heading', name='文件重命名完成')).to_be_visible()
+        self.dialog.get_by_role('button', name='调整命名').click()
+        self.dialog.get_by_role('textbox', name='P1 新名称').fill('二次修订')
+        self.validate()
+        self.assertEqual(self.count_post('/apply'), 1)
+        self.dialog.get_by_role('button', name='确认并重命名').click()
+        expect(self.page.locator('.video-context-heading')).to_contain_text('1.1 二次修订')
+        applied = [body for method, path, body in self.calls if method == 'POST' and path.endswith('/apply')]
+        self.assertEqual(len(applied), 2); self.assertNotEqual(applied[0]['preview_token'], applied[1]['preview_token'])
+        self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/adjust'), 1)
+
+    def test_adjust_failure_keeps_completed_result(self):
+        self.open_completed(); self.fail_adjust = True
+        self.dialog.get_by_role('button', name='调整命名').click()
+        expect(self.dialog.get_by_role('alert')).to_contain_text('来源已变化')
+        expect(self.dialog.locator('.naming-results li')).to_have_count(2)
+        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_existing_subtitle_plan_still_resumes_without_model_call(self):
+        self.plan_created = True; self.reused = True
+        self.rows = [{'project_id': self.base.identifier(part), 'number': '', 'title': f'P0{part}_分集主题'} for part in (1, 2)]
+        self.open(); self.from_task_center(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_be_disabled()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('P01_分集主题')
+        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_task_center_restores_edited_preview_without_auto_applying(self):
+        self.plan_created = True; self.plan_state = 'validated'
+        self.preview = {'rows': [{**self.rows[0], 'title': '持久草稿'}], 'moves': [], 'preview_token': 'f' * 32, 'fingerprint': 'fixture'}
+        self.open(); self.from_task_center(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('持久草稿')
+        expect(self.dialog.get_by_role('textbox', name='P2 新名称')).to_have_count(0)
+        self.assert_controls()
+        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+        self.assertNotEqual(self.preview['preview_token'], 'f' * 32)
+
+    def test_legacy_video_only_plan_cannot_apply_without_regeneration(self):
+        self.plan_created = True; self.rename_scope = 'video'; self.open(); self.from_task_center()
+        expect(self.dialog).to_contain_text('旧版仅视频预览')
+        expect(self.dialog.get_by_role('button', name='确认并重命名')).to_be_disabled()
+        self.assertEqual(self.count_post('/preview'), 0); self.assertEqual(self.count_post('/apply'), 0)
+
+    def test_background_task_survives_navigation_and_resumes_from_task_center(self):
         self.background = True; self.open(); self.suggest()
         expect(self.dialog.get_by_role('region', name='命名任务状态')).to_contain_text('进行中')
-        self.dialog.get_by_role('button', name='关闭字幕层级命名').click()
-        expect(self.dialog).to_have_count(0)
+        self.assert_controls()
+        self.page.get_by_role('tab', name='视频', exact=True).click()
         self.assertEqual(self.count_post('/cancel'), 0)
-        self.page.get_by_role('button', name=re.compile('^任务中心')).click()
-        expect(self.page.get_by_role('button', name='查看命名进度', exact=True)).to_be_visible()
-        self.finished = True
-        self.page.get_by_role('button', name='查看命名进度', exact=True).click()
-        expect(self.dialog).to_be_visible()
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_value('变量基础')
+        self.finished = True; self.from_task_center(); self.validate()
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_value('变量基础')
         self.assertEqual(self.count_post('/plan'), 1); self.assertEqual(self.count_post('/apply'), 0)
 
-    def test_cancel_model_job_never_submits_file_operation(self):
+    def test_cancel_model_task_never_submits_file_operation(self):
         self.background = True; self.open(); self.suggest()
-        self.dialog.get_by_role('button', name='取消任务', exact=True).click()
+        self.dialog.get_by_role('button', name='取消任务').click()
         expect(self.dialog.get_by_role('heading', name='未生成建议，没有改名')).to_be_visible()
         expect(self.dialog.get_by_role('alert')).to_contain_text('已取消')
         self.assertEqual(self.count_post('/cancel'), 1); self.assertEqual(self.count_post('/apply'), 0)
-        self.assertEqual(self.count_post('/plan'), 1)
 
-    def test_interrupted_history_can_restore_without_calling_model(self):
+    def test_only_incomplete_transaction_has_explicit_recovery(self):
         self.plan_created = True; self.failed_apply = True; self.operation = 'apply'
         self.plan_state = 'recovery_required'; self.applied = True
-        self.open()
-        self.dialog.get_by_text('最近预览与恢复记录', exact=True).click()
-        self.dialog.get_by_role('button', name=re.compile('^需要恢复原命名')).click()
-        expect(self.dialog.get_by_role('heading', name='需要恢复原命名')).to_be_visible()
-        self.open_restore()
-        self.dialog.get_by_label(re.compile('确认恢复这次操作前')).check()
-        self.dialog.get_by_role('button', name='恢复原命名', exact=True).click()
+        self.open(); self.from_task_center('apply'); self.assert_removed()
+        expect(self.dialog.get_by_role('button', name='重新生成新名字')).to_be_disabled()
+        expect(self.dialog.get_by_role('button', name='恢复未完成操作')).to_be_disabled()
+        self.dialog.get_by_label('确认恢复未完成操作的原文件名').check()
+        self.dialog.get_by_role('button', name='恢复未完成操作').click()
         expect(self.dialog.get_by_role('heading', name='已恢复原命名')).to_be_visible()
-        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0); self.assertEqual(self.count_post('/restore'), 1)
+        self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
+        self.assertEqual(self.count_post('/restore'), 1)
 
-    def test_missing_task_archive_shows_error_on_task_page_without_file_or_model_request(self):
-        self.plan_created = True; self.base.fixture.jobs = [self.job('plan')]
-        self.open()
-        self.dialog.get_by_role('button', name='关闭字幕层级命名').click()
-        self.page.get_by_role('button', name=re.compile('^任务中心')).click()
-        self.fail_resume = True
+    def test_missing_task_archive_stays_in_task_center_without_mutation(self):
+        self.plan_created = True; self.base.fixture.jobs = [self.job('plan')]; self.open()
+        self.page.get_by_role('button', name=re.compile('^任务中心')).click(); self.fail_resume = True
         self.page.get_by_role('button', name='查看命名记录', exact=True).click()
         expect(self.page.get_by_role('alert')).to_contain_text('无法从本地归档恢复命名任务对应的视频')
         expect(self.page.get_by_role('heading', name='任务中心', exact=True)).to_be_visible()
-        expect(self.dialog).to_have_count(0)
         self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
 
-    def test_foreign_course_plan_is_rejected_before_editor_or_apply(self):
-        self.plan_created = True; self.foreign_plan = True
-        self.open()
-        self.dialog.get_by_text('最近预览与恢复记录', exact=True).click()
-        self.dialog.get_by_role('button', name=re.compile('^待编辑与验证')).click()
+    def test_foreign_course_plan_is_rejected_before_edit_or_apply(self):
+        self.plan_created = True; self.foreign_plan = True; self.open(); self.from_task_center()
         expect(self.dialog.get_by_role('alert')).to_contain_text('不属于当前课程')
-        expect(self.dialog.get_by_role('textbox', name='P1 语义标题')).to_have_count(0)
+        expect(self.dialog.get_by_role('textbox', name='P1 新名称')).to_have_count(0)
         self.assertEqual(self.count_post('/plan'), 0); self.assertEqual(self.count_post('/apply'), 0)
 
+    def test_desktop_mobile_and_dark_screenshots_have_no_overflow(self):
+        self.inventory_title = '麻省理工学院—线性代数课（完整版72讲）通俗易懂的课程'
+        self.open(); self.suggest(); self.validate()
+        artifacts = Path(__file__).resolve().parents[2] / '.local/work/artifacts/file-rename/synthetic'
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for width, theme in ((1440, 'light'), (1440, 'dark'), (390, 'light'), (280, 'dark')):
+            self.page.set_viewport_size({'width': width, 'height': 1000})
+            self.page.evaluate('(theme) => document.documentElement.setAttribute("data-theme", theme)', theme)
+            self.assert_controls()
+            self.assertTrue(self.dialog.evaluate('e=>e.scrollWidth<=e.clientWidth+1'))
+            self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+            self.page.screenshot(path=str(artifacts / f'{theme}-{width}.png'), full_page=True, animations='disabled')
+        self.assertEqual(self.count_post('/apply'), 0)
 
-    def test_english_naming_ui_keeps_course_titles_and_requires_consent(self):
+    def test_english_ui_keeps_content_and_requires_explicit_apply(self):
         self.page.add_init_script("localStorage.setItem('vp-language', 'en')")
         self.page.goto(self.base.fixture.url + f'?project={self.base.identifier(1)}&page=learning')
         expect(self.page.get_by_role('combobox', name='Learning project', exact=True)).to_be_visible()
-        self.page.locator('.video-context-more > summary').click()
-        self.page.get_by_role('button', name='Subtitle hierarchy naming', exact=True).click()
-        dialog = self.page.get_by_role('dialog', name='Subtitle hierarchy naming', exact=True)
-        expect(dialog).to_be_visible()
-        expect(dialog).to_contain_text('合成课程甲')
-        button = dialog.get_by_role('button', name='Generate naming suggestions', exact=True)
-        expect(button).to_be_disabled()
-        dialog.get_by_label(re.compile('Allow the selected model to process course subtitles')).check()
-        button.click()
-        expect(dialog.get_by_role('textbox', name='P1 descriptive title', exact=True)).to_have_value('变量基础')
-        expect(dialog.get_by_role('textbox', name='P1 hierarchy number', exact=True)).to_have_value('1.1')
-        dialog.get_by_role('button', name='Validate and preview final filenames', exact=True).click()
-        expect(dialog.get_by_role('region', name='Real-file rename preview', exact=True)).to_be_visible()
-        expect(dialog.get_by_role('button', name='Confirm real-file renaming', exact=True)).to_be_disabled()
+        self.page.locator('.nav-button').first.click()
+        self.page.get_by_role('tab', name='File renaming', exact=True).click()
+        dialog = self.page.get_by_role('region', name='File renaming', exact=True)
+        expect(dialog).to_contain_text('incur charges')
+        dialog.get_by_role('button', name='Generate new names', exact=True).click()
+        expect(dialog.get_by_role('textbox', name='P1 new name')).to_have_value('变量基础')
+        expect(dialog.get_by_role('region', name='Real-file rename preview')).to_be_visible()
+        expect(dialog.get_by_role('button', name='Confirm and rename')).to_be_enabled()
+        expect(dialog.locator('details')).to_have_count(0)
         self.assertEqual(self.count_post('/apply'), 0)
 
 

@@ -49,6 +49,8 @@ def main():
         if path == '/config': return route.fulfill(json={'platforms': ['哔哩哔哩'], 'ai_configured': False, 'media_ready': True, 'transcription_ready': True, 'subtitles_ready': True})
         if path == '/parse' or path == f'/projects/{PROJECT}/resume': return route.fulfill(json=parsed())
         if path == '/tasks': return route.fulfill(json={'jobs': [state['job']] if state['job'] else []})
+        if path.endswith('/subtitle-cues'): return route.fulfill(json={'sources': [], 'resource': '', 'cues': []})
+        if path == '/embedding/settings': return route.fulfill(json={'base_url': '', 'model': '', 'key_saved': False, 'configured': False})
         if path == '/ai/agents': return route.fulfill(json={'permission': 'restricted-learning', 'engines': []})
         if path == f'/projects/{PROJECT}/conversations/context' and request.method == 'GET':
             return route.fulfill(json={'available': False, 'missing': ['subtitles', 'chapters', 'summary']})
@@ -149,7 +151,7 @@ def main():
             after = frame.bounding_box()
             assert abs(before['height'] - after['height']) < 1 and abs(before['width'] - after['width']) < 1, (before, after)
             expect(page.get_by_role('complementary', name='学习侧栏', exact=True)).to_be_hidden()
-            page.get_by_role('button', name='开始学习', exact=True).click()
+            page.get_by_role('button', name='学习视图', exact=True).click()
             expect(page.get_by_role('complementary', name='学习侧栏', exact=True)).to_be_visible()
             assert state['count'] == 3
             page.reload(wait_until='networkidle')
