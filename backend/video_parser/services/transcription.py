@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import json
 import math
 import os
+import re
 from pathlib import Path
 import subprocess
 from threading import Lock, Thread
@@ -125,6 +126,34 @@ def run_whisper(command, progress=None):
         return subprocess.CompletedProcess(command,process.returncode,stderr=log)
 
 
+class WhisperFailure(RuntimeError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.user_message = message
+
+
+def whisper_failure(log):
+    # Prefer the LAST structured marker: a reused worker log can contain older
+    # failures. Never infer CUDA OOM from a separate "model loaded on CUDA" line.
+    markers = re.findall(r'^WHISPER_ERROR=(system_memory|gpu_memory|memory_allocation|operation_failed)\s*$', log, re.MULTILINE)
+    code = markers[-1] if markers else None
+    if code is None:
+        if re.search(r'(?:MemoryError|_ArrayMemoryError)(?::|\s*$)|bad_alloc', log, re.MULTILINE):
+            code = 'system_memory'
+        elif re.search(r'(?:cuda|cublas|cudnn)[^\r\n]{0,160}out of memory|out of memory[^\r\n]{0,160}cuda', log, re.IGNORECASE):
+            code = 'gpu_memory'
+        elif 'out of memory' in log.lower(): code = 'memory_allocation'
+    messages = {
+        'system_memory': '系统内存分配失败（RAM／虚拟内存提交空间），不是缺少字幕。请检查内存占用及系统提交余量；完整诊断保存在 .whisper.log，未发布部分输出。不会自动关闭其他程序或重试。',
+        'gpu_memory': 'GPU 显存不足。请自行决定是否释放其他程序占用后重试；不会自动切换云端或模型。',
+        'memory_allocation': '内存分配失败，暂不能确定是系统内存还是显存；请查看 .whisper.log。未发布部分输出，不会自动重试。',
+        'operation_failed': 'Whisper 转录失败，请查看结果目录中的 .whisper.log 完整诊断；未发布部分输出，不会自动重试。',
+    }
+    code = code or 'operation_failed'
+    return WhisperFailure(code, messages[code])
+
+
 def transcribe(source, language='auto', output_dir=None, timestamps=False, reuse_model=False):
     require_tool()
     validate_language(language)
@@ -172,9 +201,7 @@ def transcribe(source, language='auto', output_dir=None, timestamps=False, reuse
     with (directory / (source.stem + '.whisper.log')).open('x', encoding='utf-8') as stream:
         stream.write(log)
     if process.returncode:
-        if 'out of memory' in log.lower():
-            raise RuntimeError('GPU 显存不足。请自行决定是否释放其他程序占用后重试；不会自动切换云端或模型。')
-        raise RuntimeError('Whisper 转录失败，可能是文件无音轨、损坏或本机运行环境异常。详情保存在结果目录的 .whisper.log 文件；未发布部分输出。')
+        raise whisper_failure(log)
     try:
         result=validated_outputs(source,directory)
         if hasattr(process,'worker_metadata'):result['worker']=process.worker_metadata
@@ -270,6 +297,7 @@ def view(job):
             # When a language was forced, Whisper reports that language back; the UI must say "按X转写", not "识别为X".
             'requested_language': job.language, 'source_project_id': job.project_id, 'source_resource': job.resource,
             'files': [{'name': output_filename(job, job.files[fmt]), 'format': fmt,
+                       'sha256': job.files[fmt].get('sha256'), 'resource': job.files[fmt].get('relative'), 'project_id': job.files[fmt].get('project_id'),
                        'url': f'/api/workspace/transcriptions/{job.id}/files/{fmt}'} for fmt in job.files]}
 
 
@@ -353,7 +381,7 @@ def worker(job):
     except task_runtime.Cancelled:
         raise
     except RuntimeError as error:
-        job.error_code='gpu_memory' if '显存不足' in str(error) else task_runtime.classify(error)[0]
+        job.error_code=getattr(error, 'code', None) or task_runtime.classify(error)[0]
         message = str(error)
     except Exception as error:
         job.error_code,message=task_runtime.classify(error)

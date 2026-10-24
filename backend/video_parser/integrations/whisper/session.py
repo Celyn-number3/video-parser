@@ -46,6 +46,7 @@ def serve(idle_seconds=60, preloaded_model=None, initial_load_seconds=0.0):
                 code=cli.main(arguments,model=model,initial_load_seconds=load_seconds)
             result={'id':identifier,'returncode':code,'model_load_count':loads,'model_reused':reused,'seconds':time.monotonic()-started}
         except Exception as error:
+            cli.report_failure(error)
             result={'id':identifier,'returncode':1,'model_load_count':loads,'error_type':type(error).__name__}
             print('Whisper request failed: '+type(error).__name__,file=sys.stderr,flush=True)
         first=False
@@ -59,6 +60,10 @@ if __name__=='__main__':
     # thread is already blocked in stdin. Initialize the CUDA model before that reader.
     started=time.monotonic()
     print('Initializing CUDA model before stdin reader',file=sys.stderr,flush=True)
-    with open(os.devnull,'w') as sink,redirect_stdout(sink):
-        model=cli.load_model()
+    try:
+        with open(os.devnull,'w') as sink,redirect_stdout(sink):
+            model=cli.load_model()
+    except Exception as error:
+        cli.report_failure(error)
+        raise SystemExit(1) from None
     raise SystemExit(serve(args.idle_seconds,model,time.monotonic()-started))

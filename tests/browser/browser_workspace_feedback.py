@@ -72,7 +72,13 @@ def main():
             identifier = path.split('/')[-2]; cancel_ids.append(identifier)
             transcription_jobs[identifier].update(state='cancelled', message='已取消该任务')
             data = transcription_jobs[identifier]
-        elif path.endswith('/resume'): data = parsed
+        elif path.endswith('/resume'):
+            # Shared selection now validates the restored project identity.
+            # Return the requested episode, not P1 for every fixture URL.
+            restored_pid = path.split('/')[2]
+            row = next(item for item in source_rows if item['project_id'] == restored_pid)
+            data = {**parsed, 'id': restored_pid, 'source_url': row['source_url'],
+                    'project': {**project, 'id': restored_pid, 'part': row['part'], 'episode_title': row['title']}}
         elif path.endswith('/episodes/refresh'): data = {'episodes': episodes}
         elif path.endswith('/study/progress'):
             if body: state['progress'] = {'position': body['position'], 'duration': 70, 'revision': state['progress']['revision']+1}
@@ -235,25 +241,25 @@ def main():
             transcription = page.locator('section.transcription-panel')
             transcription.get_by_role('button', name='已归档视频', exact=False).click()
             radios = transcription.locator('input[name="transcription-video"]')
-            radios.nth(0).check()
+            radios.nth(0).click(); expect(radios.nth(0)).to_be_checked()
             transcription.get_by_role('button', name='本地转写', exact=True).click()
             transcription.get_by_role('button', name='开始转写', exact=True).click()
             expect(transcription.locator('.subtitle-status:visible')).to_contain_text('转写进行中：第一集')
             expect(radios.nth(1)).to_be_enabled()
-            radios.nth(1).check()
+            radios.nth(1).click(); expect(radios.nth(1)).to_be_checked()
             expect(transcription.get_by_role('button', name='取消转录任务', exact=True)).to_have_count(0)
             expect(transcription.locator('.subtitle-status:visible').filter(has_text='转写进行中：第一集')).to_have_count(0)
             transcription.get_by_role('button', name='本地转写', exact=True).click()
             transcription.get_by_role('button', name='开始转写', exact=True).click()
             expect(transcription.locator('.subtitle-status:visible')).to_contain_text('转写进行中：第二集')
             assert transcription_jobs['d'*32]['state'] == 'running' and cancel_ids == []
-            radios.nth(0).check()
+            radios.nth(0).click(); expect(radios.nth(0)).to_be_checked()
             expect(transcription.locator('.subtitle-status:visible')).to_contain_text('转写进行中：第一集')
             page.screenshot(path=str(ART/'12-transcription-switching.png'), full_page=True)
             transcription.get_by_role('button', name='取消转录任务', exact=True).click()
             expect(transcription.locator('.subtitle-status:visible')).to_contain_text('已取消该任务')
             assert cancel_ids == ['d'*32]
-            radios.nth(1).check()
+            radios.nth(1).click(); expect(radios.nth(1)).to_be_checked()
             expect(transcription.locator('.subtitle-status:visible')).to_contain_text('转写进行中：第二集')
             assert transcription_jobs['e'*32]['state'] == 'running'
             page.set_viewport_size({'width': 390, 'height': 844})

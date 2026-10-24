@@ -51,6 +51,31 @@ class TranslationStatusTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('synthetic translation did not finish')
 
+    def test_versions_use_manifest_origin_and_select_translations_without_nesting(self):
+        platform = library.import_file(self.pid, self.subtitle, 'subtitles/platform.srt', 'subtitle',
+                                       {'video_resource': self.video, 'language': 'zh'})
+        job = self.finish(translations.start(self.reference, 'zh', True))
+        self.assertEqual(job.state, 'completed')
+        response = self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'video_resource': self.video})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        originals = {row['resource']: row for row in data['versions'] if row['kind'] != 'translation'}
+        self.assertEqual(originals[self.resource]['origin'], 'local')
+        self.assertEqual(originals[platform]['origin'], 'platform')
+        translated = next(row for row in data['versions'] if row['kind'] == 'translation')
+        self.assertEqual(translated['source_origin'], 'local')
+        self.assertEqual(translated['source_resource'], self.resource)
+        viewed = self.client.get(f'/api/workspace/projects/{self.pid}/subtitles',
+                                params={'video_resource': self.video, 'subtitle_resource': translated['resource']}).json()
+        self.assertIn('你好', viewed['text'])
+        self.assertEqual(viewed['selected']['kind'], 'translation')
+        self.assertEqual(viewed['translations'], [])
+        library.update_details(self.pid, translated['resource'], {'source_resource': None})
+        legacy = next(row for row in library.translation_records(library.get(self.pid), self.video) if row['resource'] == translated['resource'])
+        self.assertEqual(legacy['source_origin'], 'unknown')
+        self.assertEqual(self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'subtitle_resource': '../private'}).status_code, 404)
+        self.model.assert_called_once()
+
     def test_archive_restores_translation_without_task_and_learning_lists_chinese(self):
         from video_parser.services import ai_analysis
         from video_parser.web import analysis_routes

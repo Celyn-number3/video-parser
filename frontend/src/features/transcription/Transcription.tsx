@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { request } from '../../lib/api';
 import type { ArchivedSubtitles, Configuration } from '../../lib/api';
 import SubtitleTranslation from './SubtitleTranslation';
+import SubtitleViewer from './SubtitleViewer';
 import SavedLocation from './SavedLocation';
 import useTranscription, { sourceKey, type TranscriptionOptions } from './useTranscription';
 import Subtitles from '../subtitles/Subtitles';
@@ -28,20 +29,42 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     batchNotice, file, job, busy, error, cancelling, limit, running, hasJob,
     selectFiles, start, cancel, refresh } = useTranscription({ projectId, media, uploadLimit, reuseModel, pending, focusRequest, visible, onSelectSource });
   const [filter, setFilter] = useState('');
-  const [archiveState, setArchiveState] = useState<{ key: string; data: ArchivedSubtitles } | null>(null);
+  const [archiveState, setArchiveState] = useState<{ key: string; data: ArchivedSubtitles; sources: typeof sources } | null>(null);
   const [archiveError, setArchiveError] = useState('');
-  const [subtitleResource, setSubtitleResource] = useState('');
+  // A resource path is scoped to one video. Never send the previous episode's
+  // selection while the new episode's default is being resolved.
+  const [subtitleSelection, setSubtitleSelection] = useState<{ key: string; resource: string } | null>(null);
+  const subtitleResource = subtitleSelection?.key === selectedKey ? subtitleSelection.resource : '';
+  const setSubtitleResource = (resource: string) => setSubtitleSelection({ key: selectedKey, resource });
   const archiveKey = mode === 'video' && selectedSource?.has_subtitles ? sourceKey(selectedSource) : '';
   const archive = archiveState?.key === archiveKey ? archiveState.data : null;
-  useEffect(() => { setSubtitleResource(''); }, [selectedKey]);
   useEffect(() => {
     setArchiveState(current => current?.key === archiveKey ? current : null); setArchiveError('');
     if (!archiveKey || !selectedSource) return;
+    // Pinning a version we just loaded must not issue a duplicate read. A real
+    // source-list refresh still revalidates it because the snapshot changes.
+    if (subtitleResource && archiveState?.key === archiveKey && archiveState.sources === sources
+      && archiveState.data.selected?.resource === subtitleResource) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ video_resource: selectedSource.resource });
-    if (subtitleResource) params.set('subtitle_resource', subtitleResource);
+    if (subtitleResource && !subtitleResource.startsWith('task:')) params.set('subtitle_resource', subtitleResource);
     request<ArchivedSubtitles>(`/projects/${selectedSource.project_id}/subtitles?${params}`, controller.signal)
-      .then(data => { if (!controller.signal.aborted) setArchiveState({ key: archiveKey, data }); })
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!subtitleResource) {
+          // Prefer verified local transcripts on entry, even when an older API
+          // defaults to platform captions. Filenames/language are not provenance.
+          const preferred = (data.versions || data.files).find(row => row.origin === 'local'
+            || (!row.origin && row.kind === 'transcription')) || data.selected;
+          if (preferred) {
+            // Pin the first view as well as manual choices: background refreshes
+            // and newly completed tasks must not switch what the user is reading.
+            setSubtitleResource(preferred.resource);
+            if (preferred.resource !== data.selected?.resource) return;
+          }
+        }
+        setArchiveState({ key: archiveKey, data, sources });
+      })
       .catch(reason => { if (!controller.signal.aborted) setArchiveError(reason instanceof Error ? reason.message : '无法读取已有字幕，请刷新列表。'); });
     return () => controller.abort();
   }, [archiveKey, subtitleResource, sources]);
@@ -78,7 +101,8 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const platformMode = method === 'platform';
   // One state, one message: a video with local subtitles shows them first and keeps the
   // acquisition controls folded away until the user asks to re-fetch or fill in episodes.
-  const hasArchive = mode === 'video' && selectedSource?.has_subtitles === true;
+  const completedResult = mode === 'video' && shownJob?.state === 'completed' && !!shownJob.text ? shownJob : null;
+  const hasArchive = mode === 'video' && (selectedSource?.has_subtitles === true || !!completedResult);
   const noSelection = mode === 'video' && !selectedSource;
   const showAcquire = !noSelection && (!hasArchive || acquireOpen || transcribing);
   // Picking a method is a request to acquire subtitles: unfold the controls for it.
@@ -87,8 +111,6 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
   const saveHint = destinationHint;
   const acquireToggle = <button type="button" className="acquire-toggle" aria-expanded={showAcquire} aria-controls="subtitle-acquire" disabled={transcribing} onClick={() => setAcquireOpen(open => !open)}>
     {showAcquire ? '收起获取选项' : platformMode ? '重新下载字幕' : '重新转写'}</button>;
-  const archiveMeta = archive?.has_subtitles ? ['本地归档', archive.selected?.language ? languageName(archive.selected.language) : '',
-    archive.files.length > 1 ? `${archive.files.length} 个字幕文件` : ''].filter(Boolean).join(' · ') : '';
   return <Panel className={'transcription-panel' + (mode === 'video' ? ' is-video' : '')} aria-label="字幕与转写">
     {ready === false && !platformMode && !selectedSource?.has_subtitles && <p className="error-text" role="alert">本机转写组件未安装（需要 NVIDIA 显卡），可以先用平台字幕。</p>}
     {job && isActive(job.state) && !jobForSelection && <p className="notice" role="status">其他视频的转写仍在后台运行，切换不会取消任务。可在任务中心查看。</p>}
@@ -97,14 +119,7 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
         <button type="button" aria-pressed={mode === 'upload'} disabled={selectingLocked} onClick={() => setMode('upload')}>上传文件</button>
         <button type="button" aria-pressed={mode === 'video'} disabled={selectingLocked} onClick={() => setMode('video')}>已归档视频{sources?.length ? <span className="switch-count">{sources.length}</span> : null}</button>
       </div>
-      {/* How subtitles are obtained is a view-level choice: right next to the source tabs, explanations as tooltips. */}
-      {mode === 'video' && <div className="method-picker" role="group" aria-label="字幕来源">
-        <span className="option-label">字幕来源</span>
-        <div className="source-switch method-switch">
-          <button type="button" aria-pressed={!!selectedSource && platformMode} disabled={locked || !isBilibili} title={isBilibili ? '直接下载 B站的字幕，快且准；需要登录，部分视频没有字幕' : selectedSource ? '该视频不是带链接的 B站视频，无法下载平台字幕' : '先选择一个视频'} onClick={() => chooseMethod('platform')}>B站平台字幕</button>
-          <button type="button" aria-pressed={!!selectedSource && !platformMode} disabled={locked || !archived} title={archived ? '用本机显卡识别语音，音频不上传' : selectedSource ? '本地转写需要先在视频工作台归档视频' : '先选择一个视频'} onClick={() => chooseMethod('transcribe')}>本地转写</button>
-        </div>
-      </div>}
+
     </div>
     {/* Stable tree: the detail column (and the embedded Subtitles state) stays mounted across tab switches. */}
     <div className={mode === 'video' ? 'subtitle-split' : 'subtitle-single'}>
@@ -143,22 +158,25 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
     </div>}
     <div className="transcription-detail">
     {noSelection && !!sources?.length && <p className="detail-empty">从列表中选择一个视频。</p>}
-    {mode === 'video' && selectedSource && typeof selectedSource.has_subtitles === 'boolean' && <section className={'archived-subtitles' + (hasArchive ? '' : ' is-missing')} aria-label="当前视频字幕" aria-busy={hasArchive && !archive && !archiveError}>
+    {mode === 'video' && selectedSource && typeof selectedSource.has_subtitles === 'boolean' && <section className={'archived-subtitles' + (hasArchive ? '' : ' is-missing')} aria-label="当前视频字幕" aria-busy={hasArchive && !archive && !completedResult && !archiveError}>
       {hasArchive ? <>
-        <div className="archive-status"><span className="subtitle-badge">✓ 已有字幕</span>{archiveMeta && <span className="archive-meta">{archiveMeta}</span>}
-          {archive?.has_subtitles && archive.files.length > 1 && <select aria-label="已有字幕文件" value={archive.selected?.resource || ''} onChange={event => setSubtitleResource(event.target.value)}>
-            {archive.files.map(file => <option key={file.resource} value={file.resource}>{file.filename}</option>)}
-          </select>}</div>
-        {archiveError ? <p className="error-text" role="alert">{archiveError}</p> : !archive ? null : !archive.has_subtitles ? <p>字幕已变化，请刷新视频列表。</p>
-          : archive.selected && <SubtitleTranslation key={selectedKey + archive.selected.resource} source={{ project_id: selectedSource.project_id, resource: archive.selected.resource, video_resource: selectedSource.resource }}
-            text={archive.text} language={archive.selected.language} config={config} onOpenSettings={onOpenSettings}
-            label="字幕原文" textId="archived-subtitle-text" rows={6} restoredJob={restoredTranslation && (restoredTranslation.translation_source === archive.selected.resource || !!restoredTranslation.translation_source_sha256 && restoredTranslation.translation_source_sha256 === archive.selected.sha256) ? restoredTranslation : null} archivedTranslations={archive.translations} />}
+        <div className="archive-status"><span className="subtitle-badge">✓ 已有字幕</span></div>
+        {archiveError && <p className="error-text" role="alert">{archiveError}</p>}
+        <SubtitleViewer key={selectedKey} archive={archive} job={completedResult} restored={restoredTranslation} resource={subtitleResource}
+          projectId={selectedSource.project_id} video={selectedSource.resource} onSelect={setSubtitleResource} config={config} onOpenSettings={onOpenSettings} />
         {/* Subtitles already live in the project folder: show where (and open it) instead of another download. */}
         {archive?.has_subtitles ? <SavedLocation label="字幕已保存到" location={archiveFolder} openPath={`/projects/${selectedSource.project_id}/open`} body={{ folder: 'subtitles' }}>{acquireToggle}</SavedLocation>
           : <div className="saved-location-row"><span className="saved-location-actions">{acquireToggle}</span></div>}
       </> : <p className="subtitle-note">尚无本地字幕，可下载平台字幕或进行本地转写。</p>}
     </section>}
     <div id="subtitle-acquire" className="acquire-section" hidden={!showAcquire}>
+          {mode === 'video' && <div className="method-picker" role="group" aria-label="获取方式">
+        <span className="option-label">获取方式</span>
+        <div className="source-switch method-switch">
+          <button type="button" aria-pressed={!!selectedSource && platformMode} disabled={locked || !isBilibili} title={isBilibili ? '直接下载 B站的字幕，快且准；需要登录，部分视频没有字幕' : selectedSource ? '该视频不是带链接的 B站视频，无法下载平台字幕' : '先选择一个视频'} onClick={() => chooseMethod('platform')}>B站平台字幕</button>
+          <button type="button" aria-pressed={!!selectedSource && !platformMode} disabled={locked || !archived} title={archived ? '用本机显卡识别语音，音频不上传' : selectedSource ? '本地转写需要先在视频工作台归档视频' : '先选择一个视频'} onClick={() => chooseMethod('transcribe')}>本地转写</button>
+        </div>
+      </div>}
     {mode === 'video' && <h3 className="acquire-title">{platformMode ? '下载平台字幕' : '本地转写'}</h3>}
     {!platformMode && <div className="option-row save-target">
       <label className="option-label" htmlFor="save-destination">保存到</label>
@@ -202,17 +220,17 @@ export default function Transcription({ projectId, media, ready, subtitlesReady,
       {canRetry && !locked && <span className="retry-languages">{forced ? '' : '识别错了？'}{retryLanguages.map(code =>
         <button key={code} type="button" className="link-button" onClick={() => retryAs(code)}>{`按${languageName(code)}重新转写`}</button>)}</span>}
     </p>}
-    {shownJob?.text && <div className="analysis-result transcription-result">
+    {shownJob?.text && !completedResult && <div className="analysis-result transcription-result">
       {shownJob.state === 'completed' ? <SubtitleTranslation key={shownJob.id} source={{ job_id: shownJob.id }} text={shownJob.text}
         language={shownJob.language} config={config} onOpenSettings={onOpenSettings}
         label={shownJob.operation === 'translation' ? '译文' : '识别文字'} textId="transcription-text" />
         : <><label htmlFor="transcription-text">{shownJob.operation === 'translation' ? '译文' : '识别文字'}</label><textarea id="transcription-text" readOnly rows={8} value={shownJob.text} /></>}
     </div>}
     {/* Results are written to disk already; download buttons remain only for records without a saved location. */}
-    {shownJob?.files.length && !shownJob.saved_to?.location ? <div className="transcription-downloads">{shownJob.files.map(output =>
+    {!completedResult && shownJob?.files.length && !shownJob.saved_to?.location ? <div className="transcription-downloads">{shownJob.files.map(output =>
       <button type="button" key={output.format} onClick={() => saveFiles([output.url])}><Icon name="download" />{shownJob.operation === 'translation' ? '下载译文 ' : '下载 '}{output.format.toUpperCase()}</button>)}
     </div> : null}
-    {shownJob?.saved_to?.location && shownJob.files.length ? <SavedLocation label="转写结果已保存到" location={shownJob.saved_to.location} openPath={`/transcriptions/${shownJob.id}/open`} /> : null}
+    {!completedResult && shownJob?.saved_to?.location && shownJob.files.length ? <SavedLocation label="转写结果已保存到" location={shownJob.saved_to.location} openPath={`/transcriptions/${shownJob.id}/open`} /> : null}
     </>}
     </div>
     </div>

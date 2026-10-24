@@ -1,5 +1,16 @@
 {
  "exact": {
+    "查看来源": "View source",
+    "查看字幕来源": "Subtitle viewing source",
+    "获取方式": "Acquisition method",
+    "本地转写字幕": "Local transcript",
+    "AI 译文": "AI translation",
+    "来源未确认": "Source unconfirmed",
+    "语言未标注": "Language not recorded",
+    "原字幕：": "Original source: ",
+    "实际文件：": "File: ",
+    "正在读取字幕版本…": "Loading subtitle version…",
+    "翻译已完成，请在上方选择 AI 译文查看。": "Translation completed. Select AI translation above to view it.",
     "为整个项目生成简短、直观的名称。修改主文件夹并同步界面项目名称；原始来源标题、分集名称、视频与字幕文件名保持不变。": "Generate a short, clear project name. Update the parent folder and displayed project name; keep the original source title, episode names, video and subtitle filenames unchanged.",
     "单个视频": "Standalone videos",
     "筛选视频列表": "Filter video list",

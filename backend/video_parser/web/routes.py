@@ -504,7 +504,8 @@ def archived_subtitles(identifier: str, video_resource: str | None = None, subti
         if video_resource and project['resources'].get(video_resource, {}).get('kind') != 'video':
             raise KeyError('Unknown video')
         records = library.subtitle_records(project, video_resource)
-        selected = next((row for row in records if row['resource'] == subtitle_resource), None) if subtitle_resource else next(iter(records), None)
+        versions = records + library.translation_records(project, video_resource)
+        selected = next((row for row in versions if row['resource'] == subtitle_resource), None) if subtitle_resource else next(iter(versions), None)
         if subtitle_resource and selected is None: raise KeyError('Unknown subtitle')
         text = ''
         if selected:
@@ -515,7 +516,7 @@ def archived_subtitles(identifier: str, video_resource: str | None = None, subti
                 text = '\n'.join(body for _, body in parse_cues(raw, preserve_duplicates=True))
             else: text = raw
         translated = []
-        if selected:
+        if selected and selected['kind'] != 'translation':
             for row in library.translation_records(project, video_resource, selected['resource']):
                 path = library.resource_from_project(project, row['resource'])
                 raw = path.read_text(encoding='utf-8-sig', errors='replace')
@@ -523,7 +524,7 @@ def archived_subtitles(identifier: str, video_resource: str | None = None, subti
                 body = '\n'.join(body for _, body in parse_cues(raw, preserve_duplicates=True)) if path.suffix.lower() in ('.srt', '.vtt') else raw
                 if body.strip(): translated.append({**row, 'text': body})
         return {'project_id': identifier, 'has_subtitles': bool(records), 'files': records, 'selected': selected, 'text': text,
-                'translations': translated}
+                'translations': translated, 'versions': versions}
     except (KeyError, ValueError, OSError): raise HTTPException(404, '归档字幕已变化，请刷新列表后重试。') from None
 
 

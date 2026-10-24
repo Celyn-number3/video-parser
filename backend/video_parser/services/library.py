@@ -488,7 +488,7 @@ def subtitle_records(project, video_resource=None):
             if not path.stat().st_size or path.stat().st_size > 2 * 1024 * 1024: continue
         except (OSError, ValueError, KeyError, TypeError): continue
         records.append({'resource': name, 'kind': info['kind'], 'filename': info.get('download_name') or path.name,
-                        'language': info.get('language') or '', 'sha256': info.get('sha256'), 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
+                        'language': info.get('language') or '', 'origin': ('local' if info['kind'] == 'transcription' else 'platform' if project.get('platform') == 'bilibili' else 'unknown'), 'sha256': info.get('sha256'), 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
     return sorted(records, key=lambda row: (row['kind'] != 'subtitle', Path(row['resource']).suffix.lower() == '.txt', row['resource']))
 
 
@@ -510,7 +510,20 @@ def translation_records(project, video_resource=None, source_resource=None):
             path = resource_from_project(project, name)
             if not 0 < path.stat().st_size <= 2 * 1024 * 1024: continue
         except (OSError, ValueError, KeyError): continue
-        rows.append({'resource': name, 'filename': path.name, 'kind': 'translation', 'language': info.get('language') or '',
+        parent = project.get('resources', {}).get(info.get('source_resource'), {})
+        # A legacy/missing/stale parent is explicitly unknown, not guessed from
+        # the language or filename. Validate the recorded hash if present.
+        parent_kind = parent.get('kind')
+        if parent_kind in ('subtitle', 'transcription'):
+            try:
+                parent_path = resource_from_project(project, info['source_resource'])
+                if info.get('source_sha256') and digest(parent_path) != info['source_sha256']:
+                    parent_kind = None
+            except (OSError, ValueError, KeyError): parent_kind = None
+        parent_origin = 'local' if parent_kind == 'transcription' else 'platform' if parent_kind == 'subtitle' and project.get('platform') == 'bilibili' else 'unknown'
+        rows.append({'resource': name, 'filename': info.get('download_name') or path.name, 'kind': 'translation', 'origin': 'translation',
+                     'source_resource': info.get('source_resource'), 'source_origin': parent_origin,
+                     'source_language': parent.get('language') or '', 'sha256': info.get('sha256'), 'language': info.get('language') or '',
                      'url': f"/api/workspace/projects/{project['id']}/files/{name}",
                      'location': 'outputs/' + path.relative_to(LIBRARY_ROOT).as_posix(), 'modified': path.stat().st_mtime})
     return sorted(rows, key=lambda row: (-row['modified'], Path(row['resource']).suffix.lower() == '.txt', row['resource']))

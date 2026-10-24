@@ -9,8 +9,8 @@ import useAgentModels from '../learning/useAgentModels';
 type Source = { job_id: string } | { project_id: string; resource: string; video_resource?: string };
 // restoredJob: a translation of this video restored after a reload / from the task center, shown here
 // (where it belongs) instead of in the transcription result area.
-type Props = { source: Source; text: string; language?: string; config?: Configuration | null; label?: string; textId?: string; rows?: number; restoredJob?: TranscriptionJob | null; archivedTranslations?: ArchivedTranslation[]; onOpenSettings?: (button: HTMLButtonElement) => void };
-export default function SubtitleTranslation({ source, text, language, config, label, textId, rows = 8, restoredJob, archivedTranslations = [], onOpenSettings }: Props) {
+type Props = { unified?: boolean; onCompleted?: (job: TranscriptionJob) => void; source: Source; text: string; language?: string; config?: Configuration | null; label?: string; textId?: string; rows?: number; restoredJob?: TranscriptionJob | null; archivedTranslations?: ArchivedTranslation[]; onOpenSettings?: (button: HTMLButtonElement) => void };
+export default function SubtitleTranslation({ unified = false, onCompleted, source, text, language, config, label, textId, rows = 8, restoredJob, archivedTranslations = [], onOpenSettings }: Props) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState<'zh' | 'en'>(() => language === 'en' ? 'zh' : language === 'zh' ? 'en' : (text.match(/[\u3400-\u9fff]/g)?.length || 0) > (text.match(/[a-zA-Z]/g)?.length || 0) / 3 ? 'en' : 'zh');
   const [outputConfirmed, setOutputConfirmed] = useState(false);
@@ -41,7 +41,7 @@ export default function SubtitleTranslation({ source, text, language, config, la
     text: completed.text, location: completed.saved_to?.location || '', openPath: `/transcriptions/${completed.id}/open`, body: {} });
   const saved = choices.find(item => item.key === translationResource) || matching || choices[0];
   const completedId = job?.state === 'completed' ? job.id : '';
-  useEffect(() => { if (completedId) window.dispatchEvent(new Event('video-parser:subtitles-changed')); }, [completedId]);
+  useEffect(() => { if (completedId && job) { onCompleted?.(job); window.dispatchEvent(new Event('video-parser:subtitles-changed')); } }, [completedId]);
   const working = pending || isActive(current?.state);
   const local = !models.native && config?.ai?.provider === 'llamacpp';
   // Keep the user's batch preference when switching models; local models still use their own limits.
@@ -74,18 +74,19 @@ export default function SubtitleTranslation({ source, text, language, config, la
       {local ? <p className="subtitle-note">本机模型按启动配置的上下文和单次回复上限自动分批。</p>
         : <label className="naming-consent translation-batch-option"><input type="checkbox" checked={outputConfirmed} disabled={working} onChange={event => setOutputConfirmed(event.target.checked)} />
           <span>我已确认所选模型及接入端单次输出不少于 32K tokens，启用云端大批次（每批最多 20,000 字符／300 条）。不勾选则按兼容档（2,200 字符／24 条）分批。</span></label>}
-      <div className="translation-controls"><button type="button" className="primary" disabled={working || !models.configured} onClick={() => { void start(); }}>开始 AI 翻译</button>
+      <div className="translation-controls"><button type="button" className="primary" disabled={working || !models.configured || !text.trim()} onClick={() => { void start(); }}>开始 AI 翻译</button>
         {current && isActive(current.state) && <button type="button" onClick={() => { void cancelTask('transcriptions', current.id, new AbortController().signal).catch(() => setError('取消请求未完成，请在任务中心检查。')); }}>取消翻译</button>}</div>
     </>}
     {/* Status and result stay visible when the settings above are folded. */}
     {/* Progress or failure only: a finished translation speaks for itself (译文 + where it was saved). */}
     {current && current.state !== 'completed' && <p className="translation-status" role="status">{current.message}</p>}
     {error && <p role="alert" className="error-text">{error}</p>}
-    {saved && <div className="translation-result">
+    {saved && !unified && <div className="translation-result">
       <label>已保存译文<select aria-label="已保存译文" value={saved.key} onChange={e => setTranslationResource(e.target.value)}>{choices.map(item => <option key={item.key} value={item.key}>{item.filename}</option>)}</select></label>
       <label>译文<textarea aria-label="译文" readOnly rows={8} value={saved.text} /></label>
       {saved.location && <SavedLocation label="译文已保存到" location={saved.location} openPath={saved.openPath} body={saved.body} />}
     </div>}
+    {unified && completed && <p className="subtitle-note">翻译已完成，请在上方选择 AI 译文查看。</p>}
     {working && <p className="subtitle-note">切换视频或离开页面不会取消后台翻译，可在任务中心继续查看。</p>}
   </section>;
 }

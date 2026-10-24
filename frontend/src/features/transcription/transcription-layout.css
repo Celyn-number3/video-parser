@@ -80,3 +80,12 @@
   .save-target .row-action .operation-button { width: 100%; }
   .saved-location-actions { margin-left: 0; }
 }
+/* Viewing provenance is distinct from acquisition, with one active body. */
+.subtitle-view-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.subtitle-view-sources button[aria-pressed="true"] { border-color: var(--color-border); background: var(--color-bg); color: var(--color-text); font-weight: 600; box-shadow: 0 0 0 1px var(--color-border); }
+.subtitle-version-label { display: grid; gap: 6px; font-size: 13px; }
+.subtitle-version-label select { width: 100%; min-width: 0; max-width: 100%; }
+.subtitle-provenance { font-size: 13px; line-height: 1.65; margin: 12px 0; }
+.subtitle-viewer textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; }
+.subtitle-version-file { overflow-wrap: anywhere; }
+.acquire-section .method-picker { margin: 12px 0; }

@@ -46,4 +46,11 @@ def load_model():
     from faster_whisper import WhisperModel
     if not (MODEL_DIR / "model.bin").exists():
         raise RuntimeError("模型尚未下载，请运行 scripts/setup-local-tools.ps1 -DownloadModel")
-    return WhisperModel(str(MODEL_DIR), device="cuda", compute_type="int8_float16", cpu_threads=8, num_workers=1, local_files_only=True)
+    model = WhisperModel(str(MODEL_DIR), device="cuda", compute_type="int8_float16", cpu_threads=8, num_workers=1, local_files_only=True)
+
+    if __package__:
+        from .features import BoundedFeatureExtractor
+    else:
+        from features import BoundedFeatureExtractor
+    model.feature_extractor = BoundedFeatureExtractor(model.feature_extractor)
+    return model

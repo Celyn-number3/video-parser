@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 if __package__:
@@ -105,6 +106,20 @@ def render(segments, with_timestamps=False):
     return text, srt
 
 
+def report_failure(error):
+    message = str(error).lower()
+    if isinstance(error, MemoryError) or 'bad_alloc' in message:
+        code = 'system_memory'
+    elif 'out of memory' in message and any(word in message for word in ('cuda', 'cublas', 'cudnn')):
+        code = 'gpu_memory'
+    elif 'out of memory' in message:
+        code = 'memory_allocation'
+    else:
+        code = 'operation_failed'
+    print('WHISPER_ERROR=' + code, file=sys.stderr, flush=True)
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+
+
 def main(argv=None, model=None, initial_load_seconds=0.0):
     args = parser().parse_args(argv)
     try:
@@ -157,13 +172,14 @@ def main(argv=None, model=None, initial_load_seconds=0.0):
                 print(f"完成：音频 {info.duration:.2f} 秒，转录 {elapsed:.2f} 秒", file=sys.stderr, flush=True)
             except Exception as error:
                 failures+=1
-                if 'out of memory' in str(error).lower():print('CUDA out of memory',file=sys.stderr,flush=True)
+                report_failure(error)
                 print(f"当前文件失败（{type(error).__name__}），继续后续文件。",file=sys.stderr,flush=True)
         return 1 if failures else 0
     except KeyboardInterrupt:
         print("已取消。此前完成的输出会保留。", file=sys.stderr)
         return 130
     except Exception as exc:
+        report_failure(exc)
         print(f"错误：{exc}", file=sys.stderr)
         return 1
 

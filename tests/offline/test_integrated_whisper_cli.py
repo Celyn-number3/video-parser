@@ -25,6 +25,39 @@ class CLITests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return cli.main(list(args))
 
+    def test_memory_diagnostics_include_stack_and_do_not_guess_cuda(self):
+        from video_parser.services.transcription import whisper_failure
+        cases = [(MemoryError(), 'system_memory'), (RuntimeError('CUDA out of memory'), 'gpu_memory'),
+                 (RuntimeError('out of memory'), 'memory_allocation'), (ValueError('invalid audio'), 'operation_failed')]
+        for error, code in cases:
+            with self.subTest(code=code):
+                stream = io.StringIO()
+                with contextlib.redirect_stderr(stream):
+                    try: raise error
+                    except Exception as failure: cli.report_failure(failure)
+                log = stream.getvalue()
+                self.assertIn('WHISPER_ERROR=' + code, log)
+                self.assertIn('Traceback', log)
+                self.assertEqual(whisper_failure(log).code, code)
+        self.assertEqual(whisper_failure('MemoryError').code, 'system_memory')
+        self.assertEqual(whisper_failure('std::bad_alloc').code, 'system_memory')
+        self.assertEqual(whisper_failure('CUDA model loaded\nRuntimeError: out of memory').code, 'memory_allocation')
+        self.assertEqual(whisper_failure('WHISPER_ERROR=system_memory\nMemoryError\nWHISPER_ERROR=operation_failed\nValueError: invalid audio').code, 'operation_failed')
+        from video_parser.services import task_runtime
+        failure = whisper_failure('WHISPER_ERROR=system_memory')
+        self.assertEqual(task_runtime.classify(failure), ('system_memory', failure.user_message))
+
+    def test_memory_error_does_not_publish_outputs_and_batch_continues(self):
+        second = self.root / 'next.wav'; second.write_bytes(b'fake')
+        model = SimpleNamespace(transcribe=lambda *a, **k: None)
+        with patch.object(model, 'transcribe', side_effect=[MemoryError(), (iter(self.segments), SimpleNamespace(language='zh', duration=5.0))]), \
+             contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as log:
+            code = cli.main(['transcribe', str(self.source), str(second), '--output-dir', str(self.out)], model=model)
+        self.assertEqual(code, 1)
+        self.assertIn('WHISPER_ERROR=system_memory', log.getvalue())
+        self.assertFalse((self.out / '中文 audio.txt').exists())
+        self.assertTrue((self.out / 'next.txt').exists())
+
     def test_render(self):
         text, srt = cli.render(self.segments, True)
         self.assertIn("[00:00:01.200 --> 00:00:04.500] 你好，世界。", text)

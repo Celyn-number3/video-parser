@@ -154,15 +154,26 @@ class SavedTranslationPickerTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls): translation.TranslationStatusBrowserTests.tearDownClass()
     def test_single_saved_translation_and_restored_job_both_have_picker(self):
-        f=translation.TranslationStatusBrowserTests('test_saved_translation_survives_reload_without_any_remembered_task'); f.setUp()
-        try:
-            f.completed=True; f.open(); f.choose(0)
-            picker=f.page.get_by_role('combobox',name='已保存译文',exact=True)
-            expect(picker).to_be_visible(); expect(picker.locator('option')).to_have_count(1)
-            f.page.reload(); f.page.get_by_role('button',name=__import__('re').compile(r'^已归档视频')).click(); f.choose(0)
-            expect(picker).to_be_visible()
-            self.assertFalse(any(path=='/translations' for _,path,_ in f.calls))
-        finally: f.tearDown()
+        for restored in (False, True):
+            with self.subTest(restored=restored):
+                f=translation.TranslationStatusBrowserTests('test_saved_translation_survives_reload_without_any_remembered_task'); f.setUp()
+                try:
+                    f.completed=True
+                    if restored:
+                        f.page.add_init_script("localStorage.setItem('video-parser:task:transcriptions', '"+f.job_id+"')")
+                    f.open(); f.choose(0)
+                    # Completion/recovery exposes a version, never steals the current original.
+                    expect(f.page.get_by_label('字幕原文',exact=True)).to_have_value(f.text)
+                    card=f.view_translation()
+                    picker=card.get_by_role('combobox',name='字幕版本',exact=True)
+                    expect(picker).to_be_visible(); expect(picker.locator('option')).to_have_count(1)
+                    expect(picker).to_have_value('subtitles/original.AI翻译.zh.srt')
+                    expect(card.locator('textarea')).to_have_count(1)
+                    f.page.reload(); f.page.get_by_role('button',name=__import__('re').compile(r'^已归档视频')).click(); f.choose(0)
+                    f.view_translation()
+                    expect(picker).to_be_visible(); expect(picker.locator('option')).to_have_count(1)
+                    self.assertFalse(any(path=='/translations' for _,path,_ in f.calls))
+                finally: f.tearDown()
 
 
 if __name__=='__main__': unittest.main()
