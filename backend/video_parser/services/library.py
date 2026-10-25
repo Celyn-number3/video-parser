@@ -510,20 +510,33 @@ def translation_records(project, video_resource=None, source_resource=None):
             path = resource_from_project(project, name)
             if not 0 < path.stat().st_size <= 2 * 1024 * 1024: continue
         except (OSError, ValueError, KeyError): continue
-        parent = project.get('resources', {}).get(info.get('source_resource'), {})
+        parent_key = info.get('source_resource')
+        resolution = 'recorded' if parent_key else 'unknown'
+        # Recover missing legacy references only from one hash-verified, video-compatible original.
+        if not parent_key and info.get('source_sha256'):
+            candidates = []
+            for key, candidate in project.get('resources', {}).items():
+                if candidate.get('kind') not in ('subtitle', 'transcription') or candidate.get('sha256') != info['source_sha256']: continue
+                if info.get('video_resource') and candidate.get('video_resource') not in (None, '', info['video_resource']): continue
+                try:
+                    if digest(resource_from_project(project, key)) == info['source_sha256']: candidates.append(key)
+                except (OSError, ValueError, KeyError): pass
+            if len(candidates) == 1: parent_key, resolution = candidates[0], 'verified_hash'
+        parent = project.get('resources', {}).get(parent_key, {})
         # A legacy/missing/stale parent is explicitly unknown, not guessed from
         # the language or filename. Validate the recorded hash if present.
         parent_kind = parent.get('kind')
         if parent_kind in ('subtitle', 'transcription'):
             try:
-                parent_path = resource_from_project(project, info['source_resource'])
+                parent_path = resource_from_project(project, parent_key)
                 if info.get('source_sha256') and digest(parent_path) != info['source_sha256']:
                     parent_kind = None
             except (OSError, ValueError, KeyError): parent_kind = None
         parent_origin = 'local' if parent_kind == 'transcription' else 'platform' if parent_kind == 'subtitle' and project.get('platform') == 'bilibili' else 'unknown'
         rows.append({'resource': name, 'filename': info.get('download_name') or path.name, 'kind': 'translation', 'origin': 'translation',
-                     'source_resource': info.get('source_resource'), 'source_origin': parent_origin,
-                     'source_language': parent.get('language') or '', 'sha256': info.get('sha256'), 'language': info.get('language') or '',
+                     'source_resource': parent_key, 'source_origin': parent_origin,
+                     'source_resolution': resolution if parent_origin != 'unknown' else 'unknown',
+                     'source_language': (parent.get('language') or '') if parent_kind in ('subtitle', 'transcription') else '', 'sha256': info.get('sha256'), 'language': info.get('language') or '',
                      'url': f"/api/workspace/projects/{project['id']}/files/{name}",
                      'location': 'outputs/' + path.relative_to(LIBRARY_ROOT).as_posix(), 'modified': path.stat().st_mtime})
     return sorted(rows, key=lambda row: (-row['modified'], Path(row['resource']).suffix.lower() == '.txt', row['resource']))

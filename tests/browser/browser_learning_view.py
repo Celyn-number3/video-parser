@@ -446,6 +446,8 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
                 expect(page.locator('#video-stage')).to_be_hidden()
                 expect(page.get_by_role('complementary', name='学习侧栏', exact=True)).to_be_hidden()
+                if page.get_by_role('button', name='生成新材料', exact=True).is_visible():
+                    page.get_by_role('button', name='生成新材料', exact=True).click()
                 page.get_by_role('button', name='章节时间轴', exact=True).click()
                 page.get_by_role('button', name='开始分析', exact=True).click()
                 expect(page.get_by_role('button', name='用于当前学习', exact=True)).to_be_enabled()
@@ -494,7 +496,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 page.locator('video').evaluate('(video) => video.pause()')
                 expect(directory.locator('.chapter-timeline-list button').nth(1)).to_have_attribute('aria-current', 'true')
                 intro = timeline.get_by_role('region', name='当前章节介绍', exact=True)
-                timeline.locator('.chapter-timeline-description > summary').click()
+                expect(timeline.locator('.chapter-timeline-description')).to_have_attribute('open', '')
                 expect(intro.get_by_role('heading')).to_have_text('核心概念')
                 expect(intro.locator('time')).to_have_text('00:05 — 00:12')
                 expect(intro).to_contain_text('理解核心概念和使用方法。')
@@ -615,6 +617,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 page.get_by_role('tab', name='AI 对话', exact=True).click()
                 page.locator('#ai-chat-question').fill('尚未发送的追问')
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
+                page.get_by_role('button', name='生成新材料', exact=True).click()
                 page.locator('#prompt').fill('管理参数草稿，不属于个人笔记')
                 expect(page.locator('.independent-conversations')).to_have_count(0)
                 page.get_by_role('button', name='学习视图', exact=True).click()
@@ -639,6 +642,8 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                 expect(chat.locator('.ai-chat-answer')).to_contain_text('模拟回答：核心概念从')
                 # Background generation never silently replaces the chosen lecture material.
                 page.get_by_role('button', name='生成/管理 AI 学习材料', exact=True).click()
+                if page.get_by_role('button', name='生成新材料', exact=True).is_visible():
+                    page.get_by_role('button', name='生成新材料', exact=True).click()
                 page.get_by_role('button', name='章节时间轴', exact=True).click()
                 page.get_by_role('button', name='开始分析', exact=True).click()
                 expect(page.get_by_role('combobox', name='选择分析记录', exact=True)).to_have_value('20261016-003000-abcd0005')
@@ -707,7 +712,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                             && element.scrollHeight > element.clientHeight + 1;
                         return { body: scrolls(body), list: scrolls(list), overflow: getComputedStyle(list).overflowY };
                     }''')
-                    assert ownership == {'body': True, 'list': False, 'overflow': 'visible'}, (width, ownership)
+                    assert ownership == {'body': False, 'list': True, 'overflow': 'auto'}, (width, ownership)
                     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), width
                 page.set_viewport_size({'width': 1440, 'height': 1000})
                 page.wait_for_function("Math.abs(document.querySelector('.playback-resume').getBoundingClientRect().bottom - document.querySelector('.study-sidebar').getBoundingClientRect().bottom) <= 1")
@@ -716,7 +721,7 @@ def main(timeline_test=False, study_test=False, agent_test=False):
                     const active = document.querySelector('.chapter-timeline-list [aria-current]');
                     if (!active?.textContent.includes('第18章')) return false;
                     const item = active.getBoundingClientRect();
-                    const body = document.querySelector('.study-sidebar-body').getBoundingClientRect();
+                    const body = document.querySelector('.chapter-timeline-list').getBoundingClientRect();
                     return item.top >= body.top - 1 && item.bottom <= body.bottom + 1
                         ? {item:item.toJSON(),body:body.toJSON(),scrollY} : false;
                 }''').json_value()

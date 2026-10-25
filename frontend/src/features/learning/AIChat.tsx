@@ -1,3 +1,4 @@
+import MathText from '../../components/MathText';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -125,7 +126,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
     <button type="button" className="conversation-new" disabled={busy !== null || chat?.creating} onClick={() => { void newConversation(); }}>＋ 新建对话</button>
     <div className="conversation-list">{chat?.sessions.map(item => <button type="button" key={item.id} aria-pressed={item.id === session?.id}
       onClick={() => { chat.selectConversation(item.id); setPicker(false); onReveal?.(); }}>
-      <span translate="no">{item.title}</span>{item.origin_record && <small>历史对话</small>}
+      <MathText text={item.title} />{item.origin_record && <small>历史对话</small>}
     </button>)}</div>
   </>;
   const floatingPicker = floating && pickerVisible && chat?.ready && chat.available ? createPortal(<>
@@ -143,7 +144,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
         <button type="button" onClick={chat.missing.includes('subtitles') ? onGenerateSubtitles : onManage}>
           {chat.missing.includes('subtitles') ? '生成字幕' : '准备学习材料'}</button></div>
       : <>
-        <div className="ai-chat-session-heading"><strong translate="no">{session?.title || '新对话'}</strong>
+        <div className="ai-chat-session-heading"><strong>{session?.title ? <MathText text={session.title} /> : '新对话'}</strong>
           {!floating && <button type="button" onClick={() => setPicker(value => !value)} aria-expanded={picker}>选择对话</button>}</div>
         {!floating && picker && <div className="conversation-inline-picker">{list}</div>}
         <ol className="ai-chat-log" ref={log}>{session?.messages.map(item => <li key={item.id}>

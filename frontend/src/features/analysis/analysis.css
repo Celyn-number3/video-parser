@@ -43,7 +43,7 @@
 .analysis-record { display: grid; gap: 12px; margin-top: 12px; min-width: 0; }
 .analysis-meta { margin: 0; font-size: var(--font-size-xs); color: var(--color-text-tertiary); overflow-wrap: anywhere; }
 .analysis-record-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.modern-app .analysis-record-actions :is(button, a.button) { min-height: 30px; padding: 4px 12px; font-size: var(--font-size-xs); box-shadow: none; }
+.modern-app .analysis-record-actions :is(button, a.button) { min-height: 30px; padding: 4px 12px; font-size: var(--font-size-control); box-shadow: none; }
 .analysis-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: var(--font-size-xs); color: var(--color-text); }
 .analysis-followup { padding-top: 12px; border-top: 1px solid var(--color-border); }
 .analysis-question { display: flex; gap: 8px; margin: 0 0 8px; font-weight: var(--font-weight-semibold); color: var(--color-text); }
@@ -53,16 +53,19 @@
 .analysis-ask button { flex-shrink: 0; }
 
 /* Model output */
-.markdown { min-width: 0; font-size: var(--font-size-md); line-height: 1.75; color: var(--color-text); overflow-wrap: anywhere; }
+.markdown { min-width: 0; font-size: var(--font-size-lg); line-height: 1.75; color: var(--color-text); overflow-wrap: anywhere; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
-.markdown :is(h3, h4, h5, h6) { margin: 20px 0 8px; line-height: var(--line-height-snug); color: var(--color-text); }
-.markdown h3 { font-size: var(--font-size-lg); }
-.markdown h4 { font-size: 15px; }
-.markdown :is(h5, h6) { font-size: var(--font-size-md); }
-.markdown p { margin: 0 0 10px; }
+.markdown :is(h3, h4, h5, h6) { margin: 28px 0 12px; line-height: 1.5; color: var(--color-text); }
+.markdown h3 { font-size: 20px; }
+.markdown h4 { font-size: var(--font-size-section); }
+.markdown :is(h5, h6) { font-size: var(--font-size-lg); }
+.markdown p { margin: 0 0 14px; }
 .markdown :is(ul, ol) { margin: 0 0 10px; padding-left: 22px; }
-.markdown li { margin: 3px 0; }
+.markdown li { margin: 6px 0; }
+.markdown > :is(ul, ol) > li { margin-block: 10px; }
+/* The record owns the available width; do not cap prose at a character count. */
+.analysis-markdown { width: 100%; max-width: none; box-sizing: border-box; }
 .markdown li > ul { margin: 4px 0 0; }
 .markdown blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--color-border-strong); color: var(--color-text-secondary); }
 .markdown code { padding: 1px 5px; border-radius: var(--radius-sm); background: var(--color-surface-sunken); font-family: var(--font-family-mono); font-size: 0.9em; }
@@ -74,8 +77,9 @@
 .markdown table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); line-height: var(--line-height-normal); }
 .markdown :is(th, td) { padding: 6px 10px; border: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 .markdown th { background: var(--color-surface-sunken); font-weight: var(--font-weight-semibold); }
-.modern-app button.md-time { --button-edge: var(--color-border-strong); display: inline; min-height: 0; margin: 0 1px; padding: 0 5px; border-radius: var(--radius-sm); background: var(--color-bg); box-shadow: none; font-family: var(--font-family-mono); font-size: 0.85em; line-height: 1.5; color: var(--color-text); vertical-align: baseline; }
-.modern-app button.md-time:hover { background: var(--color-fill-primary); color: var(--color-on-primary); }
+.modern-app .markdown button.md-time { --button-edge: var(--color-border-strong); border: 1px solid var(--button-edge); display: inline-block; white-space: nowrap; min-height: 0; margin: 0 4px 0 0; padding: 0 5px; border-radius: var(--radius-sm); background: var(--color-fill-hover); box-shadow: none; font-weight: 500; font-family: var(--font-family-mono); font-size: 0.85em; line-height: 1.5; color: var(--color-text); vertical-align: baseline; }
+.modern-app .markdown button.md-time:hover:not(:disabled) { --button-edge: var(--color-text); background: var(--color-fill-hover); color: var(--color-text); }
+.modern-app .markdown button.md-time:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
 
 @media (max-width: 640px) {
   .analysis-segment { width: 100%; }
@@ -88,8 +92,8 @@
 .video-context-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .video-context-heading { justify-content: space-between; min-width: 0; margin: 0 0 16px; padding: 12px 0; }
 .video-context-heading > div:first-child { flex: 1 1 220px; min-width: 0; }
-.video-context-heading strong { display: block; overflow-wrap: anywhere; font-size: 15px; }
-.video-context-heading span { display: block; margin-top: 5px; font-size: 11px; color: var(--color-text-secondary); }
+.video-context-heading strong { display: block; overflow-wrap: anywhere; font-size: var(--font-size-subheading); }
+.video-context-heading span { display: block; margin-top: 5px; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
 
 .learning-materials .analysis-record-bar { flex-wrap: wrap; }
 .learning-materials .analysis-record-bar select { flex: 1 1 200px; max-width: 100%; }
@@ -100,3 +104,7 @@
 /* Hidden preparation/player boxes must not leave implicit empty rows in the management view. */
 .modern-app .study-workspace.study-single-column .learning-notes-panel { grid-column: 1; grid-row: 1; }
 .study-context-rail [aria-label="分集学习上下文"] > .learning-progress { border-top: 0; margin-top: 0; padding-top: 0; }
+
+/* Keep each citation range together while the following prose wraps normally. */
+.md-time-range { display:inline-flex; align-items:baseline; gap:3px; white-space:nowrap; vertical-align:baseline; margin-inline-end:6px; }
+.modern-app .markdown .md-time-range > button.md-time { margin:0; }

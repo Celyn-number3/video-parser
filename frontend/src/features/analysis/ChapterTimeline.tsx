@@ -3,6 +3,8 @@ import type { RefObject } from 'react';
 import { chapterTime } from './chapters';
 import type { AnalysisTimeline } from './chapters';
 import './chapter-timeline.css';
+import useChapterScroll from './useChapterScroll';
+import MathText, { mathTextLabel } from '../../components/MathText';
 
 type Props = { timeline: AnalysisTimeline; videoRef: RefObject<HTMLVideoElement | null>; mediaKey: string;
   duration: number; enabled: boolean; view: 'player' | 'directory'; compact?: boolean; visible?: boolean; onSeek: (seconds: number) => void };
@@ -23,22 +25,7 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
   const chapters = timeline.chapters.filter(chapter => !total || chapter.time < total);
   const scale = total || (chapters.at(-1)?.time || 0) + 1;
   const active = enabled ? chapters.reduce((found, chapter, index) => chapter.time <= playback.time ? index : found, -1) : -1;
-  // Use the sidebar's single scroll viewport (or the standalone list), never the page/video.
-  useEffect(() => {
-    if (view !== 'directory' || !visible) return;
-    const container = list.current?.closest<HTMLElement>('.study-sidebar-body') || list.current;
-    if (!container) return;
-    const reveal = () => {
-      const item = container.querySelector<HTMLElement>('[aria-current]');
-      if (!item || !container.clientHeight) return;
-      const parent = container.getBoundingClientRect(), target = item.getBoundingClientRect();
-      if (target.top < parent.top) container.scrollTop += target.top - parent.top;
-      else if (target.bottom > parent.bottom) container.scrollTop += target.bottom - parent.bottom;
-    };
-    reveal();
-    const observer = new ResizeObserver(reveal); observer.observe(container);
-    return () => observer.disconnect();
-  }, [active, visible, view, mediaKey, timeline.recordId]);
+  const { hasMore, scrollNext } = useChapterScroll(list, active, view === 'directory' && visible, `${mediaKey}:${timeline.recordId}:${chapters.length}`);
   if (!chapters.length) return view === 'directory' ? <p className="study-sidebar-empty">没有落在当前视频时长内的章节时间点。</p> : null;
   const current = active >= 0 ? chapters[active] : null;
   const end = current ? (chapters[active + 1]?.time || total) : 0;
@@ -47,7 +34,7 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
     onSeek(time);
     setPlayback(previous => ({ ...previous, time }));
   };
-  const introduction = <p className="chapter-timeline-intro-body" translate={current?.description ? 'no' : undefined}>{current ? current.description || '这条分析记录仅提供章节标题，暂无详细介绍。'
+  const introduction = <p className="chapter-timeline-intro-body" translate={current?.description ? 'no' : undefined}>{current ? current.description ? <MathText text={current.description} /> : '这条分析记录仅提供章节标题，暂无详细介绍。'
     : enabled ? '播放到章节起点，或点击圆点查看这一章的介绍。' : '当前分析记录对应另一份视频，不与此视频同步介绍。'}</p>;
   return <section className={`chapter-timeline chapter-timeline-${view}${compact && view === 'player' ? ' is-compact' : ''}`} aria-labelledby={`chapter-timeline-title-${view}`}>
     <div className="chapter-timeline-heading"><h3 id={`chapter-timeline-title-${view}`} title={timeline.label}>{view === 'player' ? 'AI 章节时间线' : '章节目录'}</h3></div>
@@ -57,22 +44,27 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
         style={{ width: `${Math.min(100, Math.max(0, playback.time / scale * 100))}%` }} />}
       {chapters.map((chapter, index) => <button type="button" className="chapter-timeline-marker" key={chapter.time} disabled={!enabled}
         style={{ left: `${chapter.time / scale * 100}%` }}
-        aria-label={`跳到 ${chapterTime(chapter.time)}：${chapter.title}`} aria-current={active === index ? 'true' : undefined}
-        title={`${chapterTime(chapter.time)} · ${chapter.title}`} onClick={() => seek(chapter.time)}><span className="chapter-timeline-dot" aria-hidden="true" /></button>)}
+        aria-label={`跳到 ${chapterTime(chapter.time)}：${mathTextLabel(chapter.title)}`} aria-current={active === index ? 'true' : undefined}
+        title={`${chapterTime(chapter.time)} · ${mathTextLabel(chapter.title)}`} onClick={() => seek(chapter.time)}><span className="chapter-timeline-dot" aria-hidden="true" /></button>)}
     </div>
     {/* Shown once playback reaches a chapter (or when the record belongs to another video); nothing before that. */}
     <section className="chapter-timeline-intro" aria-label="当前章节介绍" aria-live="polite" aria-atomic="true" hidden={!current && enabled}>
-      {current && <div className="chapter-timeline-intro-meta"><span>{`当前章节 · ${active + 1} / ${chapters.length}`}</span>
-        <time>{chapterTime(current.time)}{end > current.time ? ` — ${chapterTime(end)}` : ''}</time></div>}
-      <h4 translate={current ? 'no' : undefined}>{current ? current.title : '请切换到对应视频'}</h4>
-      {current && (compact ? <details className="chapter-timeline-description"><summary>查看章节介绍</summary>{introduction}</details> : introduction)}
+      <div className="chapter-timeline-intro-header">
+        {current && <span className="chapter-timeline-intro-meta">{`当前章节 · ${active + 1} / ${chapters.length}`}</span>}
+        <div className="chapter-timeline-current-heading">
+          {current && <time>{chapterTime(current.time)}{end > current.time ? ` — ${chapterTime(end)}` : ''}</time>}
+          <h4 translate={current ? 'no' : undefined}>{current ? <MathText text={current.title} /> : '请切换到对应视频'}</h4>
+        </div>
+      </div>
+      {current && (compact ? <details key={`${mediaKey}:${timeline.recordId}`} className="chapter-timeline-description" open><summary>查看章节介绍</summary>{introduction}</details> : introduction)}
     </section>
     </>}
     {view === 'directory' && <>
-    <ol ref={list} className="chapter-timeline-list" aria-label="章节列表">{chapters.map((chapter, index) => <li key={chapter.time}>
+    <div className="chapter-directory-frame"><ol ref={list} className="chapter-timeline-list" aria-label="章节列表" tabIndex={0}>{chapters.map((chapter, index) => <li key={chapter.time}>
       <button type="button" disabled={!enabled} aria-current={active === index ? 'true' : undefined} onClick={() => seek(chapter.time)}>
-        <time>{chapterTime(chapter.time)}</time><span translate="no">{chapter.title}</span></button>
-    </li>)}</ol>
+        <time>{chapterTime(chapter.time)}</time><MathText text={chapter.title} /></button>
+    </li>)}</ol></div>
+    <div className="chapter-directory-more">{hasMore && <button type="button" onClick={scrollNext}>下方还有章节 <span aria-hidden="true">↓</span></button>}</div>
     {!enabled && <p className="chapter-timeline-hint">这条分析记录对应另一份视频；切换到对应归档视频后可跳转。</p>}
     </>}
   </section>;

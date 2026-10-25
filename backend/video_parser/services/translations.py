@@ -129,7 +129,7 @@ def start(reference, target, consent, agent=None, output_confirmed=False):
     project_id = parent.project_id if parent else project['id']
     resource = parent.resource if parent else (reference.get('video_resource') or project['resources'][reference['resource']].get('video_resource') or
         next((name for name, info in project['resources'].items() if info.get('kind') == 'video'), None))
-    title = parent.title if parent else project.get('episode_title') or project['title']
+    title = transcription.base_name(parent) if parent else library.episode_title(project) or project['title']
     job = transcription.Job(uuid4().hex, path, title, 'auto', project_id=project_id, resource=resource)
     job.operation = 'translation'
     job.translation = {'reference': reference, 'sha256': library.digest(path), 'target': target,
@@ -204,9 +204,9 @@ def worker(job):
             if not source_kind:
                 ref = job.translation['reference']
                 source_kind = library.get(ref['project_id'])['resources'][ref['resource']]['kind'] if ref.get('project_id') else 'transcription'
-            suffix = '-B站平台字幕' if source_kind == 'subtitle' else '-本地转写'
-            stem = re.sub(r'(?:-B站平台字幕|-本地转写|\.平台字幕|\.本地转写)', '', library.safe_name(Path(path).stem))
-            name = stem + '.AI翻译.' + target + suffix + '.' + fmt
+            from video_parser.services import subtitle_names
+            platform = library.get(job.project_id).get('platform') if job.project_id else ''
+            name = transcription.base_name(job) + subtitle_names.suffix('translation', target, source_kind, platform) + '.' + fmt
             file = directory / name
             with file.open('x', encoding='utf-8', newline='\n') as stream: stream.write(body)
             destination = transcription.destination_of(job); owner, relative = None, None

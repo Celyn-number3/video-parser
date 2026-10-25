@@ -252,8 +252,9 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio').check()
-        panel = self.page.locator('.subtitle-panel')
+        panel = self.page.get_by_role('group', name='平台字幕获取确认', exact=True)
         expect(panel).to_be_visible()
+        panel.get_by_role('button', name='选择批量范围（可选）', exact=True).click()
         return panel
 
     def test_default_model_is_primary_and_visibility_management_is_optional(self):
@@ -455,7 +456,7 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         expect(self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio')).to_be_checked()
-        expect(self.page.locator('.subtitle-panel')).to_be_visible()
+        expect(self.page.get_by_role('group', name='平台字幕获取确认', exact=True)).to_be_visible()
 
     def test_generate_subtitles_preserves_pending_source_after_refresh(self):
         self.parse()
@@ -463,7 +464,7 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.page.get_by_role('button', name='先生成字幕', exact=True).click()
         self.page.wait_for_load_state('networkidle')
         expect(self.page.get_by_role('radiogroup', name='选择视频', exact=True).get_by_role('radio')).to_be_checked()
-        expect(self.page.locator('.subtitle-panel')).to_be_visible()
+        expect(self.page.get_by_role('group', name='平台字幕获取确认', exact=True)).to_be_visible()
 
     def test_all_subtitles_uses_catalogued_parts_not_their_count(self):
         self.parts = [3, 4]
@@ -476,25 +477,22 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         self.assertFalse(any(path == '/subtitles' for _, path, _ in self.requests))
 
     def expect_nothing_to_download(self, panel):
-        expect(panel.get_by_text('所选分集本地都已有字幕', exact=True)).to_be_visible()
-        expect(panel.get_by_role('button', name=re.compile('下载字幕|已有字幕'))).to_have_count(0)
-        self.assertEqual(panel.inner_text().count('已有校验通过'), 0)
+        expect(panel.get_by_text('所选分集已有可用平台字幕，无需重复下载；可选择批量范围补全缺失分集。', exact=True)).to_be_visible()
+        expect(panel.get_by_role('button', name='确认下载', exact=True)).to_be_disabled()
+        self.assertEqual(panel.inner_text().count('已有校验通过'), 1)
 
     def test_subtitle_inventory_and_duplicate_guard(self):
         panel = self.subtitle_panel()
         self.expect_nothing_to_download(panel)
-        expect(panel.locator('.subtitle-inventory summary')).to_have_text('本地已有字幕 2 / 3 集')
-        panel.locator('.subtitle-inventory summary').click()
-        expect(panel.locator('.subtitle-inventory li')).to_have_count(3)
-        expect(panel.locator('.subtitle-inventory li.has-subtitles')).to_have_count(2)
+        expect(panel.locator('.subtitle-inventory')).to_have_count(0)
         self.fit('subtitles')
         panel.get_by_label('下载范围', exact=True).select_option('custom')
         panel.get_by_label('指定集数', exact=True).fill('1,3')
         self.expect_nothing_to_download(panel)
         self.assertFalse(any(path == '/subtitles' for _, path, _ in self.requests))
         panel.get_by_label('指定集数', exact=True).fill('1-3')
-        panel.get_by_role('button', name='下载字幕', exact=True).click()
-        expect(panel.get_by_role('status')).to_contain_text('已跳过本地已有字幕 2 集')
+        panel.get_by_role('button', name='确认下载', exact=True).click()
+        expect(panel.get_by_role('status')).to_have_text('本次字幕获取已完成。')
         self.expect_nothing_to_download(panel)
         expect(panel.locator('.subtitle-inventory')).to_have_count(0)
         self.assertEqual(sum(path == '/subtitles' for _, path, _ in self.requests), 1)
@@ -503,10 +501,9 @@ class ProductImprovementsBrowserTests(unittest.TestCase):
         panel = self.subtitle_panel()
         panel.get_by_label('下载范围', exact=True).select_option('custom')
         panel.get_by_label('指定集数', exact=True).fill('3,5-2')
-        button = panel.get_by_role('button', name='下载字幕', exact=True)
-        expect(button).to_be_enabled()
-        button.click()
-        expect(panel.get_by_role('status')).to_contain_text('结束集数不能小于开始集数')
+        button = panel.get_by_role('button', name='确认下载', exact=True)
+        expect(button).to_be_disabled()
+        expect(panel.get_by_text('请输入有效集数范围，例如 1-3,8。', exact=True)).to_be_visible()
         self.assertFalse(any(path in {'/subtitles', '/bili-login/status'} for _, path, _ in self.requests))
 
     def test_task_facets_search_counts_and_recovery_after_clear(self):

@@ -30,5 +30,5 @@
 
 .local-ai-path-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .local-ai-path-row > input { flex: 1; min-width: 0; }
-.settings-page .local-ai-path-row > button { flex: none; min-height: 40px; padding: 7px 10px; white-space: nowrap; font-size: 12px; }
+.settings-page .local-ai-path-row > button { flex: none; min-height: 40px; padding: 7px 10px; white-space: nowrap; font-size: var(--font-size-control); }
 @media(max-width:560px) { .local-ai-path-row { flex-wrap: wrap; } .local-ai-path-row > input { flex-basis: 100%; } }

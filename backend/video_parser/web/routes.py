@@ -504,7 +504,8 @@ def archived_subtitles(identifier: str, video_resource: str | None = None, subti
         if video_resource and project['resources'].get(video_resource, {}).get('kind') != 'video':
             raise KeyError('Unknown video')
         records = library.subtitle_records(project, video_resource)
-        versions = records + library.translation_records(project, video_resource)
+        from video_parser.services import subtitle_versions
+        versions = subtitle_versions.annotate(project, records + library.translation_records(project, video_resource))
         selected = next((row for row in versions if row['resource'] == subtitle_resource), None) if subtitle_resource else next(iter(versions), None)
         if subtitle_resource and selected is None: raise KeyError('Unknown subtitle')
         text = ''

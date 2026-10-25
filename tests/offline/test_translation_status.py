@@ -72,7 +72,9 @@ class TranslationStatusTests(unittest.TestCase):
         self.assertEqual(viewed['translations'], [])
         library.update_details(self.pid, translated['resource'], {'source_resource': None})
         legacy = next(row for row in library.translation_records(library.get(self.pid), self.video) if row['resource'] == translated['resource'])
+        # Both originals have identical bytes: do not guess which source was used.
         self.assertEqual(legacy['source_origin'], 'unknown')
+        self.assertEqual(legacy['source_resolution'], 'unknown')
         self.assertEqual(self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'subtitle_resource': '../private'}).status_code, 404)
         self.model.assert_called_once()
 
@@ -115,9 +117,12 @@ class TranslationStatusTests(unittest.TestCase):
     def test_generated_filenames_identify_source_and_download_name(self):
         from video_parser.services import subtitles
         self.assertEqual(subtitles.platform_name('8.08可解性和解的结构', '.srt'), '8.08可解性和解的结构-B站平台字幕.srt')
-        job = transcription.Job('a' * 32, self.subtitle, '8.08可解性和解的结构', 'auto', project_id=self.pid, resource=self.video)
+        project = library.get(self.pid)
+        project['episode_title'] = '8.08可解性和解的结构'
+        library.atomic_json(project['directory'] / 'project.json', {k: v for k, v in project.items() if k != 'directory'})
+        job = transcription.Job('a' * 32, self.subtitle, '过时的课程长标题', 'auto', project_id=self.pid, resource=self.video)
         job.detected_language = 'en'
-        self.assertEqual(transcription.output_name(job, 'srt'), '8.08可解性和解的结构.en-本地转写.srt')
+        self.assertEqual(transcription.output_name(job, 'srt'), '8.08可解性和解的结构-英文-本地转写.srt')
         job.files = {'srt': {'path': self.root / transcription.output_name(job, 'srt')}}
         self.assertEqual(transcription.view(job)['files'][0]['name'], transcription.output_name(job, 'srt'))
 
@@ -132,7 +137,7 @@ class TranslationStatusTests(unittest.TestCase):
         self.assertIn('00:00:03,300 --> 00:00:04,400', translated)
         self.assertEqual(translated.count('你好，世界。'), 2)
         self.assertEqual(library.resource(self.pid, self.resource).read_text(encoding='utf-8'), self.raw)
-        self.assertTrue(all(info['kind'] != 'transcription' for name, info in library.get(self.pid)['resources'].items() if '.AI翻译.' in name))
+        self.assertTrue(all(info['kind'] != 'transcription' for name, info in library.get(self.pid)['resources'].items() if '-AI译文-' in name))
         self.assertEqual(len(library.subtitle_records(library.get(self.pid), self.video)), 1)
         task_runtime.save(transcription.OUTPUT_ROOT / '.tasks', job)
         transcription.jobs.pop(job.id)

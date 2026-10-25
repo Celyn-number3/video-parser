@@ -110,10 +110,10 @@ class TranslationStatusBrowserTests(unittest.TestCase):
 
     def view_translation(self):
         card = self.page.get_by_role('region', name='当前视频字幕', exact=True)
-        card.get_by_role('button', name='AI 译文', exact=True).click()
+        card.get_by_role('button', name='AI翻译字幕', exact=True).click()
         expect(card.get_by_label('译文', exact=True)).to_have_value(self.translation_job()['text'])
         expect(card.locator('textarea')).to_have_count(1)
-        expect(card.get_by_role('button', name='AI 中英互译', exact=True)).to_have_count(0)
+        expect(card.get_by_role('button', name='AI 中英互译', exact=True)).to_be_visible()
         return card
 
     def test_learning_lists_saved_chinese_and_can_switch_back_to_original(self):
@@ -151,7 +151,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         self.page.reload()
         self.page.get_by_role('button', name=re.compile(r'^已归档视频')).click(); self.choose(0)
         self.view_translation()
-        expect(self.page.get_by_role('button', name='AI 中英互译', exact=True)).to_have_count(0)
+        expect(self.page.get_by_role('button', name='AI 中英互译', exact=True)).to_be_visible()
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
         artifacts = Path(__file__).resolve().parents[2] / '.local/work/artifacts/subtitle-results'
         artifacts.mkdir(parents=True, exist_ok=True)
@@ -199,9 +199,9 @@ class TranslationStatusBrowserTests(unittest.TestCase):
 
     def test_archived_subtitle_is_green_and_shown_without_download_or_transcription(self):
         self.open()
-        # Compact list: only the exception (no local subtitles) carries a marker.
+        # Every known subtitle state has a horizontal status marker.
         items = self.page.get_by_role('radiogroup', name='选择视频').locator('li')
-        expect(items.nth(0).locator('.subtitle-badge, .subtitle-missing')).to_have_count(0)
+        expect(items.nth(0).locator('.source-subtitle-status')).to_have_text('有字幕')
         expect(items.nth(1).locator('.subtitle-missing')).to_have_text('无字幕')
         self.choose(0)
         panel = self.page.get_by_role('region', name='当前视频字幕', exact=True)
@@ -220,7 +220,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(acquire).to_be_hidden()
         expect(self.page.get_by_role('button', name='已有字幕', exact=True)).to_have_count(0)
         # Viewing source is visible; generation controls live only in the acquisition area.
-        expect(panel.get_by_role('group', name='查看字幕来源', exact=True)).to_be_visible()
+        expect(panel.get_by_role('group', name='字幕功能', exact=True)).to_be_visible()
         method = self.page.get_by_role('group', name='获取方式', exact=True)
         expect(method).to_be_hidden()
         toggle = panel.get_by_role('button', name='重新下载字幕', exact=True)
@@ -230,20 +230,20 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(panel.get_by_role('button', name='收起获取选项', exact=True)).to_have_attribute('aria-expanded', 'true')
         panel.get_by_role('button', name='收起获取选项', exact=True).click()
         expect(acquire).to_be_hidden()
-        # Open acquisition before choosing the generation method.
-        toggle.click()
-        method.get_by_role('button', name='本地转写', exact=True).click()
+        # The existing function selector owns acquisition; no second method picker.
+        panel.get_by_role('button', name='本地生成字幕', exact=True).click()
+        panel.get_by_role('button', name='重新生成字幕', exact=True).click()
         expect(acquire).to_be_visible()
-        expect(acquire.get_by_role('button', name='开始转写', exact=True)).to_be_visible()
+        expect(acquire.get_by_role('button', name='确认生成字幕', exact=True)).to_be_visible()
         panel.get_by_role('button', name='收起获取选项', exact=True).click()
+        panel.get_by_role('button', name='平台下载字幕', exact=True).click()
         expect(panel.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
         expect(panel.get_by_label('字幕原文', exact=True)).to_have_attribute('readonly', '')
-        heading = panel.locator('.translation-heading')
-        expect(heading.locator('label')).to_have_text('字幕原文')
-        expect(heading.get_by_role('button', name='AI 中英互译', exact=True)).to_be_visible()
+        expect(panel.get_by_role('button', name='AI 中英互译', exact=True)).to_have_count(0)
         # Subtitles are already in the project folder: show the location, no extra download button.
         expect(panel.get_by_role('button', name=re.compile('^下载'))).to_have_count(0)
         expect(panel.locator('.saved-location')).to_contain_text('subtitles')
+        panel.locator('.subtitle-file-details > summary').click()
         panel.get_by_role('button', name='打开文件夹', exact=True).click()
         expect(panel.get_by_role('status').filter(has_text='已打开项目文件夹。')).to_be_visible()
         self.assertIn(('POST', f'/projects/{self.pid}/open', {'folder': 'subtitles'}), self.calls)
@@ -271,12 +271,13 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(self.page.locator('#subtitle-acquire')).to_be_hidden()
         expect(self.page.locator('#transcription-text')).to_have_count(0)
         expect(self.page.get_by_text('本次任务', exact=False)).to_have_count(0)
-        toggle = card.get_by_role('button', name=re.compile('^(重新下载字幕|重新转写)$'))
+        toggle = card.get_by_role('button', name='AI 中英互译', exact=True)
         expect(toggle).to_be_enabled()
         actions = card.locator(':scope > .saved-location .saved-location-actions')
-        expect(actions.get_by_role('button', name='打开文件夹', exact=True)).to_be_visible()
+        card.locator('.subtitle-file-details > summary').click()
+        expect(card.get_by_role('button', name='打开文件夹', exact=True)).to_be_visible()
         expect(card.get_by_role('button', name='打开文件夹', exact=True)).to_have_count(1)
-        expect(card.locator('.subtitle-provenance')).to_contain_text('原字幕：平台字幕')
+        expect(card.locator('.subtitle-provenance')).to_contain_text('原字幕：平台下载字幕')
         expect(card.locator('.translation-status')).to_have_count(0)
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
 
@@ -287,12 +288,14 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         self.open(); self.choose(0)
         card = self.page.get_by_role('region', name='当前视频字幕', exact=True)
         expect(card.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
-        card.get_by_role('button', name='本地转写字幕', exact=True).click()
+        card.get_by_role('button', name='本地生成字幕', exact=True).click()
         expect(card.get_by_label('字幕原文', exact=True)).to_have_value('Local English transcript.')
-        expect(card.locator('.subtitle-provenance')).to_contain_text('本地转写字幕 · 英文')
+        expect(card.locator('.subtitle-provenance')).to_have_count(0)
+        expect(card.get_by_role('combobox', name='字幕版本', exact=True).locator('option:checked')).to_contain_text('英文原文')
+        expect(card.get_by_role('button', name='重新生成字幕', exact=True)).to_be_visible()
         expect(self.page.locator('.transcription-detail textarea')).to_have_count(1)
         expect(self.page.locator('.transcription-result')).to_have_count(0)
-        card.get_by_role('button', name='平台字幕', exact=True).click()
+        card.get_by_role('button', name='平台下载字幕', exact=True).click()
         expect(card.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
         self.assertFalse(any(method == 'POST' and path in ('/transcriptions','/subtitles','/translations') for method,path,_ in self.calls))
 
@@ -303,41 +306,37 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         self.open(); self.choose(0)
         card = self.page.get_by_role('region', name='当前视频字幕', exact=True)
         expect(card.get_by_role('button', name='来源未确认', exact=True)).to_be_visible()
-        expect(card.get_by_role('button', name='平台字幕', exact=True)).to_have_count(0)
-        expect(card.get_by_role('button', name='本地转写字幕', exact=True)).to_have_count(0)
+        expect(card.get_by_role('button', name='平台下载字幕', exact=True)).to_have_attribute('aria-pressed','false')
+        expect(card.get_by_role('button', name='本地生成字幕', exact=True)).to_have_attribute('aria-pressed','false')
 
     def test_chinese_subtitles_default_to_english_without_automatic_model_call(self):
         self.language = 'zh'
         self.text = '这是中文原字幕。\n原始文件必须保留。'
         self.open(); self.choose(0)
+        self.page.get_by_role('button',name='AI翻译字幕',exact=True).click()
         panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
         panel.get_by_role('button', name='AI 中英互译', exact=True).click()
         expect(panel.get_by_role('combobox', name='翻译方向', exact=True)).to_have_value('en')
-        expect(panel.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
+        expect(self.page.get_by_role('combobox',name='翻译原字幕',exact=True)).to_be_visible()
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
 
-    def test_transcription_result_places_translation_button_beside_text_heading(self):
+    def test_uploaded_transcription_has_separate_translation_function(self):
         self.source_job = {**self.translation_job(), 'operation': 'transcription', 'language': 'en',
                            'text': self.text, 'source_project_id': None, 'source_resource': None,
                            'title': '合成上传音频', 'message': '转录完成。'}
         self.page.add_init_script("localStorage.setItem('video-parser:task:transcriptions', '" + self.job_id + "')")
         self.page.goto(self.base.fixture.url + '?page=transcription')
         result = self.page.locator('.transcription-result')
-        expect(result.get_by_label('识别文字', exact=True)).to_have_value(self.text)
-        heading = result.locator('.translation-heading')
-        expect(heading.locator('label')).to_have_text('识别文字')
-        button = heading.get_by_role('button', name='AI 中英互译', exact=True)
-        expect(button).to_be_visible()
-        label_box = heading.locator('label').bounding_box()
-        button_box = button.bounding_box()
-        self.assertLess(abs((label_box['y'] + label_box['height'] / 2) -
-                            (button_box['y'] + button_box['height'] / 2)), 4)
-        button.click()
+        expect(result.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
+        expect(result.get_by_role('button',name='AI 中英互译',exact=True)).to_have_count(0)
+        result.get_by_role('button',name='AI翻译字幕',exact=True).click()
+        result.get_by_role('button',name='AI 中英互译',exact=True).click()
         expect(result.get_by_role('combobox', name='翻译方向', exact=True)).to_have_value('zh')
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls))
 
     def test_translation_explicit_start_keeps_original_and_reports_on_tasks_page(self):
         self.open(); self.choose(0)
+        self.page.get_by_role('button',name='AI翻译字幕',exact=True).click()
         panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
         panel.get_by_role('button', name='AI 中英互译', exact=True).click()
         direction = panel.get_by_role('combobox', name='翻译方向', exact=True)
@@ -348,17 +347,17 @@ class TranslationStatusBrowserTests(unittest.TestCase):
         expect(start).to_be_enabled()
         self.assertFalse(any(path == '/translations' for _, path, _ in self.calls), 'no paid request before explicit Start click')
         start.click()
-        expect(self.page.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
         card = self.view_translation()
         expect(card.get_by_role('button', name=re.compile('^下载译文'))).to_have_count(0)
         expect(card.locator('.saved-location')).to_contain_text('subtitles')
+        card.locator('.subtitle-file-details > summary').click()
         card.get_by_role('button', name='打开文件夹', exact=True).click()
         expect(card.get_by_text('已打开项目文件夹。', exact=True)).to_be_visible()
         self.assertIn(('POST', f'/projects/{self.pid}/open', {'folder': 'subtitles'}), self.calls)
         body = next(body for method, path, body in self.calls if path == '/translations')
         self.assertEqual(set(body), {'project_id', 'resource', 'video_resource', 'target', 'consent', 'agent', 'output_confirmed'})
         self.assertIs(body['output_confirmed'], False, 'large cloud batches need the explicit 32K output confirmation')
-        card.get_by_role('button', name='平台字幕', exact=True).click()
+        card.get_by_role('button', name='平台下载字幕', exact=True).click()
         expect(self.page.get_by_label('字幕原文', exact=True)).to_have_value(self.text)
         self.page.get_by_role('button', name=re.compile('^任务中心')).click()
         row = self.page.locator('.task-list > li').filter(has_text='AI 翻译')
@@ -368,6 +367,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
     def test_local_model_ignores_but_does_not_erase_cloud_batch_choice(self):
         self.base.fixture.ai['provider'] = 'llamacpp'
         self.open(); self.choose(0)
+        self.page.get_by_role('button',name='AI翻译字幕',exact=True).click()
         panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
         panel.get_by_role('button', name='AI 中英互译', exact=True).click()
         picker = panel.get_by_role('combobox', name='引擎与模型', exact=True)
@@ -388,6 +388,7 @@ class TranslationStatusBrowserTests(unittest.TestCase):
 
     def test_large_batch_choice_survives_model_changes_and_is_centered(self):
         self.open(); self.choose(0)
+        self.page.get_by_role('button',name='AI翻译字幕',exact=True).click()
         panel = self.page.get_by_role('region', name='AI 中英互译', exact=True)
         panel.get_by_role('button', name='AI 中英互译', exact=True).click()
         batch = panel.get_by_role('checkbox', name=re.compile('^我已确认所选模型'))

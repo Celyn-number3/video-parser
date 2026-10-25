@@ -1,19 +1,19 @@
 .playback-resume { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); min-width: 0; }
 .playback-resume-offer, .timestamp-note-editor-actions, .timestamp-note-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.playback-resume-offer p { flex: 1 1 140px; margin: 0; font-size: 13px; }
+.playback-resume-offer p { flex: 1 1 140px; margin: 0; font-size: var(--font-size-sm); }
 .playback-resume-note { margin-left: auto; }
-.study-save-status { margin: 6px 0 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }
-.study-error { margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.study-save-status { margin: 6px 0 0; color: var(--color-text-secondary); font-size: var(--font-size-caption); line-height: 1.6; }
+.study-error { margin-top: 8px; font-size: var(--font-size-caption); overflow-wrap: anywhere; }
 .study-error p { margin: 5px 0; }
 .study-error button { margin: 4px 6px 0 0; }
 .timestamp-notes { min-width: 0; padding: 18px; margin-bottom: 16px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-raised); }
 .timestamp-note-editor { margin-top: 12px; }
-.timestamp-note-editor label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; }
-.timestamp-note-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; font-size: 13px; line-height: 1.7; }
+.timestamp-note-editor label { display: block; margin-bottom: 7px; font-size: var(--font-size-control); font-weight: 600; }
+.timestamp-note-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; font-size: var(--font-size-body); line-height: 1.7; }
 .timestamp-note-editor-actions { justify-content: flex-end; margin-top: 6px; }
 .timestamp-note-editor-actions small { margin-right: auto; color: var(--color-text-secondary); }
 .timestamp-notes-list { list-style: none; padding: 0; margin: 12px 0 0; }
 .timestamp-notes-list li { padding: 12px 0; border-top: 1px solid var(--color-border); min-width: 0; }
 .timestamp-note-meta > button:first-child { margin-right: auto; font-variant-numeric: tabular-nums; }
-.timestamp-notes-list li > p { margin: 9px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 13px; }
+.timestamp-notes-list li > p { margin: 9px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: var(--font-size-sm); }
 @media(max-width:560px) { .timestamp-notes { padding: 12px; } .timestamp-note-editor-actions { justify-content: flex-start; } }

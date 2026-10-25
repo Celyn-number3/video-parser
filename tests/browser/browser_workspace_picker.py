@@ -76,7 +76,7 @@ class WorkspacePickerTests(unittest.TestCase):
         expect(self.picker()).to_be_enabled(); self.picker().press('ArrowDown')
         popup = self.page.locator('.project-picker-popup')
         expect(popup.locator('.project-picker-group')).to_have_text(['示例课程','单个视频'])
-        expect(popup.get_by_role('option')).to_have_text(['P1 · 第一讲✓','P2 · 第二讲','独立视频标题'])
+        expect(popup.get_by_role('option')).to_have_text(['P1 第一讲✓','P2 第二讲','独立视频标题'])
         expect(popup.locator('[title]')).to_have_count(0)
         field = self.page.get_by_role('searchbox',name='筛选视频列表',exact=True)
         expect(field).to_be_focused(); field.press('ArrowDown'); field.press('Enter')
@@ -113,7 +113,7 @@ class WorkspacePickerTests(unittest.TestCase):
         expect(self.picker()).to_be_enabled()
         expect(self.page.get_by_role('tab',name='字幕与转写',exact=True)).to_have_attribute('aria-selected','true')
     def test_switch_keeps_workbench_tab_draft_and_search(self):
-        self.open();self.picker().click();expect(self.page.locator('.project-picker-popup [role=option]')).to_have_text(['P1 · 第一讲✓','P2 · 第二讲']); self.page.get_by_role('searchbox',name='筛选视频列表',exact=True).press('Escape')
+        self.open();self.picker().click();expect(self.page.locator('.project-picker-popup [role=option]')).to_have_text(['P1 第一讲✓','P2 第二讲']); self.page.get_by_role('searchbox',name='筛选视频列表',exact=True).press('Escape')
         self.page.get_by_role('tab',name='AI 分析',exact=True).click();self.page.locator('#prompt').fill('保留分析要求')
         select_project(self.picker(), SECOND)
         expect(self.picker()).to_have_attribute('data-value', SECOND)

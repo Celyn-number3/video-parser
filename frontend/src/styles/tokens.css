@@ -34,6 +34,15 @@
   --font-size-3xl: 32px;
   --font-size-4xl: 44px;
 
+  /* Semantic typography roles. Compact layouts wrap instead of shrinking text. */
+  --font-size-page: 24px;
+  --font-size-page-compact: 22px;
+  --font-size-section: 18px;
+  --font-size-subheading: 15px;
+  --font-size-body: var(--font-size-md);
+  --font-size-control: var(--font-size-sm);
+  --font-size-caption: var(--font-size-xs);
+
   /* 字重 / 行高 / 字距 */
   --font-weight-regular: 400;
   --font-weight-medium: 500;

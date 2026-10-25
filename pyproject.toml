@@ -21,6 +21,8 @@ dependencies = [
   "openai>=2.3.0",
   "beautifulsoup4>=4.12.3",
   "lxml>=5.3.0",
+  "latex2mathml==3.81.1",
+  "mathml2omml==0.0.2",
   "py-mini-racer>=0.6.0",
   "colorama>=0.4.6",
   "jieba>=0.42.1",

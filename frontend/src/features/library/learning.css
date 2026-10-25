@@ -16,14 +16,14 @@
 }
 .learning-progress-heading h3 {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
 }
 .learning-count,
 .learning-progress-summary,
 .learning-episode-meta {
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-control);
   font-variant-numeric: tabular-nums;
 }
 .learning-progress-track {
@@ -51,7 +51,7 @@
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-control);
   box-shadow: none;
 }
 .learning-list-toggle { display: none; }
@@ -117,7 +117,7 @@
   font-size: var(--font-size-xs);
   line-height: var(--line-height-normal);
 }
-.learning-episode-meta { font-size: 10px; }
+.learning-episode-meta { font-size: var(--font-size-caption); }
 .learning-toggle {
   display: inline-flex;
   align-items: center;
@@ -151,7 +151,7 @@
 
 .learning-episode-search { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; min-width: 0; }
 .learning-episode-search input { flex: 1 1 130px; width: 100%; min-width: 0; }
-.learning-episode-search button { min-height: 32px; padding: 4px 8px; font-size: var(--font-size-xs); }
+.learning-episode-search button { min-height: 32px; padding: 4px 8px; font-size: var(--font-size-control); }
 .learning-episode-search p { flex-basis: 100%; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-xs); }
 
 /* Workbench episodes are a sibling card, not a section of project/archive. */

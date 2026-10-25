@@ -1,3 +1,4 @@
+import MathText from '../../components/MathText';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '../../lib/api';
 type Hit = { text: string; time: number; score: number; title: string; part: number | null; resource: string };
@@ -20,6 +21,6 @@ export default function SemanticSearch({ projectId, onSeek }: { projectId: strin
     <div className="subtitle-toolbar"><button type="button" disabled={!consent || busy || !endpoint} onClick={() => { void run(true); }}>建立 / 重建索引</button>
       <input aria-label="语义检索问题" value={query} maxLength={2000} placeholder="例如：如何管理项目排期？" onChange={e => setQuery(e.target.value)} />
       <button type="button" disabled={!consent || busy || !query.trim() || !endpoint} onClick={() => { void run(false); }}>{busy ? '处理中…' : '语义检索'}</button></div>
-    <p role="status">{message}</p><ol>{results.map((hit, i) => <li key={i}><button type="button" onClick={() => onSeek(hit.time)}>{hit.part ? `P${hit.part} · ` : ''}{Math.floor(hit.time / 60)}:{String(Math.floor(hit.time % 60)).padStart(2, '0')} · {hit.title}</button><p translate="no">{hit.text}</p><small>来源：{hit.resource} · 相似度 {hit.score.toFixed(3)}</small></li>)}</ol>
+    <p role="status">{message}</p><ol>{results.map((hit, i) => <li key={i}><button type="button" onClick={() => onSeek(hit.time)}>{hit.part ? `P${hit.part} · ` : ''}{Math.floor(hit.time / 60)}:{String(Math.floor(hit.time % 60)).padStart(2, '0')} · <MathText text={hit.title} /></button><p><MathText text={hit.text} /></p><small>来源：{hit.resource} · 相似度 {hit.score.toFixed(3)}</small></li>)}</ol>
   </details>;
 }

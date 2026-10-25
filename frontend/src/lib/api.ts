@@ -209,7 +209,7 @@ export interface TranscriptionSource {
 
 export interface ArchivedTranslation { location?: string; resource: string; filename: string; language: string; text: string; url: string }
 
-export interface SubtitleVersion { resource: string; filename: string; kind?: string; origin?: 'platform' | 'local' | 'translation' | 'unknown'; url: string; language: string; sha256?: string; source_resource?: string; source_origin?: string; source_language?: string }
+export interface SubtitleVersion { version_id?: string; generated_at?: number | null; format?: string; source_resolution?: string; resource: string; filename: string; kind?: string; origin?: 'platform' | 'local' | 'translation' | 'unknown'; url: string; language: string; sha256?: string; source_resource?: string; source_origin?: string; source_language?: string }
 
 export interface ArchivedSubtitles {
   versions?: SubtitleVersion[];
@@ -220,6 +220,7 @@ export interface ArchivedSubtitles {
 }
 
 export interface TranscriptionJob {
+  created?: number;
   operation?: 'transcription' | 'translation';
   translation_target?: 'zh' | 'en';
   translation_source?: string | null;

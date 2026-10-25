@@ -244,12 +244,13 @@ jobs: dict[str, Job] = {}
 
 
 def base_name(job):
-    # Uploaded files carry an extension in the title; project titles may contain dots, so keep them whole.
-    return library.safe_name(Path(job.title).stem if job.owned_input or not job.project_id else job.title)[:60] or 'transcript'
+    from video_parser.services import subtitle_names
+    return subtitle_names.base_title(job.project_id, job.title, job.owned_input)
 
 
 def output_name(job, fmt):
-    return f'{base_name(job)}.{job.detected_language or "auto"}-本地转写.{fmt}'
+    from video_parser.services import subtitle_names
+    return base_name(job) + subtitle_names.suffix('transcription', job.detected_language or 'auto') + '.' + fmt
 
 
 def destination_of(job):

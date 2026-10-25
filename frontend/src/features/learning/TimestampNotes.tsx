@@ -1,3 +1,4 @@
+import MathText from '../../components/MathText';
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { Media } from '../../lib/api';
@@ -147,6 +148,6 @@ export default function TimestampNotes({ projectId, media, videoRef, onSeek }: P
       <div className="timestamp-note-meta"><button type="button" className="timestamp-note-seek" onClick={() => onSeek(note.time)} aria-label={`跳到笔记 ${chapterTime(note.time)}`}><time>{chapterTime(note.time)}</time></button>
         <button type="button" disabled={saving} onClick={() => { void start(note); }} aria-label={`编辑 ${chapterTime(note.time)} 的笔记`}>编辑</button>
         <button type="button" disabled={saving} onClick={() => { void remove(note); }} aria-label={`删除 ${chapterTime(note.time)} 的笔记`}>删除</button></div>
-      <p translate="no">{note.text}</p></li>)}</ol>
+      <p><MathText text={note.text} /></p></li>)}</ol>
   </section>;
 }

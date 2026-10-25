@@ -66,7 +66,7 @@ class JointNamingTests(unittest.TestCase):
             job = transcription.Job('a' * 32, extra, 'fixture', 'auto', project_id=self.f.pid); job.state = 'completed'; job.files = {'srt': item}
             with patch.object(transcription, 'get', return_value=job):
                 current = transcription.download_file(job.id, 'srt')
-                self.assertIn('.zh-AI翻译-B站平台字幕', current.name)
+                self.assertIn('-中文-AI译文-B站平台字幕', current.name)
                 self.assertEqual(transcription.view(job)['files'][0]['name'], current.name)
             self.assertEqual(library.import_file(self.f.pid, extra, key, 'translation'), key)
             alias = library.get(self.f.pid)['resources'][key]['storage_path']

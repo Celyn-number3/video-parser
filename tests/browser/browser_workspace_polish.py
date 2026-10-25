@@ -68,10 +68,12 @@ class WorkspacePolishTests(unittest.TestCase):
         self.page.screenshot(path=str(self.f.base.fixture.output/(name+'.png')),full_page=True,animations='disabled')
     def test_model_default_is_not_replaced_by_hidden_conversation_model_after_reload(self):
         self.f.open(); self.page.get_by_role('tab',name='AI 分析',exact=True).click()
-        selector=self.page.locator('.analysis-form').get_by_role('combobox',name='引擎与模型',exact=True)
+        selector=self.page.locator('.analysis-form').get_by_role('combobox',name='引擎与模型',exact=True,include_hidden=True)
         for _ in range(2):
             expect(selector).to_have_value('codex|deepseek-v4.1-flash')
             expect(selector.locator('option[value="codex|gpt-6-luna"]')).to_have_count(0)
+            toggle=self.page.get_by_role('button',name='生成新材料',exact=True)
+            if toggle.count(): toggle.click()
             selector.select_option('api|'); expect(selector).to_have_value('api|')
             self.page.reload(); self.page.get_by_role('tab',name='AI 分析',exact=True).click()
         expect(selector).to_have_value('codex|deepseek-v4.1-flash')
@@ -132,7 +134,7 @@ class WorkspacePolishTests(unittest.TestCase):
         expect(card.get_by_role('textbox',name='新文件夹名称',exact=True)).to_have_value('简明线性代数')
     def test_material_font_and_subtitle_available_height_follow_and_seek(self):
         self.f.base.open(); self.page.set_viewport_size({'width':1440,'height':1100})
-        expect(self.page.locator('.learning-materials .analysis-markdown')).to_have_css('font-size','14px')
+        expect(self.page.locator('.learning-materials .analysis-markdown')).to_have_css('font-size','16px')
         self.page.get_by_role('tab',name='字幕',exact=True).click()
         panel=self.page.locator('.subtitle-scroll-panel'); expect(panel.locator('.subtitle-scroll-list > button')).to_have_count(100)
         expect(panel.get_by_role('button',name='刷新字幕',exact=True)).to_have_count(0)

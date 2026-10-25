@@ -5,10 +5,10 @@
 .progress-bar.is-pending .progress-fill { animation:progress-pending 1.6s ease-in-out infinite; }
 @keyframes progress-pending { 0%, 100% { opacity:.15; } 50% { opacity:.45; } }
 @media (prefers-reduced-motion: reduce) { .progress-bar.is-pending .progress-fill { animation:none; } }
-.progress-meta { display:flex; flex-wrap:wrap; gap:4px 12px; margin:6px 0; color:var(--muted,var(--color-text-tertiary)); font-size:12px; overflow-wrap:anywhere; }
+.progress-meta { display:flex; flex-wrap:wrap; gap:4px 12px; margin:6px 0; color:var(--muted,var(--color-text-tertiary)); font-size: var(--font-size-caption); overflow-wrap:anywhere; }
 .download-stage { width:100%; min-width:0; box-sizing:border-box; }
 .download-preview-feedback { width:min(440px,100%); min-width:0; text-align:left; }
-.download-preview-heading { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--mint,var(--color-text)); font-size:16px; font-weight:600; }
+.download-preview-heading { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:var(--mint,var(--color-text)); font-size: var(--font-size-lg); font-weight:600; }
 .download-preview-heading svg { width:20px; height:20px; flex-shrink:0; }
-.download-preview-feedback .download-preview-message { margin:0; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.download-preview-feedback .download-preview-message { margin:0; font-size: var(--font-size-caption); line-height:1.5; overflow-wrap:anywhere; }
 .download-preview-feedback .progress-block { margin:16px 0 0; }

@@ -20,6 +20,8 @@ export default function ProjectFolderNaming({ projectId, config, initialTaskId, 
   const [error, setError] = useState('');
   const [verified, setVerified] = useState('');
   const [restore, setRestore] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => { setExpanded(false); }, [projectId, initialTaskId]);
   const active = useRef<AbortController | null>(null);
   const working = busy || isActive(job?.state);
   const recovery = !!plan && ['applying', 'recovery_required'].includes(plan.state);
@@ -65,10 +67,17 @@ export default function ProjectFolderNaming({ projectId, config, initialTaskId, 
     return () => { active.current?.abort(); active.current = null; };
   }, [projectId, initialTaskId]);
   useEffect(() => { if (!visible) { setVerified(''); setRestore(false); } }, [visible]);
+  // Only an already-applied plan may be compacted. Pending confirmation, recovery and errors stay visible.
+  const canCollapse = plan?.state === 'applied' && !working && !error && !plan.last_error && !initialTaskId;
+  const folderOpen = !canCollapse || expanded;
   return <section className="project-folder-naming" aria-labelledby="project-folder-title" aria-busy={working}>
-    <h2 id="project-folder-title">项目文件夹重命名</h2>
-    <p className="naming-summary">为整个项目生成简短、直观的名称。修改主文件夹并同步界面项目名称；原始来源标题、分集名称、视频与字幕文件名保持不变。</p>
+    <div className="folder-naming-heading"><h2 id="project-folder-title">项目文件夹重命名</h2>
+      {canCollapse && <button type="button" aria-expanded={folderOpen} aria-controls="folder-naming-body" onClick={() => setExpanded(!folderOpen)}>{folderOpen ? '收起文件夹编辑' : '编辑文件夹名称'}</button>}
+    </div>
     {inventory && <p className="folder-current">当前文件夹 <code translate="no">{inventory.location}</code></p>}
+    {!folderOpen && <p className="naming-hint" role="status">项目文件夹已重命名。</p>}
+    <div id="folder-naming-body" className="folder-naming-body" hidden={!folderOpen}>
+    <p className="naming-summary">为整个项目生成简短、直观的名称。修改主文件夹并同步界面项目名称；原始来源标题、分集名称、视频与字幕文件名保持不变。</p>
     <label className="folder-model-label">选择模型</label>
     <AgentModelPicker state={models} disabled={working || recovery} />
     <p className="naming-hint">点击生成即同意发送项目标题和已存分集名称，可能联网并产生费用；不发送视频、字幕正文或学习记录。</p>
@@ -97,5 +106,6 @@ export default function ProjectFolderNaming({ projectId, config, initialTaskId, 
     {job && isActive(job.state) && <div><p role="status">{job.message}</p><button type="button" disabled={job.phase === 'archiving'} onClick={() => { void cancelTask('naming', job.id).catch(e => setError(String(e))); }}>取消任务</button></div>}
     {plan?.last_error && <p role="alert">{plan.last_error}</p>}
     {error && <p role="alert" className="error-text">{error}</p>}
+    </div>
   </section>;
 }

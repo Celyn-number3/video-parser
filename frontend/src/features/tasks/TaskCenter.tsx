@@ -2,7 +2,7 @@ import Panel from '../../components/Panel';
 import ProgressBar from '../../components/ProgressBar';
 import useTaskCenter from './useTaskCenter';
 import { formatMegabytes as bytes } from '../../lib/format';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isActive, phases, type TaskInfo } from '../../lib/jobs';
 import './tasks.css';
 import { templates, sources, engines, taskDescription } from './taskDetails';
@@ -29,9 +29,26 @@ export default function TaskCenter({ onActivityChange }: { onActivityChange?: (c
   const { jobs, error, notice, facets, setFacets, resetFilters, filter, setFilter, kind, setKind, query, setQuery, statusCounts, kindCount, retrying,
     pendingCancels, visible, cancel, retry, deadCount, clearing, clearDead } = useTaskCenter(onActivityChange);
   const [confirmClear, setConfirmClear] = useState(false);
+  const list = useRef<HTMLUListElement>(null);
+  const filterKey = JSON.stringify([query, filter, kind, facets]);
+  const [pagination, setPagination] = useState({ key: filterKey, page: 1 });
+  const pageSize = 20;
+  const pages = Math.max(1, Math.ceil(visible.length / pageSize));
+  const page = Math.min(pagination.key === filterKey ? pagination.page : 1, pages);
+  useEffect(() => { setPagination(current => current.key === filterKey && current.page === page ? current : { key: filterKey, page }); }, [filterKey, page]);
+  const paged = visible.slice((page - 1) * pageSize, page * pageSize);
+  const goToPage = (next: number) => {
+    setPagination({ key: filterKey, page: Math.max(1, Math.min(pages, next)) });
+    list.current?.focus({ preventScroll: true });
+    list.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
+  };
+
   // Keep an emptied selected type visible so clearing records cannot strand the filter.
   const kinds = Object.keys(names).filter(key => key === kind || jobs.some(job => job.kind === key));
   const narrowed = !!query.trim() || filter !== 'all' || kind !== 'all' || Object.values(facets).some(Boolean);
+  const advancedConditions = ([['template', '分析类型', templates], ['engine', '执行工具', engines], ['source', '分析依据', sources],
+    ['model', '模型', {}], ['after', '开始日期', {}], ['before', '结束日期', {}]] as const)
+    .filter(([key]) => !!facets[key]).map(([key, label, labels]) => ({ key, label, value: (labels as Record<string, string>)[facets[key]] || facets[key] }));
   return <Panel className="task-center" aria-labelledby="page-title-tasks">
     {error && <p className="error-text" role="status">{error}</p>}
     {jobs.length > 0 && <div className="task-search"><input type="search" aria-label="搜索任务" placeholder="搜索文件名、分集（如 P3）或任务 ID" maxLength={100}
@@ -48,6 +65,8 @@ export default function TaskCenter({ onActivityChange }: { onActivityChange?: (c
       {[['all', '全部类型'] as const, ...kinds.map(key => [key, names[key]] as const)].map(([key, label]) => [key, label, kindCount(key)] as const).map(([key, label, count]) =>
         <button key={key} type="button" className="chip" aria-pressed={kind === key} onClick={() => setKind(key)}>{label}<span className="chip-count">{count}</span></button>)}
     </div>}
+    <details className="task-filter-details">
+      <summary><span>高级筛选</span>{advancedConditions.length > 0 && <span className="chip-count">（{advancedConditions.length}）</span>}</summary>
     <div className="task-advanced-filters">
       {([['template', '分析类型', templates], ['engine', '执行工具', engines], ['source', '分析依据', sources], ['model', '模型', {}]] as const).map(([key, label, labels]) =>
         <label key={key}>{label}<select aria-label={label} value={facets[key]} onChange={e => setFacets(old => ({ ...old, [key]: e.target.value }))}>
@@ -56,9 +75,13 @@ export default function TaskCenter({ onActivityChange }: { onActivityChange?: (c
         </select></label>)}
       <label>开始日期<input type="date" aria-label="开始日期" value={facets.after} onChange={e => setFacets(old => ({ ...old, after: e.target.value }))} /></label>
       <label>结束日期<input type="date" aria-label="结束日期" value={facets.before} onChange={e => setFacets(old => ({ ...old, before: e.target.value }))} /></label>
-      <button type="button" onClick={resetFilters}>重置筛选</button>
     </div>
-    <ul className="task-list">{visible.map(job => {
+    </details>
+    {narrowed && <div className="task-filter-summary">
+      {advancedConditions.length > 0 && <p aria-label="已应用筛选">{advancedConditions.map(item => <span key={item.key}>{item.label}：<span translate="no">{item.value}</span></span>)}</p>}
+      <button type="button" onClick={resetFilters}>重置筛选</button>
+    </div>}
+    <ul ref={list} tabIndex={-1} aria-label="任务列表" className="task-list">{paged.map(job => {
       const active = isActive(job.state);
       const showBar = job.kind === 'video' && active && job.phase === 'downloading' && !!job.progress;
       // One navigation action per row: results when they exist, retry when the project can rerun, otherwise the project.
@@ -94,6 +117,16 @@ export default function TaskCenter({ onActivityChange }: { onActivityChange?: (c
       </div>
     </li>;
     })}</ul>
+    {visible.length > 0 && <nav className="task-pagination" aria-label="任务分页">
+      <span role="status">共 {visible.length} 条，第 {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, visible.length)} 条</span>
+      <div className="task-page-controls">
+        <button type="button" disabled={page === 1} onClick={() => goToPage(page - 1)}>上一页</button>
+        {Array.from({ length: pages }, (_, index) => index + 1).map(number => <button type="button" key={number}
+          aria-label={`第 ${number} 页`} aria-current={page === number ? 'page' : undefined} onClick={() => goToPage(number)}>{number}</button>)}
+        <button type="button" disabled={page === pages} onClick={() => goToPage(page + 1)}>下一页</button>
+      </div>
+      <span className="task-page-size">每页 {pageSize} 条，第 {page} / {pages} 页</span>
+    </nav>}
     {!jobs.length && !error && <p className="notice">暂无任务。</p>}
     {!visible.length && jobs.length > 0 && <p className="notice">{query.trim() ? '没有匹配的任务。' : '此筛选下暂无任务。'}</p>}
     {jobs.length >= 100 && <p className="task-catalog-note">最多展示最近100项。</p>}

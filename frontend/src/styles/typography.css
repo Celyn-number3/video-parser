@@ -1,0 +1,51 @@
+/* Final semantic typography layer. Sizes below are UI roles, not prose resets.
+   Component rules keep their own responsive layout and reading-content sizes. */
+.modern-app { font-size: var(--font-size-body); }
+.modern-app :where(button, a.button, select, summary) { font-size: var(--font-size-control); }
+.modern-app :where(input:not([type=checkbox]):not([type=radio]), textarea) { font-size: var(--font-size-body); }
+.modern-app :where(label, .field-label) { font-size: var(--font-size-control); font-weight: var(--font-weight-medium); }
+.modern-app :where(small) { font-size: var(--font-size-caption); }
+
+/* Page identity / card heading / subsection: three distinct levels. */
+.modern-app .topbar-title { font-size: var(--font-size-page); font-weight: var(--font-weight-semibold); line-height: 1.35; }
+.modern-app :is(.panel-title, .analysis-record-bar > h2, .details-panel h2,
+  .study-sidebar-heading h2, .subtitle-panel h2, .analysis-form h2) {
+  font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); line-height: 1.5;
+}
+.modern-app :is(.settings-group-title, .subtitle-naming-heading h2,
+  .project-folder-naming h2, .project-folder-naming .folder-naming-heading h2,
+  .task-semantic-search h2) {
+  font-size: var(--font-size-section); font-weight: var(--font-weight-semibold); line-height: 1.5;
+}
+.modern-app :is(.settings-page h3, .subtitle-naming-panel h3, .ai-chat-heading h3,
+  .learning-progress-heading h3, .workspace-continue h3) {
+  font-size: var(--font-size-subheading); font-weight: var(--font-weight-semibold); line-height: 1.5;
+}
+.modern-app :is(.panel-title-secondary, .timestamp-notes-heading,
+  .naming-final-preview h4, .conversation-picker-heading) {
+  font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);
+}
+.modern-app .chapter-timeline-player.is-compact .chapter-timeline-heading h3 {
+  font-size: var(--font-size-control); font-weight: var(--font-weight-semibold);
+}
+
+/* Task identity is primary content, its description secondary, metadata tertiary. */
+.modern-app .task-list strong { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
+.modern-app .task-description p { font-size: var(--font-size-sm); }
+.modern-app .task-description small { font-size: var(--font-size-caption); }
+.modern-app .task-details { font-size: var(--font-size-sm); line-height: 1.7; }
+.modern-app :is(.timestamp-note-editor textarea, .timestamp-notes-list li > p) { font-size: var(--font-size-body); }
+
+/* Reading roles deliberately remain different: analysis 16, chat 15, materials 14.
+   Markdown headings/strong/code/math and timestamp em sizes are not reset here. */
+@media (max-width: 640px) {
+  .modern-app .topbar-title { font-size: var(--font-size-page-compact); }
+}
+/* Explicitly preserve the approved picker group emphasis above button defaults. */
+.modern-app .project-picker-group { font-size: var(--font-size-subheading); font-weight: var(--font-weight-bold); }
+/* A readable tab label must wrap the strip, not be shrunk to 10px on phones. */
+.modern-app .workspace-toolbar > .tabs { flex-wrap: wrap; height: auto; row-gap: 4px; }
+@media (max-width: 640px) {
+  .modern-app .workspace-toolbar > .tabs { column-gap: 12px; }
+  .modern-app .workspace-toolbar > .tabs button[aria-selected=true]::after { bottom: 0; }
+}

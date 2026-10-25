@@ -7,12 +7,13 @@
   .subtitle-split .source-list { max-height: min(620px, calc(100vh - 240px)); }
 }
 
-/* Two-line rows: title + one meta line; only "无字幕" gets a marker. */
+/* Title/metadata can shrink; known subtitle states always remain horizontal. */
 .modern-app .subtitle-split .source-option { gap: 10px; padding: 7px 12px; }
-.subtitle-split .source-option > span { flex: 1 1 auto; }
+.subtitle-split .source-option > .source-summary { flex: 1 1 0; min-width: 0; }
+.subtitle-split .source-option > .source-subtitle-status { display: inline-flex; flex: 0 0 auto; white-space: nowrap; align-items: center; margin: 0; line-height: 1.5; font-size: var(--font-size-caption); padding: 1px 7px; }
 .subtitle-split .source-option strong,
 .subtitle-split .source-option small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
-.subtitle-missing { flex: none; padding: 1px 7px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-secondary); font-size: 11px; line-height: 1.5; }
+.subtitle-missing { flex: none; padding: 1px 7px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-secondary); font-size: var(--font-size-caption); line-height: 1.5; }
 
 /* Detail column */
 .transcription-detail > :first-child { margin-top: 0; }
@@ -23,7 +24,7 @@
 .archive-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; }
 .archive-status .subtitle-badge { margin: 0; }
 .archive-meta { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
-.modern-app .archive-status select { width: auto; max-width: min(440px, 60%); min-height: 30px; margin-left: auto; font-size: var(--font-size-xs); }
+.modern-app .archive-status select { width: auto; max-width: min(440px, 60%); min-height: 30px; margin-left: auto; font-size: var(--font-size-control); }
 .acquire-section[hidden] { display: none !important; }
 /* Unfolded re-fetch controls read as part of the selected video, under a divider. */
 .archived-subtitles:not(.is-missing) + .acquire-section { margin-top: 12px; padding-top: 2px; border-top: 1px dashed var(--color-border); }
@@ -82,10 +83,61 @@
 }
 /* Viewing provenance is distinct from acquisition, with one active body. */
 .subtitle-view-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-.subtitle-view-sources button[aria-pressed="true"] { border-color: var(--color-border); background: var(--color-bg); color: var(--color-text); font-weight: 600; box-shadow: 0 0 0 1px var(--color-border); }
-.subtitle-version-label { display: grid; gap: 6px; font-size: 13px; }
+.modern-app .subtitle-view-sources button[aria-pressed="true"] { --button-edge: var(--color-fill-primary); border-color: var(--color-fill-primary); background: var(--color-fill-primary); color: var(--color-on-primary); font-weight: 600; box-shadow: none; }
+.subtitle-version-label { display: grid; gap: 6px; font-size: var(--font-size-sm); }
 .subtitle-version-label select { width: 100%; min-width: 0; max-width: 100%; }
-.subtitle-provenance { font-size: 13px; line-height: 1.65; margin: 12px 0; }
+.subtitle-provenance { font-size: var(--font-size-sm); line-height: 1.65; margin: 12px 0; }
 .subtitle-viewer textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; }
 .subtitle-version-file { overflow-wrap: anywhere; }
 .acquire-section .method-picker { margin: 12px 0; }
+
+/* Embedded translation shares the selected subtitle card instead of adding another frame. */
+.modern-app .subtitle-viewer > .subtitle-translation { border: 0; border-radius: 0; padding: 0; margin: 12px 0; background: transparent; box-shadow: none; }
+
+/* Readable labels first; filesystem details are available on demand. */
+.archived-subtitles .archive-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.subtitle-selected-title { min-width: 0; flex: 1 1 240px; margin: 0; font-size: var(--font-size-md); line-height: 1.6; overflow-wrap: anywhere; }
+.modern-app .subtitle-split .source-option small.source-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; white-space: normal; }
+.source-meta > span { white-space: nowrap; }
+.subtitle-provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.subtitle-provenance > span { color: var(--color-text-secondary); }
+.subtitle-file-details { margin-top: 14px; font-size: var(--font-size-sm); }
+.subtitle-file-details > summary { cursor: pointer; width: fit-content; color: var(--color-text-secondary); }
+.subtitle-file-details > summary:focus-visible { outline: 2px solid var(--color-text); outline-offset: 4px; }
+.subtitle-result-actions { display: flex; justify-content: flex-start; margin-top: 12px; }
+.subtitle-viewer > .subtitle-result-actions { margin: 12px 0; }
+
+.modern-app .subtitle-view-sources button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--color-fill-primary); color: var(--color-on-primary);
+}
+
+.translation-workspace { padding-bottom: 14px; margin-bottom: 14px; }
+.modern-app .translation-workspace > .subtitle-translation { padding: 0; margin-top: 12px; border: 0; box-shadow: none; background: transparent; }
+.subtitle-viewer > [hidden] { display: none !important; }
+
+/* Keep the actual reading viewport mounted while a version is loading. Both
+   plain text and formula/source modes use the same resizable outer frame. */
+.subtitle-reader { position: relative; height: 210px; min-height: 150px; margin-top: 8px; overflow: hidden; resize: vertical; }
+.subtitle-viewer .subtitle-reader textarea { height: 100%; min-height: 0; margin: 0; resize: none; }
+.subtitle-reader .math-text-area { display: flex; flex-direction: column; height: 100%; margin: 0; }
+.subtitle-reader .math-reading-toolbar { flex: none; }
+.subtitle-reader .math-reading-body { flex: 1; min-height: 0; max-height: none; }
+.subtitle-reader [hidden] { display: none !important; }
+.subtitle-reader-message { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 16px; color: var(--color-text-secondary); font-size: var(--font-size-sm); pointer-events: none; }
+.subtitle-reader-message.error-text { color: var(--color-text); }
+
+/* Keep a normal field gap between saved versions and the body label. */
+.subtitle-viewer > .subtitle-version-label + .subtitle-body-label { display: block; margin-top: 12px; }
+
+/* Existing subtitles get one small confirmation directly below their action. */
+.compact-acquire { margin: 12px 0; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; }
+.compact-acquire > :first-child { margin-top: 0; }
+.compact-acquire > :last-child { margin-bottom: 0; }
+.compact-acquire-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin: 10px 0; }
+.compact-acquire-fields > label, .compact-save-field { display: grid; gap: 6px; flex: 1 1 180px; min-width: 0; font-size: var(--font-size-sm); }
+.compact-acquire-fields select, .compact-acquire-fields input { max-width: 100%; min-width: 0; }
+.compact-save-field .save-controls { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.compact-acquire-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; }
+.compact-acquire-actions a { font-size: var(--font-size-sm); }
+.compact-save-hint { overflow-wrap: anywhere; }
+.modern-app .compact-range-toggle { min-height: 32px; padding: 4px 10px; font-size: var(--font-size-sm); }

@@ -112,7 +112,7 @@ export default function LearningProgress({ project, episodes, disabled, savingPa
         const duration = durationLabel(episode.duration);
         return <li className={`learning-episode-row${isCurrent ? ' is-current' : ''}`} key={episode.part}>
           <button type="button" className="learning-episode-open" aria-current={isCurrent ? 'true' : undefined}
-            disabled={rowDisabled || isCurrent} onClick={() => selectEpisode(episode.part)}>
+            disabled={rowDisabled} onClick={() => selectEpisode(episode.part)}>
             <span className="learning-episode-number">P{episode.part}</span>
             <span className="learning-episode-copy">
               <span className="learning-episode-title" translate="no">{episode.title}</span>

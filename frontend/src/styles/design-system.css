@@ -116,7 +116,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 .status-error::before, .error-text::before {
   content: "!"; display: inline-grid; place-items: center; flex-shrink: 0; width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px;
   border-radius: var(--radius-full); background: var(--color-text); color: var(--color-bg);
-  font-family: var(--font-family-sans); font-size: 11px; font-weight: var(--font-weight-bold); line-height: 1;
+  font-family: var(--font-family-sans); font-size: var(--font-size-caption); font-weight: var(--font-weight-bold); line-height: 1;
 }
 .status-error::before { margin-right: 0; }
 
@@ -192,7 +192,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 .source-switch { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-sunken); }
 .modern-app .source-switch button { --button-edge: transparent; min-height: 32px; padding: 5px 14px; border: 0; border-radius: calc(var(--radius-lg) - 3px); background: transparent; box-shadow: none; color: var(--color-text-secondary); font-size: var(--font-size-sm); gap: 6px; }
 .modern-app .source-switch button[aria-pressed="true"] { background: var(--color-bg); color: var(--color-text); font-weight: 600; box-shadow: 0 0 0 1px var(--color-border); }
-.switch-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--color-fill-hover); color: var(--color-text-secondary); font-size: 11px; font-weight: 500; line-height: 18px; }
+.switch-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--color-fill-hover); color: var(--color-text-secondary); font-size: var(--font-size-caption); font-weight: 500; line-height: 18px; }
 .transcription-head .operation-button { min-height: 40px; }
 .source-picker { display: grid; gap: 10px; }
 .source-empty { margin: 0; padding: 28px 16px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg); color: var(--color-text-secondary); font-size: var(--font-size-xs); text-align: center; list-style: none; }
@@ -217,16 +217,16 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 }
 /* 任务中心：按类型筛选 */
 .task-kinds { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
-.modern-app .task-kinds .chip { min-height: 30px; padding: 4px 12px; gap: 6px; font-size: var(--font-size-xs); }
+.modern-app .task-kinds .chip { min-height: 30px; padding: 4px 12px; gap: 6px; font-size: var(--font-size-control); }
 .modern-app .task-kinds .chip[aria-pressed="true"] { --button-edge: var(--color-text); color: var(--color-text); font-weight: 600; }
 .chip-count { color: var(--color-text-secondary); font-weight: 400; }
 .source-empty p { margin: 0 0 10px; }
-.modern-app .source-empty button { min-height: 32px; padding: 5px 12px; font-size: var(--font-size-xs); }
+.modern-app .source-empty button { min-height: 32px; padding: 5px 12px; font-size: var(--font-size-control); }
 /* 任务中心：清理失败记录 */
 .modern-app .task-filters .task-clear { margin-left: auto; gap: 6px; border-radius: var(--radius-full); color: var(--color-text-secondary); }
 .task-clear-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-surface-sunken); font-size: var(--font-size-sm); }
 .task-clear-confirm p { flex: 1 1 280px; margin: 0; }
-.modern-app .task-clear-confirm button { min-height: 32px; padding: 5px 12px; font-size: var(--font-size-xs); }
+.modern-app .task-clear-confirm button { min-height: 32px; padding: 5px 12px; font-size: var(--font-size-control); }
 /* ---------- 字幕与转写：字幕来源、保存位置 ---------- */
 .option-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 6px 12px; margin-top: 14px; }
 .option-label { color: var(--color-text-secondary); font-size: var(--font-size-sm); }
@@ -252,7 +252,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--color-fill-primary
 /* Settings → AI 模型 */
 .settings-ai input:not([type=checkbox]) { width: 100%; min-height: 42px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--color-border-strong); font-size: var(--font-size-md); }
 .settings-ai .settings-price { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
-.settings-ai .settings-price label { display: grid; gap: 6px; width: 120px; margin: 0; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.settings-ai .settings-price label { display: grid; gap: 6px; width: 120px; margin: 0; font-size: var(--font-size-control); color: var(--color-text-secondary); }
 .settings-ai .settings-price input { margin: 0; }
 .settings-ai .settings-price span { padding-bottom: 9px; font-size: var(--font-size-xs); color: var(--color-text-tertiary); }
 .settings-ai .settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

@@ -74,6 +74,8 @@ export default function AnalysisPanel(props: Props) {
   useEffect(() => setLargeFrame(null), [projectId, resource]);
   const [notice, setNotice] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [configExpanded, setConfigExpanded] = useState<boolean | null>(null);
+  useEffect(() => { setConfigExpanded(null); }, [projectId, resource]);
   const previewRequest = useRef<AbortController | null>(null);
   const shown = useRef({ project: '', resource: '', version: 0 });
   // Model settings: from the latest context load, or from the settings page when it saves.
@@ -248,6 +250,9 @@ export default function AnalysisPanel(props: Props) {
   const price = models.native ? '费用由所选 agent 的模型服务计算。' : !ai ? '' : ai.local ? '本机模型，不产生调用费用。' : cost !== null ? `按设置的单价约 ¥${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}。` : '未填写单价，无法估算费用（可在设置 → AI 模型填写）。';
   const phase = task?.phase && phases[task.phase] ? phases[task.phase] + ' · ' : '';
 
+  // Never hide progress, cancellation or errors. A manual disclosure choice survives refreshes.
+  const configRequired = working || previewing || !!loadError || !!previewError || !!error;
+  const configOpen = configRequired || (configExpanded ?? visibleRecords.length === 0);
   if (!parsed) return <Panel className={learning ? 'learning-materials' : 'analysis-form'}>
     <PanelTitle>{learning ? '还没有选择学习视频' : 'AI 学习材料管理'}</PanelTitle>
     <p className="analysis-empty">先在视频工作台解析并归档视频，再开始学习或制作 AI 学习材料。</p>
@@ -256,7 +261,13 @@ export default function AnalysisPanel(props: Props) {
   return <>
     <FrameLightbox frame={largeFrame} onClose={() => setLargeFrame(null)} onSeek={recordSeek} />
     <Panel className="analysis-form" hidden={learning} aria-labelledby="analysis-title">
-      <PanelTitle id="analysis-title">生成 AI 学习材料</PanelTitle>
+      <div className="analysis-config-heading">
+        <div><PanelTitle id="analysis-title">生成 AI 学习材料</PanelTitle>
+          {!configOpen && <p className="analysis-hint">展开配置以生成新材料；已有结果在下方。</p>}</div>
+        {visibleRecords.length > 0 && <button type="button" aria-controls="analysis-configuration" aria-expanded={configOpen}
+          disabled={configRequired} onClick={() => setConfigExpanded(!configOpen)}>{configOpen ? '收起生成配置' : '生成新材料'}</button>}
+      </div>
+      <div id="analysis-configuration" className="analysis-configuration" hidden={!configOpen} onFocusCapture={() => setConfigExpanded(true)}>
       {loadError && <p className="error-text" role="alert">{loadError}<button type="button" onClick={() => setReload(value => value+1)}>重新载入材料</button></p>}
       {!media && <p className="notice">请先归档所选视频，再生成学习材料。<button type="button" className="link-button" onClick={props.onPrepare}>去准备视频</button></p>}
       <AgentModelPicker state={models} disabled={working} onManage={props.onOpenSettings} />
@@ -337,6 +348,7 @@ export default function AnalysisPanel(props: Props) {
         {!working && blocker && parsed && context && <span className="analysis-hint">{blocker}</span>}
       </div>
       {(working || (error && status)) && <p className={error ? 'error-text' : 'analysis-status'} role="status" aria-live="polite">{working ? phase : ''}{status}</p>}
+      </div>
     </Panel>
 
     {(learning || visibleRecords.length > 0) && <Panel className={'analysis-records' + (learning ? ' learning-materials' : '')} aria-labelledby="analysis-records-title">
@@ -366,11 +378,13 @@ export default function AnalysisPanel(props: Props) {
         </div>
         {!learning && !recordMatches && <p className="notice">这份记录未绑定当前归档视频，不能用于当前学习。</p>}
         {!learning && notice && <p className="analysis-hint" role="status">{notice}</p>}
-        {!learning && record.frames.length > 0 && <ul className="analysis-frames" aria-label="这次分析用到的画面">
+        {!learning && record.frames.length > 0 && <details key={record.id} className="analysis-evidence" open>
+          <summary>画面证据（{record.frames.length}）</summary>
+          <ul className="analysis-frames" aria-label="这次分析用到的画面">
           {record.frames.map(frame => <li key={frame.url}><button type="button" title={`查看画面 ${frame.label} 大图`} onClick={() => setLargeFrame(frame)}>
             <img src={frame.url} alt={`画面 ${frame.label}`} loading="lazy" /><span>{frame.label}</span></button></li>)}
-        </ul>}
-        <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" />
+        </ul></details>}
+        <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" timeRangesFirst />
 
       </article>}
     </Panel>}

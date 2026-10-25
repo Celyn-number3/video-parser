@@ -1,0 +1,15 @@
+:is(.markdown, .math-text) .md-math { max-width: 100%; }
+:is(.markdown, .math-text) .md-math:not(.md-math-display) { display: inline-block; vertical-align: middle; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+:is(.markdown, .math-text) .md-math > .katex { white-space: nowrap; }
+:is(.markdown, .math-text) .md-math .katex { font-size: 1.08em; color: inherit; }
+:is(.markdown, .math-text) .md-math-display { display: block; margin: 12px 0; overflow-x: auto; overflow-y: hidden; padding: 4px 2px; }
+:is(.markdown, .math-text) .md-math-display .katex-display { margin: 0; }
+:is(.markdown, .math-text) .md-math-display .katex-display > .katex { text-align: left; }
+:is(.markdown, .math-text) .md-math-fallback { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.math-text { min-width:0; max-width:100%; white-space:pre-wrap; overflow-wrap:anywhere; }
+.math-text .md-math-fallback { display:inline-block; max-width:100%; overflow-x:auto; vertical-align:middle; white-space:pre; }
+.math-text-area { min-width:0; margin-top:8px; }
+.math-reading-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; font-size: var(--font-size-control); color:var(--color-text-secondary); }
+.math-reading-body { min-width:0; max-height:300px; overflow:auto; padding:12px; border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-bg); font-size: var(--font-size-subheading); line-height:1.75; }
+.math-reading-body:focus-visible { outline:2px solid var(--color-border-focus); outline-offset:2px; }

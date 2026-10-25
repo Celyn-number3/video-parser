@@ -1,7 +1,7 @@
 .chapter-timeline { margin-top: 14px; padding: 16px; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface-raised); }
 .chapter-timeline-heading { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-.chapter-timeline-heading h3 { margin: 0; font-size: 14px; }
-.chapter-timeline-hint { font-size: 11px; color: var(--color-text-secondary); }
+.chapter-timeline-heading h3 { margin: 0; font-size: var(--font-size-md); }
+.chapter-timeline-hint { font-size: var(--font-size-caption); color: var(--color-text-secondary); }
 /* Keep one thin rail. Invisible 32px hit targets surround the small chapter dots. */
 .chapter-timeline-track { position: relative; height: 36px; margin-inline: 16px; }
 .chapter-timeline-track::before, .chapter-timeline-progress { content: ''; position: absolute; top: 50%; left: 0; height: 2px; border-radius: 999px; transform: translateY(-50%); pointer-events: none; }
@@ -15,16 +15,33 @@
 .modern-app .chapter-timeline-track .chapter-timeline-marker:hover:not(:disabled) { background: transparent; }
 .chapter-timeline-marker:hover:not(:disabled) .chapter-timeline-dot { border-color: var(--color-text); background: var(--color-text); }
 .modern-app .chapter-timeline-track .chapter-timeline-marker:focus-visible { outline: 2px solid var(--color-text); outline-offset: 0; z-index: 2; }
-.chapter-timeline-list { display: flex; flex-direction: column; gap: 6px; max-height: min(55dvh, 560px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 2px; margin: 4px 0 0; list-style: none; scrollbar-width: thin; }
+.chapter-timeline-directory { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.chapter-directory-frame { height: min(55dvh, 560px); min-height: 0; overflow: hidden; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); }
+.chapter-timeline-list { display: flex; flex-direction: column; gap: 6px; height: 100%; max-height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0; margin: 0; list-style: none; scrollbar-width: thin; scrollbar-gutter: stable; scroll-behavior: auto; }
+.chapter-timeline-list:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 3px; }
+.chapter-timeline-list button:focus-visible { outline-offset: -3px; }
 .chapter-timeline-list li { flex: none; min-width: 0; }
-.modern-app .chapter-timeline-list button { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; width: 100%; padding: 10px; min-height: 44px; font-size: 12px; text-align: left; }
+.modern-app .chapter-timeline-list button { display: flex; gap: 10px; align-items: baseline; justify-content: flex-start; width: 100%; padding: 10px; min-height: 44px; font-size: var(--font-size-control); text-align: left; }
 .chapter-timeline-list time { flex: none; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
 .chapter-timeline-list button > span { min-width: 0; overflow-wrap: anywhere; white-space: normal; line-height: 1.6; }
 .modern-app .chapter-timeline-list button[aria-current] { background: var(--color-fill-hover); border-color: var(--color-border-strong); font-weight: 600; }
 .chapter-timeline-hint { margin: 8px 0 0; line-height: 1.6; }
 @media(max-width:560px) { .chapter-timeline { padding: 12px; } }
-.chapter-timeline-intro { min-width: 0; margin: 4px 0 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-sunken); overflow-wrap: anywhere; }
-.chapter-timeline-intro-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; font-size: 11px; color: var(--color-text-secondary); }
-.chapter-timeline-intro-meta time { font-variant-numeric: tabular-nums; }
-.chapter-timeline-intro h4 { margin: 8px 0 6px; font-size: 14px; line-height: 1.5; }
-.chapter-timeline-intro-body { min-height: 2.8em; max-height: 12em; overflow-y: auto; margin: 0; font-size: 13px; line-height: 1.7; white-space: pre-line; }
+.chapter-timeline-intro { container-type: inline-size; min-width: 0; margin: 4px 0 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-sunken); overflow-wrap: anywhere; }
+/* Equal side tracks keep the time/title centered on the card, not on the space after the count. */
+.chapter-timeline-intro-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr); align-items: baseline; column-gap: 12px; row-gap: 4px; }
+.chapter-timeline-intro-meta { grid-column: 1; grid-row: 1; min-width: 0; white-space: nowrap; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
+.chapter-timeline-current-heading { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; text-align: center; }
+.chapter-timeline-current-heading time { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
+.chapter-timeline-current-heading > h4 { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+@container (max-width: 560px) {
+  .chapter-timeline-intro-header { grid-template-columns: minmax(0, 1fr); }
+  .chapter-timeline-intro-meta { grid-column: 1; grid-row: 1; }
+  .chapter-timeline-current-heading { grid-column: 1; grid-row: 2; }
+}
+.chapter-timeline-intro h4 { margin: 0; font-size: var(--font-size-md); line-height: 1.5; }
+.chapter-timeline-intro-body { min-height: 2.8em; max-height: 12em; overflow-y: auto; margin: 0; font-size: var(--font-size-sm); line-height: 1.7; white-space: pre-line; }
+
+/* Reserve the hint slot even at the end, so visibility never resizes the row viewport. */
+.chapter-directory-more { flex: none; min-height: 36px; }
+.modern-app .chapter-directory-more button { width: 100%; min-height: 36px; padding: 6px 10px; font-size: var(--font-size-control); gap: 8px; }

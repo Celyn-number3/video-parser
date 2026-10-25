@@ -5,7 +5,7 @@ import { projectDisplayTitle, videoDisplayTitle } from '../../lib/projectTitles'
 
 type Item = VideoProject | VideoProjectSummary;
 const single = (p: Item) => p.is_single === true || !p.part;
-export const projectLabel = (p: Item) => `${single(p) ? '' : `P${p.part} · `}${videoDisplayTitle(p)}`;
+export const projectLabel = (p: Item) => `${single(p) ? '' : `P${p.part}　`}${videoDisplayTitle(p)}`;
 export const projectSearch = (p: Item) => `${p.title} ${courseName(p)} ${p.episode_title || ''} ${!single(p) && p.part ? `P${p.part} P${String(p.part).padStart(3, '0')}` : ''}`;
 const courseName = (p: Item) => p.display_title || projectDisplayTitle(p).replace(/[（(]完整版[^）)]*[）)]/g, '').replace(/(?:通俗易懂|绝对是|必看|天花板).*$/, '').trim() || p.title;
 
@@ -17,6 +17,13 @@ export default function ProjectPickerMenu({ items, current, label, disabled, que
   const trigger = useRef<HTMLButtonElement>(null), popup = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null);
   const pendingFocus = useRef(false);
   const [open, setOpen] = useState(false), [active, setActive] = useState('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // Search reveals matching groups without discarding the normal browsing state.
+  const [searchFold, setSearchFold] = useState<{ query: string; keys: Set<string> }>({ query: '', keys: new Set() });
+  useEffect(() => { setSearchFold({ query, keys: new Set() }); }, [query]);
+  const searching = !!query.trim();
+  const folded = searching ? (searchFold.query === query ? searchFold.keys : new Set<string>()) : collapsed;
+  const setFolded = (keys: Set<string>) => { if (searching) setSearchFold({ query, keys }); else setCollapsed(keys); };
   const [position, setPosition] = useState({ left: 16, top: 80, width: 320, maxHeight: 420 });
   const groups = new Map<string, { name: string; full: string; items: Item[] }>();
   for (const item of items) {
@@ -29,7 +36,16 @@ export default function ProjectPickerMenu({ items, current, label, disabled, que
     if (key !== 'single' && [...groups.values()].filter(other => other.name === group.name).length > 1) group.name += ` · ${group.items[0].video_id || group.items[0].id.slice(0, 6)}`;
   }
   const ordered = [...groups.entries()].sort(([a], [b]) => a === 'single' ? 1 : b === 'single' ? -1 : 0);
-  const enabled = ordered.flatMap(([, g]) => g.items).filter(p => 'resources' in p ? p.resources.some(r => r.kind === 'video') : p.archived);
+  const available = (p: Item) => 'resources' in p ? p.resources.some(r => r.kind === 'video') : p.archived;
+  const enabled = ordered.filter(([key]) => !folded.has(key)).flatMap(([, g]) => g.items).filter(available);
+  const allCollapsed = ordered.length > 0 && ordered.every(([key]) => folded.has(key));
+  const toggleGroup = (key: string) => {
+    const next = new Set(folded);
+    if (next.has(key)) next.delete(key);
+    else { next.add(key); if (groups.get(key)?.items.some(p => p.id === active)) setActive(''); }
+    setFolded(next);
+  };
+  const toggleAll = () => { setFolded(allCollapsed ? new Set() : new Set(ordered.map(([key]) => key))); setActive(''); };
   const close = (focus = true) => { setOpen(false); if (focus) trigger.current?.focus(); };
   const choose = (p: Item) => { close(); if (p.id !== current?.id) { pendingFocus.current = true; onSelect(p.id); } };
   function navigate(key: string) {
@@ -65,31 +81,37 @@ export default function ProjectPickerMenu({ items, current, label, disabled, que
   return <>
     <button ref={trigger} type="button" className="project-picker-trigger" role="combobox" aria-label={label} aria-haspopup="listbox"
       aria-expanded={open} aria-controls={open ? id : undefined} data-value={current?.id || ''} disabled={disabled}
-      onClick={() => { setActive(current?.id || enabled[0]?.id || ''); setOpen(!open); }}
-      onKeyDown={e => { if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setActive(current?.id || enabled[0]?.id || ''); setOpen(true); } }}>
+      onClick={() => { setActive(enabled.find(p => p.id === current?.id)?.id || enabled[0]?.id || ''); setOpen(!open); }}
+      onKeyDown={e => { if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setActive(enabled.find(p => p.id === current?.id)?.id || enabled[0]?.id || ''); setOpen(true); } }}>
       <span translate={current ? "no" : undefined}>{current ? projectLabel(current) : '选择已归档视频…'}</span><span aria-hidden="true">⌄</span>
     </button>
     {open && createPortal(<div ref={popup} className="project-picker-popup" style={position}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing) return;
+        const selecting = e.target === input.current || (e.target as HTMLElement).id === id;
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
-        else if (['ArrowDown', 'ArrowUp'].includes(e.key) || (e.target !== input.current && ['Home', 'End'].includes(e.key))) { e.preventDefault(); navigate(e.key); }
-        else if (e.key === 'Enter' && !e.nativeEvent.isComposing && activeItem) { e.preventDefault(); choose(activeItem); }
-        else if (e.key === 'Tab') { close(); }
+        else if (selecting && (['ArrowDown', 'ArrowUp'].includes(e.key) || (e.target !== input.current && ['Home', 'End'].includes(e.key)))) { e.preventDefault(); navigate(e.key); }
+        else if (selecting && e.key === 'Enter' && activeItem) { e.preventDefault(); choose(activeItem); }
       }}>
       <div className="project-picker-filter"><input ref={input} type="search" aria-label="筛选视频列表" placeholder="搜索课程、分集或 P 号" value={query}
         aria-controls={id} aria-activedescendant={activeItem ? `${id}-${activeItem.id}` : undefined}
         onChange={e => { setQuery(e.target.value); setActive(''); }} /></div>
+      <div className="project-picker-actions"><button type="button" disabled={!ordered.length} onClick={toggleAll}>{allCollapsed ? '全部展开' : '全部收起'}</button></div>
       <div id={id} role="listbox" aria-label={label} className="project-picker-options" tabIndex={0} aria-activedescendant={activeItem ? `${id}-${activeItem.id}` : undefined}>
-        {ordered.map(([key, group]) => <div key={key} role="group" aria-label={group.full}>
-          <div className="project-picker-group" aria-hidden="true" translate={key === 'single' ? undefined : "no"}>{group.name}</div>
+        {ordered.map(([key, group], index) => <div key={key} role="group" aria-label={group.full}>
+          <button type="button" className="project-picker-group" aria-expanded={!folded.has(key)} aria-controls={`${id}-group-${index}`} onClick={() => toggleGroup(key)}>
+            <svg className="project-picker-chevron" aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span translate={key === 'single' ? undefined : "no"}>{group.name}</span>
+          </button>
+          <div id={`${id}-group-${index}`} hidden={folded.has(key)}>
           {group.items.map(p => {
-            const available = enabled.some(item => item.id === p.id);
-            return <div id={`${id}-${p.id}`} key={p.id} role="option" data-project-id={p.id} aria-selected={p.id === current?.id} aria-disabled={!available}
-              className={'project-picker-option' + (p.id === active ? ' is-active' : '')} onClick={() => { if (available) choose(p); }}>
-              <span translate="no">{projectLabel(p)}{!available ? '（尚未归档）' : ''}</span><span aria-hidden="true">{p.id === current?.id ? '✓' : ''}</span>
+            const canSelect = available(p);
+            return <div id={`${id}-${p.id}`} key={p.id} role="option" data-project-id={p.id} aria-selected={p.id === current?.id} aria-disabled={!canSelect}
+              className={'project-picker-option' + (p.id === active ? ' is-active' : '')} onClick={() => { if (canSelect) choose(p); }}>
+              <span translate="no">{projectLabel(p)}{!canSelect ? '（尚未归档）' : ''}</span><span aria-hidden="true">{p.id === current?.id ? '✓' : ''}</span>
             </div>;
           })}
+          </div>
         </div>)}
         {!items.length && <p className="project-picker-empty">没有匹配的视频</p>}
       </div>

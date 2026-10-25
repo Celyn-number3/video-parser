@@ -1,3 +1,4 @@
+import MathTextArea from '../../components/MathTextArea';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '../../lib/api';
 import type { ArchivedTranslation, Configuration, TranscriptionJob } from '../../lib/api';
@@ -9,9 +10,10 @@ import useAgentModels from '../learning/useAgentModels';
 type Source = { job_id: string } | { project_id: string; resource: string; video_resource?: string };
 // restoredJob: a translation of this video restored after a reload / from the task center, shown here
 // (where it belongs) instead of in the transcription result area.
-type Props = { unified?: boolean; onCompleted?: (job: TranscriptionJob) => void; source: Source; text: string; language?: string; config?: Configuration | null; label?: string; textId?: string; rows?: number; restoredJob?: TranscriptionJob | null; archivedTranslations?: ArchivedTranslation[]; onOpenSettings?: (button: HTMLButtonElement) => void };
-export default function SubtitleTranslation({ unified = false, onCompleted, source, text, language, config, label, textId, rows = 8, restoredJob, archivedTranslations = [], onOpenSettings }: Props) {
-  const [open, setOpen] = useState(false);
+type Props = { initialOpen?: boolean; onOpenChange?: (open: boolean) => void; unified?: boolean; onCompleted?: (job: TranscriptionJob) => void; source: Source; text: string; language?: string; config?: Configuration | null; label?: string; textId?: string; rows?: number; restoredJob?: TranscriptionJob | null; archivedTranslations?: ArchivedTranslation[]; onOpenSettings?: (button: HTMLButtonElement) => void };
+export default function SubtitleTranslation({ initialOpen = false, onOpenChange, unified = false, onCompleted, source, text, language, config, label, textId, rows = 8, restoredJob, archivedTranslations = [], onOpenSettings }: Props) {
+  const [open, setOpen] = useState(initialOpen);
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
   const [target, setTarget] = useState<'zh' | 'en'>(() => language === 'en' ? 'zh' : language === 'zh' ? 'en' : (text.match(/[\u3400-\u9fff]/g)?.length || 0) > (text.match(/[a-zA-Z]/g)?.length || 0) / 3 ? 'en' : 'zh');
   const [outputConfirmed, setOutputConfirmed] = useState(false);
   const [job, setJob] = useState<TranscriptionJob | null>(null);
@@ -61,10 +63,10 @@ export default function SubtitleTranslation({ unified = false, onCompleted, sour
   }
   return <section className="subtitle-translation" aria-label="AI 中英互译">
     <div className="translation-heading">
-      {label && <label htmlFor={textId}>{label}</label>}
+      {label && <span>{label}</span>}
       <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>AI 中英互译</button>
     </div>
-    {label && <textarea id={textId} aria-label={label} readOnly rows={rows} value={text} />}
+    {label && <MathTextArea id={textId} aria-label={label} rows={rows} value={text} />}
     {open && <>
       <div className="translation-controls"><label>翻译方向<select aria-label="翻译方向" value={target} disabled={working} onChange={event => setTarget(event.target.value as 'zh' | 'en')}>
         <option value="zh">英文 → 中文</option><option value="en">中文 → 英文</option>
@@ -83,10 +85,10 @@ export default function SubtitleTranslation({ unified = false, onCompleted, sour
     {error && <p role="alert" className="error-text">{error}</p>}
     {saved && !unified && <div className="translation-result">
       <label>已保存译文<select aria-label="已保存译文" value={saved.key} onChange={e => setTranslationResource(e.target.value)}>{choices.map(item => <option key={item.key} value={item.key}>{item.filename}</option>)}</select></label>
-      <label>译文<textarea aria-label="译文" readOnly rows={8} value={saved.text} /></label>
+      <div><span>译文</span><MathTextArea aria-label="译文" rows={8} value={saved.text} /></div>
       {saved.location && <SavedLocation label="译文已保存到" location={saved.location} openPath={saved.openPath} body={saved.body} />}
     </div>}
-    {unified && completed && <p className="subtitle-note">翻译已完成，请在上方选择 AI 译文查看。</p>}
+    {unified && completed && <p className="subtitle-note">翻译已完成，结果已加入当前视图。</p>}
     {working && <p className="subtitle-note">切换视频或离开页面不会取消后台翻译，可在任务中心继续查看。</p>}
   </section>;
 }

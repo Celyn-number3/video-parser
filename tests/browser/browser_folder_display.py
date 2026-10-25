@@ -30,7 +30,9 @@ class FolderDisplayTests(unittest.TestCase):
     def tearDown(self): harness.WorkspacePolishTests.tearDown(self)
     def test_confirmed_folder_updates_all_contexts_reload_and_other_episode_without_losing_draft(self):
         self.f.open(); heading=self.page.locator('.video-context-heading')
-        self.page.get_by_role('tab',name='AI 分析',exact=True).click();self.page.locator('#prompt').fill('保留未提交的分析要求')
+        self.page.get_by_role('tab',name='AI 分析',exact=True).click()
+        self.page.get_by_role('button',name='生成新材料',exact=True).click()
+        self.page.locator('#prompt').fill('保留未提交的分析要求')
         self.page.get_by_role('tab',name='文件重命名',exact=True).click()
         card=self.page.locator('.project-folder-naming');card.get_by_role('textbox',name='新文件夹名称',exact=True).fill('简短新项目名')
         card.get_by_role('button',name='预览文件夹改名',exact=True).click()

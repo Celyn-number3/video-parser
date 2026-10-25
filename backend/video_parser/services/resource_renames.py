@@ -96,11 +96,14 @@ def _subtitle_suffix(project, name, info):
         match = re.search(r'\.(zh(?:-CN|-TW)?|en|ja|ko)(?:[.\-]|$)', name, re.I)
         language = match[1] if match else ''
     kind = info['kind']
-    origin = project['resources'].get(info.get('source_resource'), {}).get('kind') if kind == 'translation' else kind
-    if kind == 'translation' and not origin:
-        origin = 'transcription' if '本地转写' in name else 'subtitle' if '平台字幕' in name else None
-    label = '本地转写' if origin == 'transcription' else ('B站平台字幕' if project['platform'] == 'bilibili' else '平台字幕') if origin == 'subtitle' else ''
-    return ('.' + language if language else '') + ('-AI翻译' if kind == 'translation' else '') + ('-' + label if label else '')
+    parent = project['resources'].get(info.get('source_resource'), {})
+    origin = parent.get('kind') if kind == 'translation' else kind
+    if kind == 'translation' and info.get('source_sha256') and info['source_sha256'] != parent.get('sha256'):
+        origin = None
+    # Missing provenance remains unknown, not a guess based on an old filename.
+    from video_parser.services import subtitle_names
+    return subtitle_names.suffix(kind, language, origin, project.get('platform'))
+
 
 
 def inventory(identifier):

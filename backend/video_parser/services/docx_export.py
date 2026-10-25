@@ -1,8 +1,9 @@
-"""Markdown → minimal Word (.docx) without extra dependencies.
+"""Markdown → minimal Word (.docx) with bounded native Office Math.
 
 Covers what analysis reports use: headings, paragraphs, bullet/numbered lists, tables,
-block quotes, rules, **bold**, *italic* and `code`. Everything else is kept as plain text.
+block quotes, rules, **bold**, *italic*, `code` and bounded native Office Math.
 """
+from .docx_math import MathContext, M
 from io import BytesIO
 import re
 from xml.sax.saxutils import escape
@@ -61,7 +62,7 @@ def _clean(text):
     return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
 
 
-def runs(text, bold=False):
+def runs(text, bold=False, math=None, display=False):
     text = re.sub(r'\[([^\]]+)\]\((https?://[^)]+)\)', r'\1（\2）', _clean(text))
     result = []
     for part in INLINE.split(text):
@@ -76,16 +77,20 @@ def runs(text, bold=False):
             props.append('<w:i/>'); body = part[1:-1]
         if bold and '<w:b/>' not in props:
             props.insert(0, '<w:b/>')
-        result.append(f'<w:r>{"<w:rPr>" + "".join(props) + "</w:rPr>" if props else ""}<w:t xml:space="preserve">{escape(body)}</w:t></w:r>')
+        for segment in math.pattern.split(body) if math else [body]:
+            if math and segment in math.expressions:
+                result.append(math.render(segment, display=display))
+            elif segment:
+                result.append(f'<w:r>{"<w:rPr>" + "".join(props) + "</w:rPr>" if props else ""}<w:t xml:space="preserve">{escape(segment)}</w:t></w:r>')
     return ''.join(result)
 
 
-def paragraph(text, style=None, indent=0, bold=False):
+def paragraph(text, style=None, indent=0, bold=False, math=None):
     props = (f'<w:pStyle w:val="{style}"/>' if style else '') + (f'<w:ind w:left="{indent}" w:hanging="280"/>' if indent else '')
-    return f'<w:p>{"<w:pPr>" + props + "</w:pPr>" if props else ""}{runs(text, bold)}</w:p>'
+    return f'<w:p>{"<w:pPr>" + props + "</w:pPr>" if props else ""}{runs(text, bold, math, display=bool(math and text.strip() in math.expressions))}</w:p>'
 
 
-def table(rows):
+def table(rows, math=None):
     cells = [[cell.strip() for cell in row.strip().strip('|').split('|')] for row in rows]
     cells = [row for row in cells if not all(re.fullmatch(r':?-{2,}:?', cell or '-') for cell in row)]
     width = max(len(row) for row in cells)
@@ -95,19 +100,21 @@ def table(rows):
     for index, row in enumerate(cells):
         body.append('<w:tr>' + ''.join(
             f'<w:tc><w:tcPr>{shade if index == 0 else ""}</w:tcPr>'
-            f'{paragraph(row[column] if column < len(row) else "", bold=index == 0)}</w:tc>' for column in range(width)) + '</w:tr>')
+            f'{paragraph(row[column] if column < len(row) else "", bold=index == 0, math=math)}</w:tc>' for column in range(width)) + '</w:tr>')
     body.append('</w:tbl><w:p/>')
     return ''.join(body)
 
 
 def body_xml(markdown):
-    parts, lines, index = [], markdown.replace('\r\n', '\n').split('\n'), 0
+    math = MathContext(_clean(markdown.replace('\r\n', '\n')))
+    parts, lines, index = [], math.text.split('\n'), 0
     while index < len(lines):
         line = lines[index]
         stripped = line.strip()
-        if stripped.startswith('```'):
+        if re.match(r'^(`{3,}|~{3,})', stripped):
+            fence = re.match(r'^(`{3,}|~{3,})', stripped)[0]
             index += 1
-            while index < len(lines) and not lines[index].strip().startswith('```'):
+            while index < len(lines) and not re.fullmatch(re.escape(fence[0]) + '{' + str(len(fence)) + ',}', lines[index].strip()):
                 parts.append(f'<w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/></w:rPr>'
                              f'<w:t xml:space="preserve">{escape(_clean(lines[index]))}</w:t></w:r></w:p>')
                 index += 1
@@ -117,7 +124,7 @@ def body_xml(markdown):
             rows = []
             while index < len(lines) and lines[index].strip().startswith('|'):
                 rows.append(lines[index]); index += 1
-            parts.append(table(rows))
+            parts.append(table(rows, math))
             continue
         heading = re.match(r'^(#{1,6})\s+(.*)$', stripped)
         bullet = re.match(r'^(\s*)[-*+]\s+(.*)$', line)
@@ -125,23 +132,25 @@ def body_xml(markdown):
         if not stripped:
             pass
         elif heading:
-            parts.append(paragraph(heading[2], {1: 'Heading1', 2: 'Heading2'}.get(len(heading[1]), 'Heading3')))
+            parts.append(paragraph(heading[2], {1: 'Heading1', 2: 'Heading2'}.get(len(heading[1]), 'Heading3'), math=math))
         elif re.fullmatch(r'(-{3,}|\*{3,}|_{3,})', stripped):
             parts.append('<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr></w:pPr></w:p>')
         elif stripped.startswith('>'):
-            parts.append(paragraph(stripped.lstrip('>').strip(), 'Quote'))
+            parts.append(paragraph(stripped.lstrip('>').strip(), 'Quote', math=math))
         elif bullet:
-            parts.append(paragraph('• ' + bullet[2], indent=360 + 360 * (len(bullet[1].expandtabs(4)) // 2)))
+            parts.append(paragraph('• ' + bullet[2], indent=360 + 360 * (len(bullet[1].expandtabs(4)) // 2), math=math))
         elif number:
-            parts.append(paragraph(f'{number[2]}. {number[3]}', indent=360 + 360 * (len(number[1].expandtabs(4)) // 2)))
+            parts.append(paragraph(f'{number[2]}. {number[3]}', indent=360 + 360 * (len(number[1].expandtabs(4)) // 2), math=math))
         else:
-            parts.append(paragraph(stripped))
+            parts.append(paragraph(stripped, math=math))
         index += 1
+    if math.failed:
+        parts.append(paragraph(f'有 {len(math.failed)} 个公式无法转换为 Word 公式，已保留 LaTeX 原文。'))
     return ''.join(parts)
 
 
 def build(markdown, title=''):
-    document = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}"><w:body>{body_xml(markdown)}'
+    document = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}" xmlns:m="{M}"><w:body>{body_xml(markdown)}'
                 '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1300" w:bottom="1440" w:left="1300" '
                 'w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>')
     core = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties '
