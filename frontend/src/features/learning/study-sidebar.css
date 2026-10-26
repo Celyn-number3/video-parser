@@ -20,14 +20,6 @@
 .study-sidebar[data-aligned]:not(.is-collapsed) .study-sidebar-body { flex: 1; min-height: 0; max-height: none; }
 .study-sidebar-empty { padding: 16px; margin: 0; font-size: var(--font-size-caption); line-height: 1.8; color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .study-sidebar .chapter-timeline { margin: 0; padding: 12px; border: 0; border-radius: 0; }
-/* Only the framed list scrolls on the chapters tab; the heading stays outside it. */
-.modern-app .study-sidebar .study-sidebar-body[data-tab=chapters] { display: flex; flex-direction: column; overflow: hidden; }
-.study-sidebar #study-panel-chapters:not([hidden]) { display: flex; flex: 1; min-height: 0; }
-.study-sidebar .chapter-timeline-directory { flex: 1; }
-.study-sidebar .chapter-directory-frame { flex: 1; height: auto; }
-@media(max-width:1170px) {
-  .modern-app .study-sidebar .study-sidebar-body[data-tab=chapters] { height: clamp(280px, 52dvh, 480px); max-height: none; }
-}
 .study-sidebar .timestamp-notes { margin: 0; padding: 12px; border: 0; border-radius: 0; }
 .timestamp-notes-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--font-size-sm); }
 .timestamp-notes-heading button { min-height: 36px; }

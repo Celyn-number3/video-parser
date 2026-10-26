@@ -129,6 +129,30 @@ def migrate(project_id):
     return list_sessions(project_id)
 
 
+def clear_context(project_id, identifier, resource, expected_last_message_id):
+    """Keep durable messages; exclude pre-boundary history and invalidate native resume."""
+    project = library.get(project_id)
+    name, _ = _header(project, identifier)
+    with library.file_lock(library.contained(project['directory'], '.conversation-context.lock')):
+        project = library.get(project_id)
+        name, item = _header(project, identifier)
+        session = _public(project, name, item)
+        if session.get('video_resource') not in (None, resource):
+            raise ValueError('这个对话属于另一个视频，未清空上下文。')
+        last = session['messages'][-1]['id'] if session['messages'] else None
+        if last != expected_last_message_id:
+            raise BlockingIOError('对话已有新消息，请重新载入并确认后再清空上下文。')
+        if session.get('context_after') == last and not item.get('native_session_id'):
+            return session
+        engine = model_calls.target(session.get('agent'))['engine']
+        if engine != 'api':
+            directory = model_calls.workspace(project['directory'], identifier)
+            # Clear binding first: a failed metadata write will rebuild full, still-visible history.
+            model_calls.bind_session(directory, engine, [], None)
+        library.update_details(project_id, name, {'context_after': last, 'native_session_id': None})
+        return get(project_id, identifier)
+
+
 def parse_plan(text, duration):
     text = text.strip()
     if text.startswith('```'):

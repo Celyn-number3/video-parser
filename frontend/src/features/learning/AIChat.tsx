@@ -43,11 +43,13 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
   const { drafts, setDraft, draftStorageFailed } = useConversationDrafts(chat?.projectId || '', chat?.resource || '');
   const session = chat?.session || null;
   const draftId = session?.id || 'new';
+  const contextKey = `${chat?.projectId}:${chat?.resource}:${session?.id}`;
+  const currentContext = useRef(contextKey); currentContext.current = contextKey;
   const question = drafts[draftId] || '';
   const pending = chat?.pending;
   const waiting = !!pending && pending.conversationId === session?.id;
   const answered = session?.messages.length || 0;
-  const blocked = !chat?.available || !chat.configured || busy !== null || sending || chat.creating || composing || waiting;
+  const blocked = !chat?.available || !chat.configured || busy !== null || sending || chat.creating || chat.clearing || composing || waiting;
   const commandToken = chat?.models.native && chat.configured && visible && commandState.focused && !commandState.dismissed && !composing
     ? slashToken(question, commandState.caret, commandState.end) : null;
   const commands = commandToken && !chat?.models.refreshing ? matchingCommands(chat?.models.commands || [], commandToken.query) : [];
@@ -68,7 +70,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
     setCommandState(old => ({ ...old, dismissed: true, caret: next.caret, end: next.caret }));
     requestAnimationFrame(() => { if (field === input.current) { field?.focus(); field?.setSelectionRange(next.caret, next.caret); } });
   }
-  useEffect(() => { setFailure(''); setPicker(false); }, [chat?.projectId, chat?.host, chat?.provider, chat?.models.key]);
+  useEffect(() => { setFailure(''); setPicker(false); }, [chat?.projectId, chat?.resource, session?.id, chat?.host, chat?.provider, chat?.models.key]);
   useEffect(() => { composingNow.current = false; setComposing(false); }, [chat?.projectId, chat?.resource, draftId]);
   useEffect(() => { if (!pickerVisible) setPicker(false); }, [pickerVisible]);
   useEffect(() => {
@@ -109,10 +111,17 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
     finally { sendingNow.current = false; setSending(false); }
   }
   async function newConversation() {
-    if (!chat || busy !== null || chat.creating) return;
+    if (!chat || busy !== null || chat.creating || chat.clearing) return;
     setFailure('');
     try { await chat.newConversation(chat.models.selected); setPicker(false); onReveal?.(); requestAnimationFrame(() => input.current?.focus()); }
     catch (reason) { setFailure(reason instanceof Error ? reason.message : '创建对话失败，请重试。'); }
+  }
+  async function clearContext() {
+    if (!chat || !session?.messages.length || busy !== null || sending || waiting || chat.creating || chat.clearing) return;
+    if (!window.confirm('清空当前对话的上下文？历史消息不会删除，后续提问将不再携带之前的问答；当前视频资料仍可使用。')) return;
+    const scope = contextKey; setFailure('');
+    try { await chat.clearContext(); }
+    catch (reason) { if (currentContext.current === scope) setFailure(reason instanceof Error ? reason.message : '清空上下文失败，请重试。'); }
   }
   function insertTime() {
     if (!chat) return;
@@ -123,7 +132,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
   }
   const phase = task?.phase && phases[task.phase] ? phases[task.phase] + ' · ' : '';
   const list = <>
-    <button type="button" className="conversation-new" disabled={busy !== null || chat?.creating} onClick={() => { void newConversation(); }}>＋ 新建对话</button>
+    <button type="button" className="conversation-new" disabled={busy !== null || chat?.creating || chat?.clearing} onClick={() => { void newConversation(); }}>＋ 新建对话</button>
     <div className="conversation-list">{chat?.sessions.map(item => <button type="button" key={item.id} aria-pressed={item.id === session?.id}
       onClick={() => { chat.selectConversation(item.id); setPicker(false); onReveal?.(); }}>
       <MathText text={item.title} />{item.origin_record && <small>历史对话</small>}
@@ -150,6 +159,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
         <ol className="ai-chat-log" ref={log}>{session?.messages.map(item => <li key={item.id}>
           <div className="ai-chat-question"><span className="sr-only">我的问题：</span><Markdown text={item.question} onSeek={onSeek} maxSeconds={duration} /></div>
           <div className="ai-chat-answer"><span className="sr-only">AI 回答：</span><Markdown text={item.answer} onSeek={onSeek} maxSeconds={duration} className="ai-chat-md" /></div>
+          {session.context_after === item.id && <p className="ai-chat-reset" role="status">上下文已清空</p>}
         </li>)}
           {waiting && <li className="is-pending"><div className="ai-chat-question"><Markdown text={pending.question} onSeek={onSeek} maxSeconds={duration} /></div>
             <p className="ai-chat-thinking" role="status"><Icon name="loader-circle" className="spinner" />{busy ? <>{phase}{status || 'AI 正在回答…'}</> : '正在载入回答…'}</p></li>}
@@ -162,7 +172,7 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
           {commandToken && <SlashCommandMenu id={commandId} commands={commands} selected={commandIndex}
             refreshing={chat.models.refreshing} hasCommands={chat.models.commands.length > 0} onPick={pickCommand}
             onSelect={index => setCommandState(old => old.index === index ? old : { ...old, index })} />}
-          <textarea ref={input} id={floating ? 'ai-chat-question' : 'analysis-conversation-question'} rows={3} maxLength={LIMIT} value={question} disabled={!chat.configured || sending}
+          <textarea ref={input} id={floating ? 'ai-chat-question' : 'analysis-conversation-question'} rows={3} maxLength={LIMIT} value={question} disabled={!chat.configured || sending || chat.clearing}
             aria-autocomplete="list" aria-controls={commandToken ? commandId + '-list' : undefined}
             aria-activedescendant={commandToken && commands.length ? `${commandId}-option-${commandIndex}` : undefined}
             placeholder={chat.models.native ? '输入 / 查找命令或 Skills，也可以直接提问…' : '问问 AI，例如：这一段的公式是怎么推出来的？'}
@@ -200,12 +210,14 @@ export default function AIChat({ chat, busy, status, error, task, cancelDisabled
           </div>
           <div className="ai-chat-actions">
             {videoRef && <button type="button" disabled={!chat.configured || composing} onClick={insertTime}>插入当前时间</button>}
-            <small>{question.length} / {LIMIT}</small>
+            <button type="button" disabled={busy !== null || sending || waiting || chat.creating || chat.clearing || !session?.messages.length || session.context_after === session.messages.at(-1)?.id}
+              aria-busy={chat.clearing} onClick={() => { void clearContext(); }}>清空上下文</button>
+            <div className="ai-chat-submit-actions"><small>{question.length} / {LIMIT}</small>
             {waiting && busy === 'analyze' && <button type="button" disabled={cancelDisabled} onClick={onCancel}>停止回答</button>}
             <button type="submit" className="primary" disabled={blocked || !question.trim()} aria-busy={waiting}>
-              <Icon name={waiting ? 'loader-circle' : 'send'} className={waiting ? 'spinner' : ''} />提问</button>
+              <Icon name={waiting ? 'loader-circle' : 'send'} className={waiting ? 'spinner' : ''} />提问</button></div>
           </div>
-          <AgentModelPicker state={chat.models} disabled={busy !== null || sending || chat.creating || composing} onManage={onOpenSettings} />
+          <AgentModelPicker state={chat.models} disabled={busy !== null || sending || chat.creating || chat.clearing || composing} onManage={onOpenSettings} />
           {!chat.configured && chat.models.native && <p className="error-text" role="status">未找到所选本地 agent，请检查安装后刷新。</p>}
           {draftStorageFailed && <p className="error-text ai-chat-failure" role="status">草稿暂时无法保存在本浏览器，刷新前请先复制。</p>}
         </form>

@@ -16,6 +16,8 @@ export default function useConversations(projectId: string, resource: string, ve
   const [data, setData] = useState<{ key: string; sessions: Conversation[]; active: string | null; context: ConversationContext | null }>({ key: '', sessions: [], active: null, context: null });
   const [failure, setFailure] = useState('');
   const [creating, setCreating] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const clearingNow = useRef(false), loadEpoch = useRef(0);
   const { drafts, setDraft, draftStorageFailed } = useConversationDrafts(projectId, resource);
   const [pending, setPending] = useState<PendingQuestion | null>(null);
   const [reload, setReload] = useState(0);
@@ -27,18 +29,18 @@ export default function useConversations(projectId: string, resource: string, ve
   const operations = useRef<AbortController | null>(null);
   const creation = useRef(false);
   useEffect(() => {
-    setPending(null); setCreating(false); creation.current = false;
+    setPending(null); setCreating(false); creation.current = false; setClearing(false); clearingNow.current = false;
     return () => operations.current?.abort();
   }, [key]);
   useEffect(() => {
     if (!projectId || !resource) return;
-    const controller = new AbortController();
+    const controller = new AbortController(), epoch = ++loadEpoch.current;
     setFailure('');
     Promise.all([
       request<{ conversations: Conversation[] }>(`/projects/${projectId}/conversations${busy ? '' : '/migrate'}`, controller.signal, busy ? undefined : {}),
       request<ConversationContext>(`/projects/${projectId}/conversations/context?resource=${encodeURIComponent(resource)}`, controller.signal),
     ]).then(([list, context]) => {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || epoch !== loadEpoch.current) return;
       const sessions = list.conversations.filter(item => !item.video_resource || item.video_resource === resource);
       setData(old => {
         const preferred = old.key === key ? old.active : savedSelection(projectId);
@@ -46,7 +48,7 @@ export default function useConversations(projectId: string, resource: string, ve
         return { key, sessions, active, context };
       });
       setPending(previous => previous && list.conversations.some(item => item.id === previous.conversationId && item.messages.length > previous.count) ? null : previous);
-    }).catch((reason: unknown) => { if (!controller.signal.aborted) setFailure(reason instanceof Error ? reason.message : '无法读取对话。'); });
+    }).catch((reason: unknown) => { if (!controller.signal.aborted && epoch === loadEpoch.current) setFailure(reason instanceof Error ? reason.message : '无法读取对话。'); });
     return () => controller.abort();
   }, [projectId, resource, key, version, busy, reload]);
   const selectConversation = useCallback((id: string) => {
@@ -54,7 +56,7 @@ export default function useConversations(projectId: string, resource: string, ve
     try { localStorage.setItem(selectionKey(projectId), id); } catch { /* Optional preference only. */ }
   }, [projectId, key]);
   const newConversation = useCallback(async (agent?: AgentTarget) => {
-    if (creation.current) throw new Error('正在创建对话，请稍候。');
+    if (creation.current || clearingNow.current) throw new Error('正在更新对话，请稍候。');
     creation.current = true; setCreating(true); setFailure('');
     const controller = new AbortController(); operations.current = controller;
     try {
@@ -65,6 +67,23 @@ export default function useConversations(projectId: string, resource: string, ve
       return result.conversation;
     } finally { if (operations.current === controller) { operations.current = null; creation.current = false; setCreating(false); } }
   }, [projectId, resource, key]);
+  const clearContext = useCallback(async () => {
+    const session = data.key === key ? data.sessions.find(item => item.id === data.active) : null;
+    if (!session || creation.current || clearingNow.current || busy || pending) throw new Error('当前对话正在处理，请稍候再清空上下文。');
+    const last = session.messages.at(-1)?.id || null;
+    if (!last || session.context_after === last) return;
+    clearingNow.current = true; setClearing(true); setFailure(''); ++loadEpoch.current;
+    const controller = new AbortController(); operations.current = controller;
+    try {
+      const result = await request<{ conversation: Conversation }>(`/projects/${projectId}/conversations/${session.id}/clear-context`, controller.signal,
+        { resource, expected_last_message_id: last, confirm: true });
+      if (liveKey.current !== key || controller.signal.aborted) return;
+      setData(old => old.key !== key ? old : { ...old, sessions: old.sessions.map(item => item.id === session.id ? result.conversation : item) });
+      setReload(value => value + 1);
+    } finally {
+      if (operations.current === controller) { operations.current = null; clearingNow.current = false; setClearing(false); }
+    }
+  }, [projectId, resource, key, data, busy, pending]);
   const retry = useCallback(() => setReload(value => value + 1), []);
   return useMemo(() => {
   const matches = data.key === key;
@@ -72,10 +91,10 @@ export default function useConversations(projectId: string, resource: string, ve
     projectId, resource, ready: matches && !!data.context, available: matches && !!data.context?.available,
     missing: matches ? data.context?.missing || [] : [], sessions: matches ? data.sessions : [],
     session: matches ? data.sessions.find(item => item.id === data.active) || null : null,
-    failure, creating, drafts, draftStorageFailed, setDraft, pending, setPending, selectConversation, newConversation,
+    failure, creating, clearing, clearContext, drafts, draftStorageFailed, setDraft, pending, setPending, selectConversation, newConversation,
     retry,
   };
-  }, [projectId, resource, data, key, failure, creating, drafts, draftStorageFailed, pending, setDraft, selectConversation, newConversation, retry]);
+  }, [projectId, resource, data, key, failure, creating, clearing, clearContext, drafts, draftStorageFailed, pending, setDraft, selectConversation, newConversation, retry]);
 }
 
 export type ConversationState = ReturnType<typeof useConversations>;

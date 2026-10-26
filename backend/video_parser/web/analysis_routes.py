@@ -376,6 +376,30 @@ def new_conversation(project_id: str, body: ConversationBody):
     return {'conversation': handled(conversations.create, project_id, body.resource, body.agent.model_dump() if body.agent else None)}
 
 
+class ConversationClearBody(BaseModel):
+    model_config = {'extra': 'forbid'}
+    resource: str = Field(min_length=1, max_length=1000, strict=True)
+    expected_last_message_id: str | None = Field(max_length=200)
+    confirm: Literal[True]
+
+    @field_validator('confirm', mode='before')
+    @classmethod
+    def explicit_clear(cls, value):
+        if value is not True:
+            raise ValueError('请确认清空当前对话上下文。')
+        return value
+
+
+@router.post('/projects/{project_id}/conversations/{conversation_id}/clear-context')
+def clear_conversation_context(project_id: str, conversation_id: str, body: ConversationClearBody):
+    # Hold the same lock as job submission across the check and metadata transaction.
+    with workflows.lock:
+        if any(job.project_id == project_id and job.kind == 'analysis' and job.state in task_runtime.ACTIVE for job in workflows.jobs.values()):
+            raise HTTPException(409, '这个视频正在分析或追问，请完成后再清空上下文。')
+        return {'conversation': handled(conversations.clear_context, project_id, conversation_id,
+                                       body.resource, body.expected_last_message_id)}
+
+
 @router.post('/projects/{project_id}/conversations/{conversation_id}/ask-task', status_code=202)
 def ask_conversation(project_id: str, conversation_id: str, body: ConversationAskBody):
     session = handled(conversations.get, project_id, conversation_id)

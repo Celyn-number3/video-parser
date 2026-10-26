@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent, RefObject } from 'react';
 import { chapterTime } from './chapters';
 import type { AnalysisTimeline } from './chapters';
 import './chapter-timeline.css';
+import '../learning/subtitle-panel.css';
 import useChapterScroll from './useChapterScroll';
 import MathText, { mathTextLabel } from '../../components/MathText';
 
@@ -18,14 +19,14 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
     const update = () => setPlayback({ time: Number.isFinite(video.currentTime) ? video.currentTime : 0,
       duration: Number.isFinite(video.duration) ? video.duration : 0 });
     update();
-    for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'seeked', 'emptied']) video.addEventListener(name, update);
-    return () => { for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'seeked', 'emptied']) video.removeEventListener(name, update); };
+    for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'seeking', 'seeked', 'emptied']) video.addEventListener(name, update);
+    return () => { for (const name of ['loadedmetadata', 'durationchange', 'timeupdate', 'seeking', 'seeked', 'emptied']) video.removeEventListener(name, update); };
   }, [videoRef, mediaKey]);
   const total = playback.duration || duration;
   const chapters = timeline.chapters.filter(chapter => !total || chapter.time < total);
   const scale = total || (chapters.at(-1)?.time || 0) + 1;
   const active = enabled ? chapters.reduce((found, chapter, index) => chapter.time <= playback.time ? index : found, -1) : -1;
-  const { hasMore, scrollNext } = useChapterScroll(list, active, view === 'directory' && visible, `${mediaKey}:${timeline.recordId}:${chapters.length}`);
+  const { follow, setFollow, pauseFollow } = useChapterScroll(list, active, view === 'directory' && visible, `${mediaKey}:${timeline.recordId}:${chapters.length}`, videoRef);
   if (!chapters.length) return view === 'directory' ? <p className="study-sidebar-empty">没有落在当前视频时长内的章节时间点。</p> : null;
   const current = active >= 0 ? chapters[active] : null;
   const end = current ? (chapters[active + 1]?.time || total) : 0;
@@ -80,11 +81,15 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
     </section>
     </>}
     {view === 'directory' && <>
-    <div className="chapter-directory-frame"><ol ref={list} className="chapter-timeline-list" aria-label="章节列表" tabIndex={0}>{chapters.map((chapter, index) => <li key={chapter.time}>
+    <div className="chapter-directory-toolbar"><button type="button" disabled={!enabled} aria-pressed={follow}
+      onClick={() => setFollow(!follow)}>{follow ? '自动跟随：开启' : '恢复自动跟随'}</button></div>
+    <ol ref={list} className="chapter-timeline-list" aria-label="章节列表" tabIndex={0}
+      onWheel={pauseFollow} onTouchMove={pauseFollow} onKeyDown={event => {
+        if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) pauseFollow();
+      }}>{chapters.map((chapter, index) => <li key={chapter.time}>
       <button type="button" disabled={!enabled} aria-current={active === index ? 'true' : undefined} onClick={() => seek(chapter.time)}>
         <time>{chapterTime(chapter.time)}</time><MathText text={chapter.title} /></button>
-    </li>)}</ol></div>
-    <div className="chapter-directory-more">{hasMore && <button type="button" onClick={scrollNext}>下方还有章节 <span aria-hidden="true">↓</span></button>}</div>
+    </li>)}</ol>
     {!enabled && <p className="chapter-timeline-hint">这条分析记录对应另一份视频；切换到对应归档视频后可跳转。</p>}
     </>}
   </section>;

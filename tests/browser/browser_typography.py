@@ -20,9 +20,12 @@ class TypographyTests(unittest.TestCase):
         self.assertTrue(title.evaluate('(e)=>e.scrollWidth<=e.clientWidth'),'title clipped')
         tiny=self.page.evaluate('''()=>[...document.querySelectorAll('.modern-app *')].filter(e=>e.checkVisibility() && !e.closest('.markdown,.math-text,svg,video,.sr-only') && [...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()) && parseFloat(getComputedStyle(e).fontSize)<12).map(e=>({tag:e.tagName,cls:e.className,text:e.textContent.slice(0,45),size:getComputedStyle(e).fontSize}))''')
         self.assertEqual(tiny,[],'UI text below 12px')
-        for e in self.page.locator('button:visible, select:visible, textarea:visible').all():
-            if e.evaluate('(e)=>!!e.closest(".markdown") || !e.textContent.trim() && e.tagName==="BUTTON"'):continue
-            self.assertGreaterEqual(float(e.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)')),13,e.evaluate('(e)=>e.outerHTML.slice(0,250)'))
+        # Snapshot in one browser task: responsive transitions can change the visible
+        # selector between .all() and successive nth() lookups. Keep every size check.
+        controls=self.page.locator('button:visible, select:visible, textarea:visible').evaluate_all(
+            '(els)=>els.filter(e=>!e.closest(".markdown") && (e.textContent.trim() || e.tagName!=="BUTTON")).map(e=>({size:parseFloat(getComputedStyle(e).fontSize),html:e.outerHTML.slice(0,250)}))')
+        self.assertTrue(controls,'No visible controls were inspected')
+        for control in controls:self.assertGreaterEqual(control['size'],13,control['html'])
     def responsive(self):
         for theme in ('dark','light'):
             self.page.evaluate('(x)=>document.documentElement.dataset.theme=x',theme)

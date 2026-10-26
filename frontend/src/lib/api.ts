@@ -66,7 +66,7 @@ export interface ConversationMessage {
 export interface Conversation {
   agent?: AgentTarget;
   id: string; title: string; title_generated: boolean; created_at: string | null; updated_at: string | null;
-  origin_record?: string | null; video_resource: string | null; messages: ConversationMessage[];
+  origin_record?: string | null; context_after?: string | null; video_resource: string | null; messages: ConversationMessage[];
 }
 export interface ConversationContext { available: boolean; missing: string[] }
 
