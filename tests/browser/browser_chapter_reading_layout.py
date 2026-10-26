@@ -89,4 +89,25 @@ class ChapterReadingLayoutTests(unittest.TestCase):
         expect(self.page.locator('.chapter-timeline-directory .chapter-timeline-list li')).to_have_count(1)
         self.whole();expect(self.page.get_by_role('button',name='下方还有章节',exact=True)).to_have_count(0)
 
+    def test_directory_has_no_redundant_heading_but_keeps_controls_and_accessible_name(self):
+        directory=self.page.get_by_role('region',name='章节目录',exact=True)
+        expect(directory).to_have_count(1);expect(directory.locator('.chapter-timeline-heading,h3')).to_have_count(0)
+        self.assertIsNone(directory.get_attribute('aria-labelledby'))
+        self.assertEqual(directory.evaluate('(e)=>e.firstElementChild.className'),'chapter-directory-frame')
+        expect(self.page.get_by_role('heading',name='AI 章节时间线',exact=True)).to_be_visible()
+        expect(self.list.locator('li')).to_have_count(30)
+        for theme in ('dark','light'):
+            self.page.evaluate('(x)=>document.documentElement.dataset.theme=x',theme)
+            for width in (1440,390,280):
+                self.page.set_viewport_size({'width':width,'height':1000});self.whole()
+                for name in ('章节','个人笔记','AI 对话','字幕'):
+                    expect(self.page.get_by_role('tab',name=name,exact=True)).to_be_visible()
+                expect(self.page.get_by_role('button',name='下方还有章节',exact=True)).to_be_visible()
+                self.assertTrue(self.page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
+        self.page.set_viewport_size({'width':1440,'height':1000});self.whole()
+        self.page.wait_for_function('()=>{const v=document.querySelector("video");return v.seekable.length>0&&v.seekable.end(0)>2}')
+        self.list.locator('button').nth(1).click()
+        self.page.wait_for_function('()=>{const v=document.querySelector("video");return !v.seeking&&v.currentTime>=2&&v.currentTime<3}')
+        self.page.locator('video').evaluate('(v)=>v.pause()');expect(self.list.locator('button').nth(1)).to_have_attribute('aria-current','true')
+
 if __name__=='__main__':unittest.main()

@@ -2,15 +2,18 @@
 .chapter-timeline-heading { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
 .chapter-timeline-heading h3 { margin: 0; font-size: var(--font-size-md); }
 .chapter-timeline-hint { font-size: var(--font-size-caption); color: var(--color-text-secondary); }
-/* Keep one thin rail. Invisible 32px hit targets surround the small chapter dots. */
+/* Keep one thin rail. Its full-height surface seeks continuously; only visible dots snap to chapters. */
 .chapter-timeline-track { position: relative; height: 36px; margin-inline: 16px; }
+.chapter-timeline-scrubber { position: absolute; inset: 0; z-index: 0; cursor: pointer; border-radius: 4px; }
+.chapter-timeline-scrubber[aria-disabled=true] { cursor: default; }
+.chapter-timeline-scrubber:focus-visible { outline: 2px solid var(--color-text); outline-offset: 0; }
 .chapter-timeline-track::before, .chapter-timeline-progress { content: ''; position: absolute; top: 50%; left: 0; height: 2px; border-radius: 999px; transform: translateY(-50%); pointer-events: none; }
 .chapter-timeline-track::before { right: 0; background: var(--color-border-strong); }
 .chapter-timeline-progress { background: var(--color-text); }
-.modern-app .chapter-timeline-track .chapter-timeline-marker { position: absolute; top: 2px; margin-left: -16px; transform: none; display: grid; place-items: center; width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; z-index: 1; }
+.modern-app .chapter-timeline-track .chapter-timeline-marker { position: absolute; top: 2px; margin-left: -16px; transform: none; display: grid; place-items: center; width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; z-index: 1; pointer-events: none; }
 .modern-app .chapter-timeline-track .chapter-timeline-marker:active:not(:disabled) { transform: none; background: transparent; }
 .modern-app .chapter-timeline-track .chapter-timeline-marker:disabled { background: transparent; }
-.chapter-timeline-dot { display: block; width: 10px; height: 10px; box-sizing: border-box; border: 2px solid var(--color-text-secondary); border-radius: 50%; background: var(--color-surface-raised); }
+.chapter-timeline-dot { pointer-events: auto; display: block; width: 10px; height: 10px; box-sizing: border-box; border: 2px solid var(--color-text-secondary); border-radius: 50%; background: var(--color-surface-raised); }
 .chapter-timeline-marker[aria-current] .chapter-timeline-dot { width: 14px; height: 14px; border-color: var(--color-text); background: var(--color-text); }
 .modern-app .chapter-timeline-track .chapter-timeline-marker:hover:not(:disabled) { background: transparent; }
 .chapter-timeline-marker:hover:not(:disabled) .chapter-timeline-dot { border-color: var(--color-text); background: var(--color-text); }
@@ -28,16 +31,24 @@
 .chapter-timeline-hint { margin: 8px 0 0; line-height: 1.6; }
 @media(max-width:560px) { .chapter-timeline { padding: 12px; } }
 .chapter-timeline-intro { container-type: inline-size; min-width: 0; margin: 4px 0 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-sunken); overflow-wrap: anywhere; }
-/* Equal side tracks keep the time/title centered on the card, not on the space after the count. */
+/* Center the title itself on the card. A hidden time-sized track balances its visible left sibling. */
 .chapter-timeline-intro-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr); align-items: baseline; column-gap: 12px; row-gap: 4px; }
 .chapter-timeline-intro-meta { grid-column: 1; grid-row: 1; min-width: 0; white-space: nowrap; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
-.chapter-timeline-current-heading { grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 10px; text-align: center; }
-.chapter-timeline-current-heading time { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
-.chapter-timeline-current-heading > h4 { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.chapter-timeline-current-heading { grid-column: 2; grid-row: 1; min-width: 0; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr); align-items: baseline; gap: 4px 10px; text-align: center; }
+.chapter-timeline-current-heading time, .chapter-timeline-current-heading::after { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: var(--font-size-caption); color: var(--color-text-secondary); }
+.chapter-timeline-current-heading time { grid-column: 1; grid-row: 1; justify-self: end; }
+.chapter-timeline-current-heading::after { content: attr(data-range); grid-column: 3; grid-row: 1; visibility: hidden; pointer-events: none; }
+.chapter-timeline-current-heading > h4 { grid-column: 2; grid-row: 1; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 @container (max-width: 560px) {
   .chapter-timeline-intro-header { grid-template-columns: minmax(0, 1fr); }
   .chapter-timeline-intro-meta { grid-column: 1; grid-row: 1; }
   .chapter-timeline-current-heading { grid-column: 1; grid-row: 2; }
+}
+@container (max-width: 420px) {
+  .chapter-timeline-current-heading { grid-template-columns: minmax(0, 1fr); }
+  .chapter-timeline-current-heading time { grid-column: 1; grid-row: 1; justify-self: center; }
+  .chapter-timeline-current-heading > h4 { grid-column: 1; grid-row: 2; }
+  .chapter-timeline-current-heading::after { display: none; }
 }
 .chapter-timeline-intro h4 { margin: 0; font-size: var(--font-size-md); line-height: 1.5; }
 .chapter-timeline-intro-body { min-height: 2.8em; max-height: 12em; overflow-y: auto; margin: 0; font-size: var(--font-size-sm); line-height: 1.7; white-space: pre-line; }

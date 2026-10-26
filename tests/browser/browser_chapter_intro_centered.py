@@ -1,4 +1,4 @@
-"""Default-expanded chapter intro and true card-centered time/title; fixture APIs only."""
+"""Default-expanded chapter intro and independently card-centered title; fixture APIs only."""
 import unittest
 from playwright.sync_api import expect
 from tests.browser import browser_markdown_math as math
@@ -7,7 +7,7 @@ TEXT='## [00:00] 开场\n这是第一章的介绍。\n## [00:12] 中国私募市
 GEOMETRY='''() => {
  const c=document.querySelector('.chapter-timeline-player .chapter-timeline-intro'),g=c.querySelector('.chapter-timeline-current-heading'),n=c.querySelector('.chapter-timeline-intro-meta'),t=g.querySelector('time'),h=g.querySelector('h4');
  const r=c.getBoundingClientRect(),a=g.getBoundingClientRect(),b=n.getBoundingClientRect(),x=t.getBoundingClientRect(),y=h.getBoundingClientRect();
- return {center:Math.abs((a.left+a.right-r.left-r.right)/2),ink:Math.abs((Math.min(x.left,y.left)+Math.max(x.right,y.right)-r.left-r.right)/2),overlap:Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1,countLeft:Math.abs(b.left-r.left),clipped:g.scrollWidth>g.clientWidth+1,overflow:document.documentElement.scrollWidth>innerWidth,rangeWrap:x.height>28,title:g.innerText};
+ return {center:Math.abs((a.left+a.right-r.left-r.right)/2),ink:Math.abs((y.left+y.right-r.left-r.right)/2),timeBefore:x.bottom<=y.top+1||(x.right<=y.left-9&&Math.abs(x.top-y.top)<4),inline:Math.abs(x.top-y.top)<4,groupOffset:Math.abs((Math.min(x.left,y.left)+Math.max(x.right,y.right)-r.left-r.right)/2),overlap:Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1,countLeft:Math.abs(b.left-r.left),clipped:g.scrollWidth>g.clientWidth+1,overflow:document.documentElement.scrollWidth>innerWidth,rangeWrap:x.height>28,title:g.innerText};
 }'''
 class ChapterIntroCenteredTests(unittest.TestCase):
     @classmethod
@@ -29,6 +29,7 @@ class ChapterIntroCenteredTests(unittest.TestCase):
     def geometry(self):
         value=self.page.evaluate(GEOMETRY)
         self.assertLess(value['center'],1,value);self.assertLess(value['ink'],1,value);self.assertLess(value['countLeft'],1,value)
+        self.assertTrue(value['timeBefore'],value)
         self.assertFalse(value['overlap'] or value['clipped'] or value['overflow'] or value['rangeWrap'],value)
     def test_default_open_toggle_and_chapter_changes(self):
         expect(self.details.locator('p')).to_be_visible();expect(self.details).to_contain_text('这是第一章的介绍。')
@@ -36,7 +37,7 @@ class ChapterIntroCenteredTests(unittest.TestCase):
         self.details.locator('summary').click();expect(self.details.locator('p')).to_be_hidden()
         self.go(2);expect(self.details.locator('p')).to_be_hidden()
         self.details.locator('summary').click();expect(self.details.locator('p')).to_be_visible();expect(self.details).to_contain_text('暂无详细介绍')
-    def test_time_title_centered_in_both_themes_and_card_sizes(self):
+    def test_title_independently_centered_in_both_themes_and_card_sizes(self):
         self.go(1)
         for theme in ('dark','light'):
             self.page.evaluate('(x)=>document.documentElement.dataset.theme=x',theme)
@@ -57,3 +58,19 @@ class ChapterIntroCenteredTests(unittest.TestCase):
         self.assertTrue(self.video.evaluate('(v)=>v===window.chapterPlayerBefore'))
         self.details.locator('summary').click();self.page.reload();self.page.get_by_role('button',name='学习视图',exact=True).click()
         expect(self.details).to_have_attribute('open','');expect(self.details.locator('p')).to_be_visible()
+
+    def test_short_title_is_centered_not_time_title_group(self):
+        for index in (0,1,2):
+            self.go(index)
+            for width in (1920,1440,1024,768):
+                self.page.set_viewport_size({'width':width,'height':1000});self.geometry()
+                value=self.page.evaluate(GEOMETRY)
+                if value['inline']:self.assertGreater(value['groupOffset'],20,value)
+    def test_different_time_width_does_not_shift_title(self):
+        # Layout-only fixture mutation: production range remains the original chapter times.
+        self.go(0)
+        for width in (1440,768,390,280):
+            self.page.set_viewport_size({'width':width,'height':1000})
+            for text in ('00:00 — 00:12','01:00:00 — 12:00:00'):
+                self.page.locator('.chapter-timeline-current-heading').evaluate('(e,t)=>{e.dataset.range=t;e.querySelector("time").textContent=t}',text)
+                self.geometry()
