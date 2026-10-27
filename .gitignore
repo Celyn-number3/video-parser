@@ -81,6 +81,7 @@ logs/
 # Local-only publishing notes, agent context and historical machine reports
 /AGENTS.md
 /codegraph.json
+/.workbuddy-ai/
 /docs/mcp-*.md
 /docs/archive/mcp-*.md
 /docs/superpowers/
