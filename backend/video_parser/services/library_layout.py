@@ -143,7 +143,7 @@ def restore_task_paths(value):
             # Absolute persisted filesystem paths.
             if path.is_absolute():
                 try:
-                    suffix = path.relative_to(source)
+                    suffix = path.resolve().relative_to(source.resolve())
                 except ValueError:
                     continue
                 candidate = library.contained(target, suffix) if suffix.parts else target
