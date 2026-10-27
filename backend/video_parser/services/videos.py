@@ -451,7 +451,8 @@ def download_video(parsed, target):
 
             download_youtube(parsed.metadata['source_url'], staged, _report_progress,
                              format_id=selected_quality.get('format_id'),
-                             has_audio=selected_quality.get('has_audio'))
+                             has_audio=selected_quality.get('has_audio'),
+                             tracks=1 if selected_quality.get('has_audio') else 2)
             task_runtime.progress('validating', '正在校验下载结果…', force=True)
             info = probe(staged)
             check_video(info, require_audio=True, expected_duration=parsed.metadata.get('duration'))

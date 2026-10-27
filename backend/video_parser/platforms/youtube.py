@@ -22,7 +22,7 @@ class QuietLogger:
     def error(self, message): pass
 
 
-def download_youtube(url, target, progress_cb=None, format_id=None, has_audio=None):
+def download_youtube(url, target, progress_cb=None, format_id=None, has_audio=None, tracks=None):
     try:
         import yt_dlp
     except ImportError:
@@ -30,6 +30,8 @@ def download_youtube(url, target, progress_cb=None, format_id=None, has_audio=No
     from yt_dlp.utils import DownloadError
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
+    # A video-only rendition downloads two files (video, then audio) before the merge.
+    track_count = max(1, int(tracks or (1 if has_audio else 2)))
     track = 0
     previous = None
 
@@ -45,7 +47,8 @@ def download_youtube(url, target, progress_cb=None, format_id=None, has_audio=No
         estimated = not data.get('total_bytes') and bool(data.get('total_bytes_estimate'))
         total = data.get('total_bytes') or data.get('total_bytes_estimate') or 0
         done = data.get('downloaded_bytes') or 0
-        values = {'track': track, 'estimated_total': int(estimated)}
+        values = {'track': min(track, track_count), 'tracks': track_count,
+                  'estimated_total': int(estimated)}
         # Avoid a wildly unstable ETA from the first few packets.
         if data.get('status') == 'downloading' and done >= 64 * 1024 and (data.get('elapsed') or 0) >= 1:
             if data.get('speed') is not None:
