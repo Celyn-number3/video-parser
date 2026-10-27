@@ -16,6 +16,17 @@ def project_root(anchor: Path | None = None) -> Path:
 ROOT = project_root()
 
 
+def canonical(path) -> Path:
+    """Resolve to one comparable shape.
+
+    Windows returns the extended-length form (``\\\\?\\C:\\...``) for targets that already exist and the
+    plain form for targets that do not, and the two never compare equal. Containment and equality
+    checks between resolved paths therefore have to drop the prefix first.
+    """
+    text = str(Path(path).resolve())
+    return Path(text[4:]) if text.startswith('\\\\?\\') else Path(text)
+
+
 def instance_id(root: Path | None = None) -> str:
     """Short stable id of an install folder; the desktop launcher only reuses a running server from the same install."""
     import hashlib

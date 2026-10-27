@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import re
 
+from video_parser.core.paths import canonical
+
 ALIAS_FILE = '.directory-aliases.json'
 PATH_FIELDS = {'directory', 'source', 'path', 'file', 'files', 'paths', 'input_path',
                'source_path', 'output_path', 'output_dir', 'audio_path', 'video_path',
@@ -143,7 +145,7 @@ def restore_task_paths(value):
             # Absolute persisted filesystem paths.
             if path.is_absolute():
                 try:
-                    suffix = path.resolve().relative_to(source.resolve())
+                    suffix = canonical(path).relative_to(canonical(source))
                 except ValueError:
                     continue
                 candidate = library.contained(target, suffix) if suffix.parts else target

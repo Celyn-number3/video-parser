@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from video_parser.core.paths import ROOT
+from video_parser.core.paths import ROOT, canonical
 
 LIBRARY_ROOT = Path(os.getenv('VIDEO_LIBRARY_ROOT', ROOT / 'outputs'))
 PLATFORMS = {'哔哩哔哩': 'bilibili', '抖音': 'douyin', '小红书': 'xiaohongshu', 'YouTube': 'youtube'}
@@ -126,8 +126,8 @@ def contained(directory, relative):
     if relative.is_absolute() or '..' in relative.parts or not relative.parts:
         raise ValueError('Unsafe relative path')
     target = directory / relative
-    resolved = target.resolve()
-    if not resolved.is_relative_to(directory.resolve()) or not resolved.is_relative_to(LIBRARY_ROOT.resolve()):
+    resolved = canonical(target)
+    if not resolved.is_relative_to(canonical(directory)) or not resolved.is_relative_to(canonical(LIBRARY_ROOT)):
         raise ValueError('File outside project')
     # Junctions and symlinks must never redirect a resource within or outside the project.
     for parent in [target, *target.parents]:
@@ -302,10 +302,10 @@ def resource_path(project, relative):
 
 def logical_resource(project, path):
     """Reverse physical lookup for CLI provenance; retain the legacy fallback for unregistered inputs."""
-    path = Path(path).resolve()
+    path = canonical(path)
     for name in project['resources']:
-        if resource_path(project, name).resolve() == path: return name
-    return path.relative_to(project['directory'].resolve()).as_posix()
+        if canonical(resource_path(project, name)) == path: return name
+    return path.relative_to(canonical(project['directory'])).as_posix()
 
 
 def resource_from_project(project, relative):
@@ -343,10 +343,11 @@ def local_project(path):
 
 
 def owner(path):
-    path = Path(path).resolve()
-    if not path.is_relative_to(LIBRARY_ROOT.resolve()): return None
+    path = canonical(path)
+    root = canonical(LIBRARY_ROOT)
+    if not path.is_relative_to(root): return None
     for parent in path.parents:
-        if parent == LIBRARY_ROOT.resolve(): break
+        if parent == root: break
         manifest = parent / 'project.json'
         if manifest.is_file(): return load(manifest)
     return None

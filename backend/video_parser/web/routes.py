@@ -20,7 +20,7 @@ from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
 from video_parser.core import desktop
-from video_parser.core.paths import CACHE_DIR, ROOT
+from video_parser.core.paths import CACHE_DIR, ROOT, canonical
 from video_parser.services import videos, ai_settings
 from video_parser.services import library as library, library_layout
 from video_parser.platforms.downloaders.douyin_downloader import DouyinAccessError
@@ -111,9 +111,9 @@ def safe_file(entry, filename):
             found = library.find(entry.project_id, kind)
             if not found: raise OSError('Resource missing')
             return found[1]
-        path = (entry.directory / filename).resolve(strict=True)
-        if (not path.is_relative_to(entry.directory.resolve())
-                or not path.is_relative_to(WORKSPACE_ROOT.resolve()) or not path.is_file()):
+        path = canonical((entry.directory / filename).resolve(strict=True))
+        if (not path.is_relative_to(canonical(entry.directory))
+                or not path.is_relative_to(canonical(WORKSPACE_ROOT)) or not path.is_file()):
             raise OSError('Outside workspace')
         return path
     except (OSError, ValueError, KeyError):

@@ -14,7 +14,7 @@ import time
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
-from video_parser.core.paths import CACHE_DIR
+from video_parser.core.paths import CACHE_DIR, canonical
 from video_parser.services import videos, task_runtime
 from video_parser.services import library as library
 videos.load_environment()
@@ -159,8 +159,8 @@ def sanitize_title(title):
 
 
 def safe_source(path):
-    resolved = path.resolve(strict=True)
-    if not resolved.is_relative_to(download_root().resolve()) or not resolved.is_file():
+    resolved = canonical(path.resolve(strict=True))
+    if not resolved.is_relative_to(canonical(download_root())) or not resolved.is_file():
         raise ValueError('Unsafe subtitle output')
     return resolved
 
@@ -383,8 +383,8 @@ def download_file(identifier, token):
     if path is None:
         raise KeyError('未找到已校验的字幕文件。')
     # Validate the journal path boundary even when a newer logical URL is available.
-    resolved = path.resolve()
-    if resolved.is_relative_to(library.LIBRARY_ROOT.resolve()):
+    resolved = canonical(path)
+    if resolved.is_relative_to(canonical(library.LIBRARY_ROOT)):
         from video_parser.services.library_layout import restore_task_paths
         resolved = Path(restore_task_paths({'path': str(resolved)})['path'])
         project = library.owner(resolved)
@@ -401,7 +401,7 @@ def download_file(identifier, token):
             key = resolved.relative_to(project['directory']).as_posix()
             if key not in project['resources']: key = library.logical_resource(project, resolved)
             return library.resource(project['id'], key)
-    if not resolved.is_relative_to(job.directory.resolve()) or not resolved.is_relative_to(CACHE_ROOT.resolve()):
+    if not resolved.is_relative_to(canonical(job.directory)) or not resolved.is_relative_to(canonical(CACHE_ROOT)):
         raise KeyError('字幕文件不在受控目录中。')
     return resolved.resolve(strict=True)
 
