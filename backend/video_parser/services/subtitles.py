@@ -401,7 +401,7 @@ def download_file(identifier, token):
             key = resolved.relative_to(project['directory']).as_posix()
             if key not in project['resources']: key = library.logical_resource(project, resolved)
             return library.resource(project['id'], key)
-    if not resolved.is_relative_to(job.directory.absolute()) or not resolved.is_relative_to(CACHE_ROOT.resolve()):
+    if not resolved.is_relative_to(job.directory.resolve()) or not resolved.is_relative_to(CACHE_ROOT.resolve()):
         raise KeyError('字幕文件不在受控目录中。')
     return resolved.resolve(strict=True)
 

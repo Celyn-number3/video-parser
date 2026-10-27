@@ -112,7 +112,7 @@ def safe_file(entry, filename):
             if not found: raise OSError('Resource missing')
             return found[1]
         path = (entry.directory / filename).resolve(strict=True)
-        if (not path.is_relative_to(entry.directory.absolute())
+        if (not path.is_relative_to(entry.directory.resolve())
                 or not path.is_relative_to(WORKSPACE_ROOT.resolve()) or not path.is_file()):
             raise OSError('Outside workspace')
         return path
