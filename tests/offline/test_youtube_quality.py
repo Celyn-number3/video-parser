@@ -130,14 +130,14 @@ class YoutubeQualityTests(unittest.TestCase):
             {'codec_type': 'audio', 'codec_name': 'aac'}]}
         seen = {}
 
-        def download(url, staged, progress, format_id=None, has_audio=None):
-            seen.update(url=url, format_id=format_id, has_audio=has_audio)
+        def download(url, staged, progress, format_id=None, has_audio=None, tracks=None):
+            seen.update(url=url, format_id=format_id, has_audio=has_audio, tracks=tracks)
             Path(staged).write_bytes(b'video')
 
         with patch('video_parser.platforms.youtube.download_youtube', side_effect=download), \
                 patch.object(videos, 'require_tools'), patch.object(videos, 'probe', return_value=media):
             result = videos.download_video(parsed, target)
-        self.assertEqual(seen, {'url': URL, 'format_id': '271', 'has_audio': False})
+        self.assertEqual(seen, {'url': URL, 'format_id': '271', 'has_audio': False, 'tracks': 2})
         self.assertEqual(result['size_bytes'], 5)
 
     def test_archived_quality_is_reused_for_legacy_1080p(self):
@@ -162,6 +162,46 @@ class DownloadSelectorTests(unittest.TestCase):
         self.assertEqual(youtube.format_selector('271', False), '271+ba[ext=m4a]/271+ba[acodec^=mp4a]/271')
         self.assertEqual(youtube.format_selector('22', True), '22')
         self.assertEqual(youtube.format_selector(None), youtube.DEFAULT_FORMAT)
+
+    def test_progress_reports_the_track_pair(self):
+        events = []
+
+        class FakeYDL:
+            def __init__(self, options): self.options = options
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def download(self, urls):
+                hook = self.options['progress_hooks'][0]
+                hook({'status': 'downloading', 'filename': 'video', 'downloaded_bytes': 10, 'total_bytes': 100})
+                hook({'status': 'finished', 'filename': 'video', 'downloaded_bytes': 100, 'total_bytes': 100})
+                hook({'status': 'downloading', 'filename': 'audio', 'downloaded_bytes': 5, 'total_bytes': 50})
+                Path(self.options['outtmpl']).write_bytes(b'merged')
+
+        with tempfile.TemporaryDirectory() as temp, patch('yt_dlp.YoutubeDL', FakeYDL):
+            youtube.download_youtube(URL, Path(temp) / 'out.mp4',
+                                     lambda done, total, **values: events.append(values),
+                                     format_id='271', has_audio=False)
+        # The audio file is track 2 of 2, so the bar can say "轨道 2/2" instead of resetting silently.
+        self.assertEqual([event['track'] for event in events], [1, 1, 2])
+        self.assertEqual([event['tracks'] for event in events], [2, 2, 2])
+
+    def test_muxed_rendition_reports_a_single_track(self):
+        events = []
+
+        class FakeYDL:
+            def __init__(self, options): self.options = options
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def download(self, urls):
+                self.options['progress_hooks'][0]({'status': 'downloading', 'filename': 'one',
+                                                   'downloaded_bytes': 5, 'total_bytes': 50})
+                Path(self.options['outtmpl']).write_bytes(b'one')
+
+        with tempfile.TemporaryDirectory() as temp, patch('yt_dlp.YoutubeDL', FakeYDL):
+            youtube.download_youtube(URL, Path(temp) / 'out.mp4',
+                                     lambda done, total, **values: events.append(values),
+                                     format_id='22', has_audio=True)
+        self.assertEqual([(event['track'], event['tracks']) for event in events], [(1, 1)])
 
     def test_options_carry_the_selected_format(self):
         captured = {}
