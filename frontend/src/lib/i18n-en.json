@@ -1608,7 +1608,76 @@
   "管理 Codex 模型": "Manage Codex models",
   "搜索 Codex 模型": "Search Codex models",
   "管理 OpenCode 模型": "Manage OpenCode models",
-  "搜索 OpenCode 模型": "Search OpenCode models"
+  "搜索 OpenCode 模型": "Search OpenCode models",
+  "公式暂时无法排版，保留原文": "Math could not be rendered; showing the source text.",
+  "暂不可定位": "Seeking unavailable",
+  "视频时间定位": "Video time seek",
+  "上下文已清空": "Context cleared",
+  "清空当前对话的上下文？历史消息不会删除，后续提问将不再携带之前的问答；当前视频资料仍可使用。": "Clear this conversation's context? Messages are kept, but later questions will no longer carry earlier exchanges; the current video material stays available.",
+  "当前对话正在处理，请稍候再清空上下文。": "This conversation is busy. Wait before clearing the context.",
+  "正在更新对话，请稍候。": "Updating the conversation. Please wait.",
+  "例如 1-3,8": "e.g. 1-3,8",
+  "字幕任务正在处理，可到任务中心查看进度。": "A subtitle task is running. Check progress in Task center.",
+  "已有字幕任务正在处理，可到任务中心查看。": "A subtitle task is already running. Check Task center.",
+  "已有校验通过的字幕会自动跳过，不会覆盖。": "Subtitles that already pass verification are skipped and never overwritten.",
+  "平台字幕获取确认": "Confirm platform subtitle download",
+  "所选分集已有可用平台字幕，无需重复下载；可选择批量范围补全缺失分集。": "The selected episodes already have usable platform subtitles, so no repeat download is needed. Choose a batch range to fill in the missing episodes.",
+  "按所选范围获取平台字幕。": "Fetch platform subtitles for the selected range.",
+  "收起批量范围": "Hide batch range",
+  "本机平台字幕工具尚未就绪，请检查设置。": "The local platform subtitle tool is not ready. Check Settings.",
+  "本次字幕任务未全部完成，请到任务中心查看原因。": "This subtitle task did not fully complete. Check Task center for the reason.",
+  "本次字幕获取已完成。": "Subtitle download completed.",
+  "查看任务中心": "View Task center",
+  "正在检查登录状态…": "Checking sign-in status…",
+  "确认下载": "Confirm download",
+  "请完成登录，确认的下载尚未开始。": "Finish signing in; the confirmed download has not started.",
+  "请输入有效集数范围，例如 1-3,8。": "Enter a valid episode range, e.g. 1-3,8.",
+  "选择批量范围（可选）": "Choose a batch range (optional)",
+  "上一页": "Previous",
+  "下一页": "Next",
+  "任务分页": "Task pagination",
+  "任务列表": "Task list",
+  "共": "Total",
+  "条，第": "items, showing",
+  "条": "items",
+  "每页": "Per page",
+  "页": "pages",
+  "保存位置：": "Save to: ",
+  "字幕语言": "Subtitle language",
+  "本地字幕生成确认": "Confirm local subtitle generation",
+  "本机转写组件尚未就绪，请检查设置。": "The local transcription component is not ready. Check Settings.",
+  "本次字幕生成已完成，结果已保留。": "Subtitle generation completed and the result was kept.",
+  "本次生成未完成，请到任务中心查看原因。": "Generation did not complete. Check Task center for the reason.",
+  "本次生成正在处理，可到任务中心查看进度。": "Generation is running. Check progress in Task center.",
+  "本视频已有生成任务进行中，可到任务中心查看。": "This video already has a running generation task. Check Task center.",
+  "确认生成字幕": "Confirm subtitle generation",
+  "自动识别": "Auto-detect",
+  "翻译已完成，结果已加入当前视图。": "Translation completed and was added to the current view.",
+  "功能": "Function",
+  "原字幕来源已按内容校验确认；实际文件名保留历史标识。": "The original subtitle source was confirmed by a content check; the actual filename keeps its historical label.",
+  "字幕功能": "Subtitle function",
+  "文件信息": "File info",
+  "暂无已保存译文，请选择上方原字幕后开始翻译。": "No saved translation yet. Select an original subtitle above to start translating.",
+  "正在读取字幕…": "Loading subtitles…",
+  "生成于": "Created",
+  "生成时间：": "Created: ",
+  "重新生成字幕": "Regenerate subtitles",
+  "下载 B站平台字幕，部分视频没有字幕": "Download Bilibili platform subtitles; some videos have none",
+  "在本机识别语音，音频不上传": "Recognize speech on this computer; audio is not uploaded",
+  "字幕版本已变化，请刷新列表后重新选择。": "The subtitle version changed. Refresh the list and select again.",
+  "工作台当前视频，未归档，只能下载平台字幕": "Current workbench video, not archived; only platform subtitles can be downloaded",
+  "平台下载字幕": "Platform subtitles",
+  "有字幕": "Has subtitles",
+  "本地生成字幕": "Local subtitles",
+  "本地生成需要先归档视频": "Archive the video before generating locally",
+  "原字幕版本已变化，请重新选择。": "The original subtitle version changed. Select again.",
+  "暂无可翻译的原字幕，请先下载平台字幕或生成本地字幕。": "No original subtitle to translate. Download platform subtitles or generate local subtitles first.",
+  "正在读取翻译原字幕…": "Loading the original subtitle for translation…",
+  "翻译原字幕": "Original subtitle to translate",
+  "读取原字幕失败。": "Could not read the original subtitle.",
+  "AI翻译字幕": "AI translation",
+  "时间未记录": "Time not recorded",
+  "来源待核对": "Source to verify"
  },
  "patterns": [
   [
@@ -2101,6 +2170,46 @@
   [
    "按(.+)重新转写",
    "Transcribe as $1 again"
+  ],
+  [
+   "^时间范围 (\\S+) 至 (\\S+)$",
+   "Time range $1 to $2"
+  ],
+  [
+   "^获取当前分集 P(\\d+) 的平台字幕。$",
+   "Get platform subtitles for episode P$1."
+  ],
+  [
+   "^第 (\\d+) 页$",
+   "Page $1"
+  ],
+  [
+   "^暂无(.+)。$",
+   "No $1 yet."
+  ],
+  [
+   "^（文件(.+)）$",
+   " (file $1)"
+  ],
+  [
+   "^点击选择或拖到这里，最多 32 个，每个不超过 (\\d+)\\s*MB$",
+   "Click to choose or drop files here, up to 32, each under $1 MB"
+  ],
+  [
+   "^(.+) \u2192 (.+)译文$",
+   "$1 \u2192 $2 translation"
+  ],
+  [
+   "^(.+)(.+)原文$",
+   "$1$2 original"
+  ],
+  [
+   "^本地(.+)转写$",
+   "Local $1 transcription"
+  ],
+  [
+   "^（版本(.+)）$",
+   " (version $1)"
   ]
  ]
 }
