@@ -82,34 +82,43 @@ def file_lock(path, timeout=60):
     path = _project_lock_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink(): raise ValueError('Unsafe lock path')
-    with path.open('a+b') as stream:
-        stream.seek(0, 2)
-        if not stream.tell(): stream.write(b'0'); stream.flush()
-        deadline = time.monotonic() + timeout
-        while True:
-            from video_parser.services import task_runtime
-            task_runtime.checkpoint()
-            try:
-                stream.seek(0)
-                if os.name == 'nt':
-                    import msvcrt
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline: raise TimeoutError('视频项目正在处理中，请稍后重试。')
-                time.sleep(.03)
-        try: yield
-        finally:
+    deadline = time.monotonic() + timeout
+    while True:
+        from video_parser.services import task_runtime
+        task_runtime.checkpoint()
+        # Creating the lock file races between threads: on Windows the losing create
+        # reports PermissionError before any byte lock exists, so retry the open too.
+        try:
+            stream = path.open('a+b')
+        except (FileNotFoundError, PermissionError):
+            if time.monotonic() >= deadline: raise TimeoutError('视频项目正在处理中，请稍后重试。')
+            time.sleep(.03)
+            continue
+        try:
+            stream.seek(0, 2)
+            if not stream.tell(): stream.write(b'0'); stream.flush()
             stream.seek(0)
             if os.name == 'nt':
                 import msvcrt
-                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
-                fcntl.flock(stream, fcntl.LOCK_UN)
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            stream.close()
+            if time.monotonic() >= deadline: raise TimeoutError('视频项目正在处理中，请稍后重试。')
+            time.sleep(.03)
+    try: yield
+    finally:
+        stream.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_UN)
+        stream.close()
 
 
 def contained(directory, relative):
