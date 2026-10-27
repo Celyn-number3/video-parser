@@ -1,0 +1,21 @@
+/* The rate control floats over the stage so native controls keep owning seek and volume. */
+.media-stage.unified-media-stage { position: relative; }
+.playback-speed { position: absolute; top: 10px; right: 10px; z-index: 3; }
+.playback-speed-trigger { min-width: 48px; min-height: 32px; padding: 4px 10px; font-size: var(--font-size-control); font-variant-numeric: tabular-nums; color: #fff; background: rgba(0, 0, 0, .62); border: 1px solid rgba(255, 255, 255, .28); border-radius: var(--radius-md); cursor: pointer; }
+.playback-speed-trigger:hover { background: rgba(0, 0, 0, .78); }
+.playback-speed-trigger:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.playback-speed-panel { position: fixed; z-index: 60; display: grid; gap: 8px; width: 220px; box-sizing: border-box; padding: 10px; color: var(--color-text); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.playback-speed-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.playback-speed-presets button { min-height: 32px; padding: 4px; font-size: var(--font-size-control); font-variant-numeric: tabular-nums; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; }
+.playback-speed-presets button[aria-pressed="true"] { border-color: var(--color-border-strong); background: var(--color-fill-hover); font-weight: 600; }
+.playback-speed-custom { display: grid; gap: 4px; }
+.playback-speed-custom > label { font-size: var(--font-size-caption); color: var(--color-text-secondary); }
+.playback-speed-field { display: flex; gap: 6px; }
+.playback-speed-field input { flex: 1; min-width: 0; min-height: 32px; padding: 4px 8px; font-size: var(--font-size-control); color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); }
+.playback-speed-field button { flex: none; min-height: 32px; padding: 4px 10px; font-size: var(--font-size-control); }
+.playback-speed-auto { display: flex; align-items: flex-start; gap: 6px; font-size: var(--font-size-caption); line-height: 1.45; color: var(--color-text-secondary); }
+.playback-speed-auto input { flex: none; margin: 2px 0 0; }
+.playback-speed-presets button:focus-visible, .playback-speed-field button:focus-visible { outline: 2px solid var(--color-border-focus, currentColor); outline-offset: 1px; }
+@media (max-width: 560px) {
+  .playback-speed { top: 6px; right: 6px; }
+}

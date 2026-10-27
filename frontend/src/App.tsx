@@ -25,6 +25,7 @@ import AnalysisPanel from './features/analysis/AnalysisPanel';
 import ChapterTimeline from './features/analysis/ChapterTimeline';
 import type { AnalysisTimeline } from './features/analysis/chapters';
 import { preferredQualityId } from './features/settings/settings';
+import { readAutoNext } from './lib/playback';
 import usePreferences from './features/settings/usePreferences';
 import WorkbenchLayout from './components/WorkbenchLayout';
 import WorkbenchPage from './components/WorkbenchPage';
@@ -451,6 +452,24 @@ export default function App() {
       }
     }
   }
+  // A finished episode continues with the next one while the learner keeps auto-advance on.
+  const selectEpisodeRef = useRef(selectEpisode);
+  useEffect(() => { selectEpisodeRef.current = selectEpisode; });
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !learning) return;
+    const advance = () => {
+      if (!readAutoNext()) return;
+      const id = selectedRef.current, value = id ? projects.current[id] : undefined;
+      const episodes = value?.parsed.episodes;
+      if (!episodes || episodes.length < 2) return;
+      const current = value.parsed.project.part || 1;
+      const next = episodes.map(item => item.part).filter(part => part > current).sort((first, second) => first - second)[0];
+      if (next !== undefined) void selectEpisodeRef.current(next);
+    };
+    video.addEventListener('ended', advance);
+    return () => video.removeEventListener('ended', advance);
+  }, [learning, media?.resource, parsed?.project.id, parsed?.project.part, parsed?.episodes]);
   function chooseQuality(key: string) {
     if (!selectedId || busy) return;
     updateProject(selectedId, value => ({ ...value, quality: key, error: false, status: value.parsed.qualities.find(item => item.id === key)?.media ? '已选择归档视频' : '所选画质尚未归档' }));
