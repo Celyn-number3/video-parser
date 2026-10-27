@@ -63,14 +63,16 @@ class RenditionTests(unittest.TestCase):
     def test_every_resolution_is_listed_without_urls(self):
         options = renditions(FORMATS)
         self.assertEqual([item['id'] for item in options],
-                         ['2160p', '1440p', '1080p60', '1080p', '720p', '480p', '360p', '240p', '144p'])
+                         ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'])
+        self.assertEqual([item['label'] for item in options][:3], ['2160p · VP9', '1440p · VP9', '1080p'])
         self.assertNotIn('https://', json.dumps(options))
         self.assertNotIn('url', json.dumps(options))
 
     def test_compatible_codec_wins_and_codec_is_labelled(self):
         by_id = {item['id']: item for item in renditions(FORMATS)}
-        self.assertEqual(by_id['1080p']['codec'], 'H.264')       # 137 beats VP9 248
-        self.assertEqual(by_id['1080p60']['format_id'], '299')
+        self.assertEqual(by_id['1080p']['codec'], 'H.264')       # H.264 wins over VP9 248
+        self.assertEqual(by_id['1080p']['format_id'], '299')     # 60fps beats the 30fps 137
+        self.assertEqual(by_id['1080p']['fps'], 60)
         self.assertEqual(by_id['2160p']['codec'], 'VP9')         # HDR and AV1 are not preferred
         self.assertEqual(by_id['2160p']['label'], '2160p · VP9')
         self.assertEqual(by_id['720p']['format_id'], '136')      # muxed 22 is not preferred over DASH
@@ -103,7 +105,7 @@ class YoutubeQualityTests(unittest.TestCase):
     def test_parse_lists_real_renditions_and_keeps_page_url(self):
         parsed = self.parsed()
         self.assertEqual([item['id'] for item in videos.quality_options(parsed)],
-                         ['2160p', '1440p', '1080p60', '1080p', '720p', '480p', '360p', '240p', '144p'])
+                         ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'])
         self.assertEqual(parsed.video_urls, [URL])
         self.assertNotIn('https://', json.dumps(videos.quality_options(parsed)))
 
@@ -181,7 +183,7 @@ class DownloadSelectorTests(unittest.TestCase):
             downloader.metadata()
             options = downloader.qualities()
             self.assertEqual(run.call_count, 1)
-            self.assertEqual(len(options), 9)
+            self.assertEqual(len(options), 8)
             self.assertNotIn('secret', json.dumps(options))
 
 
