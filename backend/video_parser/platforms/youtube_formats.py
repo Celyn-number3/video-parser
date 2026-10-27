@@ -43,8 +43,11 @@ def _candidates(formats):
 
 def _score(item):
     codec = codec_label(item.get('vcodec'))
-    # Video-only DASH renditions carry a higher bitrate than the muxed fallback.
+    protocol = str(item.get('protocol') or '')
+    # Direct HTTPS beats the SABR/HLS manifest variants YouTube now publishes at
+    # the same resolution: no fragment playlist, no ffmpeg network access.
     return (_CODEC_RANK.get(codec, 0), 1 if str(item.get('ext') or '') == 'mp4' else 0,
+            1 if protocol in ('https', 'http') else 0,
             1 if str(item.get('acodec') or 'none') == 'none' else 0, item.get('tbr') or 0)
 
 
