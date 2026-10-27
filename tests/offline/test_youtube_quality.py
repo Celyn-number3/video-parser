@@ -19,7 +19,11 @@ FORMATS = [
     {'format_id': '160', 'ext': 'mp4', 'vcodec': 'avc1.4d400c', 'acodec': 'none', 'width': 256, 'height': 144, 'fps': 30, 'tbr': 100},
     {'format_id': '133', 'ext': 'mp4', 'vcodec': 'avc1.4d4015', 'acodec': 'none', 'width': 426, 'height': 240, 'fps': 30, 'tbr': 300},
     {'format_id': '134', 'ext': 'mp4', 'vcodec': 'avc1.4d401e', 'acodec': 'none', 'width': 640, 'height': 360, 'fps': 30, 'tbr': 600},
-    {'format_id': '135', 'ext': 'mp4', 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'width': 854, 'height': 480, 'fps': 30, 'tbr': 1000},
+    {'format_id': '135', 'ext': 'mp4', 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'width': 854, 'height': 480, 'fps': 30,
+     'tbr': 1000, 'protocol': 'https'},
+    # Same resolution published as a SABR/HLS manifest with a higher bitrate.
+    {'format_id': '231', 'ext': 'mp4', 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'width': 854, 'height': 480, 'fps': 30,
+     'tbr': 1500, 'protocol': 'm3u8_native'},
     {'format_id': '136', 'ext': 'mp4', 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'width': 1280, 'height': 720, 'fps': 30, 'tbr': 2000},
     {'format_id': '247', 'ext': 'webm', 'vcodec': 'vp9', 'acodec': 'none', 'width': 1280, 'height': 720, 'fps': 30, 'tbr': 2100},
     {'format_id': '137', 'ext': 'mp4', 'vcodec': 'avc1.640028', 'acodec': 'none', 'width': 1920, 'height': 1080, 'fps': 30, 'tbr': 4000},
@@ -70,6 +74,7 @@ class RenditionTests(unittest.TestCase):
         self.assertEqual(by_id['2160p']['codec'], 'VP9')         # HDR and AV1 are not preferred
         self.assertEqual(by_id['2160p']['label'], '2160p · VP9')
         self.assertEqual(by_id['720p']['format_id'], '136')      # muxed 22 is not preferred over DASH
+        self.assertEqual(by_id['480p']['format_id'], '135')      # direct HTTPS beats the HLS manifest
         self.assertFalse(by_id['1080p']['has_audio'])
 
     def test_premium_hdr_and_audio_only_are_skipped(self):
