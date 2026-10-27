@@ -26,7 +26,7 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
   const chapters = timeline.chapters.filter(chapter => !total || chapter.time < total);
   const scale = total || (chapters.at(-1)?.time || 0) + 1;
   const active = enabled ? chapters.reduce((found, chapter, index) => chapter.time <= playback.time ? index : found, -1) : -1;
-  const { follow, setFollow, pauseFollow } = useChapterScroll(list, active, view === 'directory' && visible, `${mediaKey}:${timeline.recordId}:${chapters.length}`, videoRef);
+  const { pauseFollow } = useChapterScroll(list, active, view === 'directory' && visible, `${mediaKey}:${timeline.recordId}:${chapters.length}`, videoRef);
   if (!chapters.length) return view === 'directory' ? <p className="study-sidebar-empty">没有落在当前视频时长内的章节时间点。</p> : null;
   const current = active >= 0 ? chapters[active] : null;
   const end = current ? (chapters[active + 1]?.time || total) : 0;
@@ -81,8 +81,6 @@ export default function ChapterTimeline({ timeline, videoRef, mediaKey, duration
     </section>
     </>}
     {view === 'directory' && <>
-    <div className="chapter-directory-toolbar"><button type="button" disabled={!enabled} aria-pressed={follow}
-      onClick={() => setFollow(!follow)}>{follow ? '自动跟随：开启' : '恢复自动跟随'}</button></div>
     <ol ref={list} className="chapter-timeline-list" aria-label="章节列表" tabIndex={0}
       onWheel={pauseFollow} onTouchMove={pauseFollow} onKeyDown={event => {
         if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) pauseFollow();

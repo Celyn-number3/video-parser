@@ -20,7 +20,6 @@
 .modern-app .chapter-timeline-track .chapter-timeline-marker:focus-visible { outline: 2px solid var(--color-text); outline-offset: 0; z-index: 2; }
 /* Directory rows share subtitle styles; only semantic list defaults differ. */
 .chapter-timeline-directory { display: flex; flex-direction: column; min-height: 0; }
-.chapter-directory-toolbar { justify-content: flex-end; }
 .chapter-timeline-list { padding: 0; margin-inline: 0; margin-bottom: 0; list-style: none; }
 .chapter-timeline-list li { flex: none; min-width: 0; }
 .chapter-timeline-hint { margin: 8px 0 0; line-height: 1.6; }

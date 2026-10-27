@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react';
 
-/** Match subtitle intent: native scrolling; manual browsing pauses playback follow. */
+/** Native scrolling; manual browsing pauses playback follow, and seeking resumes it. */
 export default function useChapterScroll(ref: RefObject<HTMLOListElement | null>, active: number,
   visible: boolean, identity: string, videoRef: RefObject<HTMLVideoElement | null>) {
   const [follow, setFollow] = useState(true), [seekVersion, setSeekVersion] = useState(0);
@@ -25,5 +25,5 @@ export default function useChapterScroll(ref: RefObject<HTMLOListElement | null>
     const observer = new ResizeObserver(align); observer.observe(element);
     return () => observer.disconnect();
   }, [ref, active, follow, seekVersion, visible, identity]);
-  return { follow, setFollow, pauseFollow: () => setFollow(false) };
+  return { pauseFollow: () => setFollow(false) };
 }

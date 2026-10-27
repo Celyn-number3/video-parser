@@ -20,11 +20,11 @@
   border: var(--border-width-thin) solid var(--color-border-strong);
   border-radius: var(--radius-md);
 }
-.modern-app :is(.settings-actions, :is(.subtitle-toolbar, .chapter-directory-toolbar), .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) {
+.modern-app :is(.settings-actions, .subtitle-toolbar, .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) {
   gap: var(--action-gap);
   flex-wrap: wrap;
 }
-.modern-app :is(.settings-actions, :is(.subtitle-toolbar, .chapter-directory-toolbar), .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) > :is(button, a.button) {
+.modern-app :is(.settings-actions, .subtitle-toolbar, .task-inline-actions, .analysis-actions, .analysis-record-actions, .video-context-actions, .saved-location-actions, .row-action) > :is(button, a.button) {
   min-height: var(--control-height-md);
   padding: calc((var(--control-height-md) - 20px - 2px) / 2) var(--space-3);
   line-height: 20px;
@@ -62,8 +62,8 @@
 /* Analysis cards and subtitle tools follow the same section/field scale. */
 .learning-notes-panel > :is(.analysis-records, .independent-conversations) { margin-top: var(--section-gap); }
 .modern-app :is(.subtitle-scroll-panel, .chapter-timeline-directory) { margin-top: var(--space-4); padding: var(--space-3); border-color: var(--color-border); border-radius: var(--radius-lg); }
-.modern-app :is(.subtitle-toolbar, .chapter-directory-toolbar) { gap: var(--action-gap); margin-bottom: var(--space-3); }
-.modern-app :is(.subtitle-toolbar, .chapter-directory-toolbar) input { flex: 1 1 200px; }
+.modern-app .subtitle-toolbar { gap: var(--action-gap); margin-bottom: var(--space-3); }
+.modern-app .subtitle-toolbar input { flex: 1 1 200px; }
 .modern-app :is(.subtitle-scroll-list, .chapter-timeline-list) { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-3); }
 .modern-app :is(.subtitle-scroll-list, .chapter-timeline-list) button { --button-edge: transparent; flex-shrink: 0; padding: var(--space-3); min-height: var(--control-height-lg); gap: var(--space-3); box-shadow: none; border: 0; border-radius: var(--radius-md); }
 .modern-app :is(.subtitle-scroll-list, .chapter-timeline-list) button[aria-current=true] { background: var(--color-fill-hover); outline: 1px solid var(--color-border-strong); outline-offset: -1px; }

@@ -130,10 +130,10 @@
 .modern-app .study-sidebar-body:is([data-tab=subtitles],[data-tab=chapters]) { display:flex; flex-direction:column; overflow:hidden; }
 .modern-app :is(#study-panel-subtitles,#study-panel-chapters) { display:flex; flex-direction:column; flex:1; min-height:0; }
 .modern-app .study-sidebar :is(.subtitle-scroll-panel, .chapter-timeline-directory) { display:flex; flex-direction:column; flex:1; min-height:0; margin:0; border:0; border-radius:0; padding:12px; }
-.modern-app .study-sidebar :is(.subtitle-toolbar, .chapter-directory-toolbar) { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; margin:0; }
-.modern-app :is(.subtitle-toolbar, .chapter-directory-toolbar) select { flex:1; min-width:0; width:0; }
-.modern-app :is(.subtitle-toolbar, .chapter-directory-toolbar) button { flex:none; font-size: var(--font-size-control); padding-inline:8px; }
-.modern-app :is(.subtitle-toolbar, .chapter-directory-toolbar) :is(select,button) { min-height:36px; }
+.modern-app .study-sidebar .subtitle-toolbar { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; margin:0; }
+.modern-app .subtitle-toolbar select { flex:1; min-width:0; width:0; }
+.modern-app .subtitle-toolbar button { flex:none; font-size: var(--font-size-control); padding-inline:8px; }
+.modern-app .subtitle-toolbar :is(select,button) { min-height:36px; }
 .modern-app .study-sidebar :is(.subtitle-scroll-list, .chapter-timeline-list) { flex:1; min-height:0; max-height:none; overflow:auto; }
 @media(max-width:1170px) {
  .modern-app .study-sidebar-body:is([data-tab=subtitles],[data-tab=chapters]) { height:clamp(320px, 60dvh, 560px); max-height:none; }
