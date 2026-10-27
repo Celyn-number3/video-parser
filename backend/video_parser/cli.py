@@ -37,7 +37,9 @@ def positive_int(value):
 def quality_argument(value):
     if value in ('best', 'default'): return value
     if re.fullmatch(r'[1-9]\d{1,4}p?', value): return value.rstrip('p') + 'p'
-    raise argparse.ArgumentTypeError('清晰度应为best/default或正整数高度，例如720p。')
+    # High frame-rate renditions keep their exact identifier, e.g. 1080p60.
+    if re.fullmatch(r'[1-9]\d{1,4}p(?:24|25|30|48|50|60)', value): return value
+    raise argparse.ArgumentTypeError('清晰度应为best/default或实际可用画质，例如720p、1080p60。')
 
 
 def build_parser():
@@ -52,7 +54,7 @@ def build_parser():
         if name in ('download', 'cover', 'frames', 'analyze'):
             command.add_argument('--output', '-o', help='输出文件；frames 命令中为新的画面目录')
         if name in ('parse', 'download', 'analyze'):
-            command.add_argument('--quality', type=quality_argument, default='best', help='best 或实际可用清晰度，例如720p；非B站只支持best/default')
+            command.add_argument('--quality', type=quality_argument, default='best', help='best 或实际可用清晰度，例如720p、1080p60；平台未提供的画质会被拒绝')
         if name in ('download', 'cover', 'analyze', 'transcribe'):
             command.add_argument('--output-dir', default=None, help='显式指定输出目录；转录默认使用 outputs/transcriptions，其余默认按视频归档到 outputs')
         if name=='doctor':

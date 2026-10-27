@@ -152,6 +152,13 @@ def parse_link(text, require_video=True):
     video_urls = [video_url] if video_url else []
     audio_urls = []
     variants = {}
+    if platform == 'YouTube' and require_video:
+        # yt-dlp already listed every rendition in the same dump; expose one entry
+        # per resolution instead of the fixed 1080p cap the downloader used to apply.
+        # YouTube renditions are pinned by format id, so no direct URL is stored.
+        get_qualities = getattr(downloader, 'qualities', None)
+        for item in get_qualities() if callable(get_qualities) else []:
+            variants[item['id']] = {**item, 'video_urls': []}
     if platform == '哔哩哔哩':
         metadata['bilibili_cookie_status'] = getattr(downloader, 'cookie_status', 'not_checked')
         get_episodes = getattr(downloader, 'get_episodes', None)
@@ -236,13 +243,18 @@ def quality_options(parsed):
 def select_quality(parsed, quality='best'):
     options = quality_options(parsed)
     key = options[0]['id'] if quality == 'best' else quality
-    if quality.isdecimal(): key = quality + 'p'
+    if quality.isdecimal():
+        # Numeric requests mean "this resolution"; high frame-rate renditions win.
+        exact = quality + 'p'
+        key = exact if any(item['id'] == exact for item in options) else next(
+            (item['id'] for item in options if item.get('height') == int(quality)), exact)
     choice = next((item for item in options if item['id'] == key), None)
     if choice is None: raise ValueError('该清晰度不在本次可用列表中，请重新解析或选择可用画质。')
     metadata = {**parsed.metadata, 'quality_id': key, 'selected_quality': choice, 'qualities': options}
     if parsed.variants:
         metadata.update(width=choice['width'], height=choice['height'])
-    video_urls = parsed.variants[key]['video_urls'] if parsed.variants else parsed.video_urls
+    # YouTube variants carry no direct URL: the download is pinned by format id.
+    video_urls = (parsed.variants[key]['video_urls'] if parsed.variants else []) or parsed.video_urls
     metadata['video_url'] = video_urls[0] if video_urls else None
     return replace(parsed, metadata=metadata, video_urls=video_urls)
 
@@ -271,16 +283,35 @@ def archived_videos(identifier, *, use_validation_cache=False):
     return videos
 
 
+def codec_matches(codec, saved_codec):
+    """Compare a platform codec string with ffprobe's codec_name."""
+    value = re.sub(r'[^a-z0-9]', '', str(codec or '').lower())
+    if not value:
+        return True
+    if value.startswith(('avc1', 'h264')):
+        return saved_codec == 'h264'
+    if value.startswith(('hev1', 'hvc1', 'h265', 'hevc')):
+        return saved_codec == 'hevc'
+    if value.startswith(('av01', 'av1')):
+        return saved_codec == 'av1'
+    if value.startswith(('vp9', 'vp09')):
+        return saved_codec == 'vp9'
+    return False
+
+
 def saved_quality(identifier, selected):
     for saved in archived_videos(identifier):
         previous = saved['selected_quality']
         if previous:
             if all(previous.get(key) == selected.get(key) for key in ('id', 'width', 'height', 'codec', 'track_id')):
                 return saved
-        elif selected.get('height'):
-            codec = selected.get('codec') or ''
-            matches_codec = not codec or (codec.startswith('avc1') and saved['codec'] == 'h264') or (codec.startswith(('hev1','hvc1')) and saved['codec'] == 'hevc') or (codec.startswith('av01') and saved['codec'] == 'av1')
-            if (saved['height'], saved['width']) == (selected.get('height'), selected.get('width')) and matches_codec:
+            if previous.get('height'):
+                continue
+        # Records archived before a platform exposed real renditions carry no
+        # measured size, so fall back to the archived dimensions and codec.
+        if selected.get('height'):
+            if ((saved['height'], saved['width']) == (selected.get('height'), selected.get('width'))
+                    and codec_matches(selected.get('codec'), saved['codec'])):
                 return saved
         elif selected['id'] == 'default' and library.get(identifier)['platform'] != 'bilibili':
             return saved
@@ -407,6 +438,7 @@ def download_video(parsed, target):
     if platform == 'YouTube':
         from video_parser.services import task_runtime
         from video_parser.platforms.youtube import download_youtube
+        selected_quality = parsed.metadata.get('selected_quality') or {}
         require_tools('ffmpeg', 'ffprobe')
         target.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.video-download-', dir=target.parent) as directory:
@@ -417,7 +449,9 @@ def download_video(parsed, target):
                 task_runtime.progress('downloading', '正在下载 YouTube 当前轨道…', force=finished,
                                       bytes=done, total_bytes=total, sampled_at=time.time(), **values)
 
-            download_youtube(parsed.metadata['source_url'], staged, _report_progress)
+            download_youtube(parsed.metadata['source_url'], staged, _report_progress,
+                             format_id=selected_quality.get('format_id'),
+                             has_audio=selected_quality.get('has_audio'))
             task_runtime.progress('validating', '正在校验下载结果…', force=True)
             info = probe(staged)
             check_video(info, require_audio=True, expected_duration=parsed.metadata.get('duration'))

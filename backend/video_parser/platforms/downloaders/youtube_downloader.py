@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 from video_parser.platforms.downloaders.base_downloader import BaseDownloader
+from video_parser.platforms.youtube_formats import renditions
 
 
 class YoutubeAccessError(RuntimeError):
@@ -14,9 +15,10 @@ class YoutubeDownloader(BaseDownloader):
         super().__init__(real_url)
         self.headers = {}
         self._metadata = None
+        self._dump = None
 
-    def metadata(self):
-        if self._metadata is None:
+    def _data(self):
+        if self._dump is None:
             command = [sys.executable, '-X', 'utf8', '-m', 'yt_dlp', '--ignore-config',
                        '--dump-single-json', '--skip-download', '--no-playlist', '--no-warnings',
                        '--quiet', '--socket-timeout', '15', '--retries', '1', '--extractor-retries', '1',
@@ -28,12 +30,22 @@ class YoutubeDownloader(BaseDownloader):
                 data = json.loads(result.stdout)
                 if data.get('_type') in {'playlist', 'multi_video'} or not data.get('id'):
                     raise ValueError('Expected one video')
-                self._metadata = {key: data.get(key) for key in ('id', 'title', 'thumbnail', 'duration')}
+                self._dump = data
             except subprocess.TimeoutExpired:
                 raise YoutubeAccessError('YouTube 解析超时，请稍后重试。') from None
             except (ValueError, TypeError, AttributeError):
                 raise YoutubeAccessError('YouTube 返回的信息无效，请重新解析。') from None
+        return self._dump
+
+    def metadata(self):
+        if self._metadata is None:
+            data = self._data()
+            self._metadata = {key: data.get(key) for key in ('id', 'title', 'thumbnail', 'duration')}
         return self._metadata
+
+    def qualities(self):
+        """Every downloadable rendition, without signed URLs or extractor internals."""
+        return renditions(self._data().get('formats'))
 
     def get_title_content(self):
         return self.metadata().get('title') or 'YouTube video'

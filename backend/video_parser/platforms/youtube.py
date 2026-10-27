@@ -5,6 +5,16 @@ from video_parser.services import task_runtime
 DEFAULT_FORMAT = 'bv*[ext=mp4][vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4][height<=1080]'
 
 
+def format_selector(format_id=None, has_audio=None):
+    """Pin one enumerated rendition, merging the best AAC track when it is video-only."""
+    if not format_id:
+        return DEFAULT_FORMAT
+    identifier = str(format_id)
+    if has_audio:
+        return identifier
+    return f'{identifier}+ba[ext=m4a]/{identifier}+ba[acodec^=mp4a]/{identifier}'
+
+
 class QuietLogger:
     # Extractor errors can contain signed URLs: keep them out of logs/API responses.
     def debug(self, message): pass
@@ -12,7 +22,7 @@ class QuietLogger:
     def error(self, message): pass
 
 
-def download_youtube(url, target, progress_cb=None):
+def download_youtube(url, target, progress_cb=None, format_id=None, has_audio=None):
     try:
         import yt_dlp
     except ImportError:
@@ -49,7 +59,7 @@ def download_youtube(url, target, progress_cb=None):
         task_runtime.checkpoint()
         task_runtime.progress('merging', '正在合并或整理音视频；剩余时间未知。', force=True)
 
-    options = {'format': DEFAULT_FORMAT, 'outtmpl': str(target), 'merge_output_format': 'mp4',
+    options = {'format': format_selector(format_id, has_audio), 'outtmpl': str(target), 'merge_output_format': 'mp4',
                'quiet': True, 'no_warnings': True, 'noprogress': True, 'noplaylist': True,
                'retries': 2, 'fragment_retries': 2, 'socket_timeout': 15,
                'logger': QuietLogger(), 'progress_hooks': [hook], 'postprocessor_hooks': [postprocess]}
