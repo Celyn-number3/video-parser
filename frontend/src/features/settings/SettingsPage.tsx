@@ -6,11 +6,13 @@ import CacheManager from './CacheManager';
 import AISettingsSection from './AISettingsSection';
 import LearningTargets from './LearningTargets';
 import EmbeddingSettings from './EmbeddingSettings';
+import UsageDashboard from './UsageDashboard';
+import ArchiveHealthPanel from './ArchiveHealth';
 import { setLanguage, useLanguage } from '../../lib/i18n';
 import type { Language } from '../../lib/i18n';
 import './settings-page.css';
 
-const groups = { general: '常用设置', ai: 'AI 模型', maintenance: '存储与维护' } as const;
+const groups = { general: '常用设置', ai: 'AI 模型', usage: '用量看板', health: '归档体检', maintenance: '存储与维护' } as const;
 const LANGUAGES: [Language, string, string][] = [['zh', '中文', 'zh-CN'], ['en', 'English', 'en']];
 type Group = keyof typeof groups;
 function groupFromURL(): Group {
@@ -83,6 +85,14 @@ export default function SettingsPage({ settings, onChange, config, configError, 
         </LearningTargets>
         <EmbeddingSettings />
       </div>}
+    </div>
+    <div hidden={group !== 'usage'}>
+      <h2 className="settings-group-title" id="settings-group-usage" tabIndex={-1}>用量看板</h2>
+      <div className="settings-card settings-card-wide"><UsageDashboard visible={visible && group === 'usage'} /></div>
+    </div>
+    <div hidden={group !== 'health'}>
+      <h2 className="settings-group-title" id="settings-group-health" tabIndex={-1}>归档体检</h2>
+      <div className="settings-card settings-card-wide"><ArchiveHealthPanel visible={visible && group === 'health'} /></div>
     </div>
     <div hidden={group !== 'maintenance'}>
       <h2 className="settings-group-title" id="settings-group-maintenance" tabIndex={-1}>存储与维护</h2>

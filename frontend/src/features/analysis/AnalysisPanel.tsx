@@ -14,6 +14,7 @@ import type { LearningChat } from '../learning/AIChat';
 import useConversations from '../learning/useConversations';
 import useAgentModels from '../learning/useAgentModels';
 import AgentModelPicker from '../learning/AgentModelPicker';
+import QuizView from './Quiz';
 import { chapterMaterial, matchesLearningMedia, readChapterChoice, readMaterialChoice, saveChapterChoice, saveMaterialChoice } from './learningMaterials';
 
 type Props = {
@@ -33,6 +34,7 @@ const COUNTS = [4, 6, 8, 12, 16];
 const PLACEHOLDERS: Record<string, string> = {
   custom: '写下你想让模型做什么，例如：列出视频里出现的所有产品和价格',
   notes: '例如：只整理和特征值有关的部分',
+  quiz: '例如：只考计算题，出 8 道，难度中等',
   breakdown: '例如：重点分析前 10 秒',
 };
 const autoCount = (duration: number) => Math.max(4, Math.min(16, Math.round(4 + duration / 60)));
@@ -187,6 +189,10 @@ export default function AnalysisPanel(props: Props) {
   const inputTokens = (context?.prompt_tokens || 700) + (usesTranscript && chosen ? chosen.tokens : 0) + frameTotal * (context?.image_tokens || 800) + Math.ceil(prompt.length * 0.7);
   const outputTokens = context?.output_tokens || 1500;
   const cost = ai && ai.price_input !== null ? inputTokens / 1e6 * ai.price_input + outputTokens / 1e6 * (ai.price_output ?? ai.price_input) : null;
+  // Historical records keep their token counts; the price is the one currently configured, so label it as an estimate.
+  const recordCost = record && ai && record.engine === 'api' && !ai.local && ai.price_input !== null && record.usage.prompt_tokens
+    ? record.usage.prompt_tokens / 1e6 * ai.price_input + (record.usage.completion_tokens || 0) / 1e6 * (ai.price_output ?? ai.price_input)
+    : null;
 
   const missingTranscript = !transcripts.length && (source !== 'frames' || spec?.requires === 'transcript' || frameMode === 'ai');
   const blocker = !parsed ? '先解析链接并选择视频。'
@@ -364,7 +370,8 @@ export default function AnalysisPanel(props: Props) {
       {learning && !record && !loadError && <p className="analysis-empty">{!recordsReady ? '正在读取学习材料…' : !media ? '先归档视频，再生成学习材料。' : '还没有当前视频的 AI 学习材料，可按需生成摘要、知识点或章节讲解。'}</p>}
       {record && <article className="analysis-record" aria-label={`${record.template_name}结果`}>
         {!learning && <p className="analysis-meta">{[record.source_label + (record.transcript_label ? `（${record.transcript_label}）` : ''), record.frame_count ? `${record.frame_count} 张画面` : '',
-          record.model, record.usage.prompt_tokens ? `用量 ${tokens(record.usage.prompt_tokens)} + ${tokens(record.usage.completion_tokens || 0)} tokens` : ''].filter(Boolean).join(' · ')}</p>}
+          record.model, record.usage.prompt_tokens ? `用量 ${tokens(record.usage.prompt_tokens)} + ${tokens(record.usage.completion_tokens || 0)} tokens` : '',
+          recordCost !== null ? `约 ¥${recordCost > 0 && recordCost < 0.01 ? recordCost.toFixed(4) : recordCost.toFixed(2)}` : ''].filter(Boolean).join(' · ')}</p>}
         {!learning && record.prompt && <p className="analysis-meta">要求：{record.prompt}</p>}
         <div className="analysis-record-actions" hidden={learning}>
           <button type="button" className="primary" disabled={!recordMatches} onClick={useForLearning}
@@ -372,6 +379,7 @@ export default function AnalysisPanel(props: Props) {
           <button type="button" onClick={() => { void copyRecord(); }}><Icon name="copy" />复制</button>
           <a className="button" href={`/api/workspace/projects/${projectId}/analyses/${record.id}/export?format=md`} download><Icon name="file-down" />导出 Markdown</a>
           <a className="button" href={`/api/workspace/projects/${projectId}/analyses/${record.id}/export?format=docx`} download><Icon name="file-down" />导出 Word</a>
+          {!!record.quiz?.questions.length && <a className="button" href={`/api/workspace/projects/${projectId}/analyses/${record.id}/export?format=anki`} download><Icon name="file-down" />导出 Anki</a>}
           {confirmDelete ? <span className="analysis-confirm">删除这条记录和它的画面？
             <button type="button" disabled={working} onClick={() => { void deleteRecord(); }}>删除</button><button type="button" onClick={() => setConfirmDelete(false)}>取消</button></span>
             : <button type="button" className="analysis-delete" disabled={working} onClick={() => setConfirmDelete(true)}><Icon name="trash-2" />删除</button>}
@@ -384,7 +392,12 @@ export default function AnalysisPanel(props: Props) {
           {record.frames.map(frame => <li key={frame.url}><button type="button" title={`查看画面 ${frame.label} 大图`} onClick={() => setLargeFrame(frame)}>
             <img src={frame.url} alt={`画面 ${frame.label}`} loading="lazy" /><span>{frame.label}</span></button></li>)}
         </ul></details>}
-        <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" timeRangesFirst />
+        {record.quiz && record.quiz.questions.length > 0
+          ? <QuizView quiz={record.quiz} onSeek={recordSeek} />
+          : <Markdown text={record.text} onSeek={recordSeek} maxSeconds={duration} className="analysis-markdown" timeRangesFirst />}
+        {record.template === 'quiz' && !record.quiz?.questions.length && <p className="notice" role="status">模型没有返回可解析的题目，下面是原始输出；可以重新生成一次。</p>}
+        {record.quiz && record.quiz.questions.length > 0 && <details className="analysis-raw"><summary>查看原始输出</summary>
+          <Markdown text={record.text} className="analysis-markdown" /></details>}
 
       </article>}
     </Panel>}

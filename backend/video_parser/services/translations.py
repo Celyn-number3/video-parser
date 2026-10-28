@@ -1,4 +1,5 @@
 """Explicit, cancellable AI text/subtitle translation; original outputs are immutable."""
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -182,6 +183,7 @@ def worker(job):
         directory = transcription.OUTPUT_ROOT / job.id
         task_runtime.own_directory(directory, job.id)
         translated = {}
+        usage_total = {'prompt_tokens': 0, 'completion_tokens': 0}
         for index, group in enumerate(groups):
             task_runtime.checkpoint()
             task_runtime.progress('translating', '正在分批翻译字幕；原文保留，失败不自动重试。', done=index, total=len(groups))
@@ -189,6 +191,12 @@ def worker(job):
                         {'role': 'user', 'content': json.dumps({'items': group}, ensure_ascii=False)}]
             reply = model_calls.call(messages, settings, selected, directory, purpose='translation',
                                      max_tokens=budget.get('max_tokens'))
+            # Translation is billed per batch; keep the sum on the archived translation for the usage view.
+            usage = getattr(reply, 'usage', None)
+            for key in usage_total:
+                value = usage.get(key) if isinstance(usage, dict) else None
+                if type(value) is int and value > 0:
+                    usage_total[key] += value
             translated.update(parse_reply(reply.text, group))
         task_runtime.checkpoint()
         if library.digest(path) != job.translation['sha256']: raise ValueError('翻译期间原字幕已变化，没有发布译文。')
@@ -198,6 +206,7 @@ def worker(job):
             contents['srt'] = '\n\n'.join(f'{index + 1}\n{item["time"]}\n{translated[index]}' for index, item in enumerate(items)) + '\n'
         task_runtime.progress('archiving', '正在单独保存译文，原字幕不会覆盖。')
         files = {}
+        usage_recorded = False
         for fmt, body in contents.items():
             task_runtime.checkpoint()
             source_kind = job.translation.get('source_kind')
@@ -212,9 +221,14 @@ def worker(job):
             destination = transcription.destination_of(job); owner, relative = None, None
             if destination.get('type') == 'project':
                 owner = destination['project_id']
-                relative = library.import_file(owner, file, 'subtitles/' + name, 'translation',
-                    {'language': target, 'video_resource': job.resource, 'source_sha256': job.translation['sha256'],
-                     'source_resource': job.translation['reference'].get('resource')})
+                details = {'language': target, 'video_resource': job.resource, 'source_sha256': job.translation['sha256'],
+                           'source_resource': job.translation['reference'].get('resource')}
+                if not usage_recorded:
+                    # One resource carries the batch sum; the srt copy must not double-count it.
+                    details.update({'usage': usage_total, 'model': settings.get('model') or selected.get('model') or '',
+                                    'agent': selected, 'created_at': datetime.now(timezone.utc).isoformat(timespec='seconds')})
+                    usage_recorded = True
+                relative = library.import_file(owner, file, 'subtitles/' + name, 'translation', details)
                 file = library.resource(owner, relative)
             elif destination.get('type') == 'folder':
                 from video_parser.services import folders

@@ -108,3 +108,8 @@
 /* Keep each citation range together while the following prose wraps normally. */
 .md-time-range { display:inline-flex; align-items:baseline; gap:3px; white-space:nowrap; vertical-align:baseline; margin-inline-end:6px; }
 .modern-app .markdown .md-time-range > button.md-time { margin:0; }
+
+/* Structured quiz: the raw model output stays available without competing with the cards. */
+.analysis-raw { margin-top: 4px; }
+.analysis-raw > summary { cursor: pointer; font-size: var(--font-size-xs); color: var(--color-text-secondary); }
+.analysis-raw > summary:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 3px; }

@@ -344,18 +344,27 @@ def clear_context(project_id: str, record_id: str):
     return {'records': handled(ai_analysis.records, project_id)}
 
 
+def download(content, media, name, extension):
+    return Response(content, media_type=media, headers={
+        'Content-Disposition': f"attachment; filename=\"export.{extension}\"; filename*=UTF-8''{quote(name + '.' + extension)}",
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
 @router.get('/projects/{project_id}/analyses/{record_id}/export')
-def export_record(project_id: str, record_id: str, format: Literal['md', 'docx'] = 'md'):
+def export_record(project_id: str, record_id: str, format: Literal['md', 'docx', 'anki', 'csv'] = 'md'):
+    if format in ('anki', 'csv'):
+        if format == 'anki':
+            content, filename = handled(ai_analysis.export_anki, project_id, record_id)
+            return download(content, 'text/csv; charset=utf-8', filename, 'csv')
+        content, filename = handled(ai_analysis.export_quiz_csv, project_id, record_id)
+        return download(content, 'text/csv; charset=utf-8', filename, 'csv')
     markdown, filename = handled(ai_analysis.export_markdown, project_id, record_id)
     if format == 'docx':
         content = docx_export.build(markdown, filename)
         media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     else:
         content, media = markdown.encode('utf-8'), 'text/markdown; charset=utf-8'
-    name = f'{filename}.{format}'
-    return Response(content, media_type=media, headers={
-        'Content-Disposition': f"attachment; filename=\"analysis.{format}\"; filename*=UTF-8''{quote(name)}",
-        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+    return download(content, media, filename, format)
 
 
 # ---- Independent video conversations -------------------------------------------

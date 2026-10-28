@@ -1,9 +1,11 @@
 """Strict same-origin APIs for personal learning state, independent of AI."""
-from typing import Annotated
+from typing import Annotated, Literal
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from video_parser.web.security import local_request
-from video_parser.services import study
+from video_parser.services import anki_export, study
 
 router = APIRouter(prefix='/api/workspace', dependencies=[Depends(local_request)])
 Project = Annotated[str, Path(pattern=r'^[a-f0-9]{32}$')]
@@ -38,6 +40,25 @@ def get_progress(identifier: Project, resource: Resource):
 @router.post('/projects/{identifier}/study/progress')
 def save_progress(identifier: Project, body: ProgressBody):
     return handled(study.progress, identifier, body.resource, body.position, body.duration, body.expected_revision)
+
+@router.get('/projects/{identifier}/study/notes/export')
+def export_notes(identifier: Project, resource: Resource, format: Literal['md', 'csv', 'anki'] = 'md'):
+    """Notes stay personal data: the same read path as the note list, no AI involved."""
+    filename = handled(study.export_filename, identifier)
+    if format == 'anki':
+        content = anki_export.cards_csv(handled(study.note_cards, identifier, resource))
+        media = 'text/csv; charset=utf-8'
+    elif format == 'csv':
+        content = handled(study.notes_csv, identifier, resource)
+        media = 'text/csv; charset=utf-8'
+    else:
+        content, _ = handled(study.export_markdown, identifier, resource)
+        content, media = content.encode('utf-8'), 'text/markdown; charset=utf-8'
+    name = f'{filename}.{format}'
+    return Response(content, media_type=media, headers={
+        'Content-Disposition': f"attachment; filename=\"notes.{format}\"; filename*=UTF-8''{quote(name)}",
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
 
 @router.get('/projects/{identifier}/study/notes')
 def get_notes(identifier: Project, resource: Resource):

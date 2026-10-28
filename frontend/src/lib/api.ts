@@ -44,10 +44,16 @@ export interface AnalysisContext {
   prompt_tokens: number; output_tokens: number; templates: AnalysisTemplate[]; sources: Record<AnalysisSource, string>; ai: AISettings;
 }
 export interface AnalysisFrame { url: string; time: number; label: string; name?: string }
+export interface QuizQuestion {
+  question: string; options: string[]; answer: number; answer_text: string; explanation: string; time: number | null;
+}
+export interface Quiz { title: string; questions: QuizQuestion[] }
 export interface AnalysisRecord {
   id: string; created_at: string | null; template: string; template_name: string; source: AnalysisSource; source_label: string;
-  prompt: string; model: string; provider: string; transcript_label: string; transcript_merged: boolean; video_resource: string | null;
+  prompt: string; model: string; provider: string; engine?: AgentEngine; transcript_label: string; transcript_merged: boolean; video_resource: string | null;
   frame_count: number; frames: AnalysisFrame[]; usage: { prompt_tokens?: number | null; completion_tokens?: number | null };
+  /** Parsed structure for the `quiz` template; null when the model output could not be validated. */
+  quiz?: Quiz | null;
   text: string; followups: { id: string; question: string; answer: string; created_at: string | null }[];
   /** Last follow-up before the user cleared the chat context; later questions resend only what follows it. */
   context_after?: string | null; legacy: boolean;
@@ -248,4 +254,43 @@ export interface ProjectSummary {
   part: number | null;
   location: string;
   created_at: string;
+}
+
+export interface UsageBucket {
+  calls: number; prompt_tokens: number; completion_tokens: number; total_tokens: number;
+  /** null when at least one API call has no configured price; 0 for native-agent calls. */
+  cost: number | null; unpriced_calls: number; native_calls: number;
+}
+export interface UsageDay { date: string; calls: number; prompt_tokens: number; completion_tokens: number; total_tokens: number }
+export interface UsageReport {
+  generated_at: string; window_days: number; currency: string;
+  prices: { input: number | null; output: number | null; configured: boolean };
+  totals: UsageBucket & { projects: number };
+  by_kind: (UsageBucket & { kind: string; label: string })[];
+  by_model: (UsageBucket & { model: string; engines: string[] })[];
+  by_project: (UsageBucket & { id: string; title: string })[];
+  by_day: UsageDay[];
+  coverage: string;
+}
+
+export interface ArchiveHealthIssue {
+  project_id: string; title: string; resource?: string; path: string; kind?: string | null;
+  recorded_bytes?: number | null; actual_bytes?: number; size_bytes?: number; suspected_move?: string; reason?: string; error?: string;
+}
+export interface ArchiveHealthListing<T> { items: T[]; total: number; shown: number }
+export interface ArchiveHealthProject {
+  id: string; title: string; platform: string; location: string; files: number; disk_bytes: number;
+  resource_bytes: number; orphan_bytes: number; sidecar_bytes: number; missing: number; changed: number; orphans: number; issues: number;
+}
+export interface ArchiveHealth {
+  generated_at: string; duration_ms: number; archive_root: string; read_only: boolean;
+  totals: { projects: number; files: number; disk_bytes: number; resource_bytes: number; orphan_bytes: number; sidecar_bytes: number;
+    missing: number; changed: number; orphan_files: number; unsafe: number; duplicate_groups: number; duplicate_bytes: number; unreadable: number };
+  projects: ArchiveHealthProject[];
+  issues: {
+    missing: ArchiveHealthListing<ArchiveHealthIssue>; changed: ArchiveHealthListing<ArchiveHealthIssue>;
+    orphans: ArchiveHealthListing<ArchiveHealthIssue>; unsafe: ArchiveHealthListing<ArchiveHealthIssue>;
+    unreadable: ArchiveHealthListing<ArchiveHealthIssue>;
+    duplicates: ArchiveHealthListing<{ sha256: string; size_bytes: number; copies?: number; entries: ArchiveHealthIssue[] }>;
+  };
 }

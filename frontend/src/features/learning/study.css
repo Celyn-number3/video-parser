@@ -17,3 +17,7 @@
 .timestamp-note-meta > button:first-child { margin-right: auto; font-variant-numeric: tabular-nums; }
 .timestamp-notes-list li > p { margin: 9px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: var(--font-size-sm); }
 @media(max-width:560px) { .timestamp-notes { padding: 12px; } .timestamp-note-editor-actions { justify-content: flex-start; } }
+
+/* Notes export mirrors the analysis record exports; it never modifies personal data. */
+.timestamp-notes-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.timestamp-notes-tools .button { min-height: 30px; padding: 4px 10px; font-size: var(--font-size-xs); box-shadow: none; }

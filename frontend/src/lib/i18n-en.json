@@ -1690,9 +1690,134 @@
   "Ctrl+Enter 完成 · Esc 取消": "Ctrl+Enter to finish \u00b7 Esc to cancel",
   "双击（或按 F2）任意条目可校对；保存会新增「-校对」版本，原字幕文件不变。": "Double-click a line (or press F2) to proofread. Saving adds a proofread version; the original file stays unchanged.",
   "单条字幕不能为空；如需删除整条，请保留原文后另行处理。": "A subtitle line cannot be empty. To drop a line, keep its text and handle it separately.",
-  "保存校对版本失败，请重试。": "Could not save the proofread version. Please try again."
+  "保存校对版本失败，请重试。": "Could not save the proofread version. Please try again.",
+  "例如：只考计算题，出 8 道，难度中等": "e.g. calculation questions only, 8 items, medium difficulty",
+  "导出 Anki": "Export for Anki",
+  "查看原始输出": "View raw output",
+  "模型没有返回可解析的题目，下面是原始输出；可以重新生成一次。": "The model did not return parsable questions. Raw output is shown below; try generating again.",
+  "回答正确": "Correct",
+  "回答错误": "Incorrect",
+  "复习自测题": "Review quiz",
+  "解析": "Explanation",
+  "重新作答": "Start over",
+  "导出 CSV": "Export CSV",
+  "导出个人笔记": "Export personal notes",
+  "导出笔记": "Export notes",
+  "用量看板": "Usage",
+  "归档体检": "Archive checkup",
+  "体检失败，请重试。": "Checkup failed. Try again.",
+  "变化": "Changed",
+  "可能已移动到": "Possibly moved to",
+  "大小变化": "Size changes",
+  "大小变化的文件（可能被截断或替换）·": "Files with size changes (possibly truncated or replaced) ·",
+  "大小未记录": "Size not recorded",
+  "导出体检报告": "Export checkup report",
+  "平台": "Platform",
+  "开始体检": "Run checkup",
+  "归档体检只读取项目清单和文件大小，不会删除、移动或修复任何文件。": "The archive checkup only reads project manifests and file sizes. It never deletes, moves or repairs anything.",
+  "归档目录里还没有项目。": "No projects in the archive yet.",
+  "按项目统计": "By project",
+  "无法读取的项目清单 ·": "Unreadable project manifests ·",
+  "未登记": "Unregistered",
+  "未登记文件": "Unregistered files",
+  "未登记文件（不在项目清单里）·": "Unregistered files (not in the project manifest) ·",
+  "本次体检没有发现问题。": "No problems found in this checkup.",
+  "正在扫描归档…": "Scanning the archive…",
+  "登记文件": "Registered files",
+  "磁盘占用": "Disk usage",
+  "缺失": "Missing",
+  "缺失文件": "Missing files",
+  "缺失文件（记录存在，磁盘上找不到）·": "Missing files (recorded but not on disk) ·",
+  "路径不安全的登记项 ·": "Unsafe registered paths ·",
+  "还没有扫描。体检不会读取视频内容，只核对文件是否存在、大小是否与清单一致，并按记录的 SHA-256 找出重复内容。": "Not scanned yet. The checkup does not read video content; it verifies existence and size against the manifest and finds duplicates by recorded SHA-256.",
+  "重复内容（相同 SHA-256）·": "Duplicate content (same SHA-256) ·",
+  "重复组": "Duplicate groups",
+  "重新扫描": "Scan again",
+  "项目": "Projects",
+  "“未登记文件”不等于垃圾：可能是手动放入的素材、旧版本或改名遗留。体检不提供一键清理，删除任何文件前请先备份。": "“Unregistered files” are not necessarily junk: they may be manually added material, old versions or leftovers from a rename. The checkup has no one-click cleanup; back up before deleting anything.",
+  "本机 agent 的调用不按 token 计费，费用记作 0。": "Native agent calls are not billed per token; their cost is recorded as 0.",
+  "估算费用": "Estimated cost",
+  "全部时间": "All time",
+  "尚未填写输入／输出单价，只能统计 token，无法估算费用。": "Input/output prices are not set, so only tokens can be counted; cost cannot be estimated.",
+  "按天": "By day",
+  "按模型": "By model",
+  "按用途": "By purpose",
+  "按项目": "By project",
+  "暂无用量记录。完成一次 AI 分析、追问或对话后会在这里汇总。": "No usage recorded yet. Totals appear here after an AI analysis, follow-up or conversation.",
+  "正在读取用量…": "Loading usage…",
+  "涉及项目": "Projects",
+  "用途": "Purpose",
+  "统计范围": "Range",
+  "读取用量失败。": "Could not load usage.",
+  "调用": "Calls",
+  "调用次数": "Calls",
+  "费用": "Cost",
+  "费用按当前单价估算，历史调用的实际账单以服务商为准。": "Costs are estimated with the current prices; actual bills from the provider take precedence.",
+  "费用未知": "Cost unknown",
+  "输入": "Input",
+  "输入 tokens": "Input tokens",
+  "输出": "Output",
+  "输出 tokens": "Output tokens",
+  "近 30 天": "Last 30 days",
+  "近 7 天": "Last 7 days",
+  "近 90 天": "Last 90 days",
+  "分析": "Analysis",
+  "对话": "Chat",
+  "翻译": "Translation",
+  "选帧规划": "Frame planning",
+  "未记录": "Not recorded",
+  "未命名项目": "Untitled project",
+  "仅统计已归档的分析、追问、对话、选帧规划，以及已归档到项目的 AI 翻译；旧版记录和未归档到项目的翻译、命名、对话标题生成没有保存 token 用量，因此不计入。费用按当前单价估算，实际账单以服务商为准。": "Only archived analyses, follow-ups, conversations, frame planning and AI translations saved into a project are counted. Legacy records, translations not saved into a project, naming and conversation titles do not store token usage, so they are excluded. Costs use the current prices; actual provider bills take precedence."
  },
  "patterns": [
+  [
+   "^· 正确答案 (.+)\\. (.+)$",
+   "· Correct answer {1|raw}. {2|raw}"
+  ],
+  [
+   "^第 (\\d+) 题选项$",
+   "Options for question $1"
+  ],
+  [
+   "^答对 (\\d+) / (\\d+) 题 · 共 (\\d+) 题$",
+   "$1/$2 correct · $3 questions"
+  ],
+  [
+   "^跳到第 (\\d+) 题的时间点 (.+)$",
+   "Jump to the time point of question $1 ({2|raw})"
+  ],
+  [
+   "^共 (\\d+) 项，仅显示前 (\\d+) 项。$",
+   "$1 items; showing the first $2."
+  ],
+  [
+   "^实际 (.+)$",
+   "Actual {1|raw}"
+  ],
+  [
+   "^记录 (.+)$",
+   "Recorded {1|raw}"
+  ],
+  [
+   "^最近 (\\d+) 天的 token 用量$",
+   "Token usage over the last $1 days"
+  ],
+  [
+   "^归档位置：(.+) · 扫描耗时 (\\d+) 毫秒$",
+   "Archive: {1|raw} · scanned in $2 ms"
+  ],
+  [
+   "^共 (\\d+) 个项目，仅显示占用最大的 100 个。$",
+   "$1 projects; showing the 100 largest."
+  ],
+  [
+   "^相同内容 (\\d+) 份$",
+   "$1 copies of the same content"
+  ],
+  [
+   "^约 ¥(.+)$",
+   "approx. ¥{1|raw}"
+  ],
   [
    "(.+) 新名称",
    "{1|raw} new name"

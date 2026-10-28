@@ -78,6 +78,23 @@ class TranslationStatusTests(unittest.TestCase):
         self.assertEqual(self.client.get(f'/api/workspace/projects/{self.pid}/subtitles', params={'subtitle_resource': '../private'}).status_code, 404)
         self.model.assert_called_once()
 
+    def test_archived_translation_records_batch_usage_once(self):
+        def reply(messages, *args, **kwargs):
+            rows = json.loads(messages[1]['content'])['items']
+            return SimpleNamespace(text=json.dumps({'items': [{'index': row['index'], 'text': '你好，世界。'} for row in rows]}),
+                                   model='synthetic', usage={'prompt_tokens': 100, 'completion_tokens': 20})
+        with patch.object(model_calls, 'call', side_effect=reply):
+            job = self.finish(translations.start(self.reference, 'zh', True))
+        self.assertEqual(job.state, 'completed')
+        resources = [info for info in library.get(self.pid)['resources'].values()
+                     if info['kind'] == 'translation' and info.get('usage')]
+        self.assertEqual(len(resources), 1, 'the srt copy must not double-count the batch sum')
+        self.assertEqual(resources[0]['usage'], {'prompt_tokens': 100, 'completion_tokens': 20})
+        from video_parser.services import usage_report
+        report = usage_report.collect(0)
+        translation = next(row for row in report['by_kind'] if row['kind'] == 'translation')
+        self.assertEqual((translation['calls'], translation['prompt_tokens'], translation['completion_tokens']), (1, 100, 20))
+
     def test_archive_restores_translation_without_task_and_learning_lists_chinese(self):
         from video_parser.services import ai_analysis
         from video_parser.web import analysis_routes

@@ -17,7 +17,7 @@ import time
 from uuid import uuid4
 
 from video_parser.core.paths import ROOT, CACHE_DIR
-from video_parser.services import ai_settings, library
+from video_parser.services import ai_settings, anki_export, library, quiz
 
 PREVIEW_ROOT = CACHE_DIR / 'analysis-preview'
 PREVIEW_TTL = 6 * 3600
@@ -63,6 +63,16 @@ TEMPLATES = {
         'prompt': '请把这个视频整理成一份学习笔记，使用以下结构：\n## 主题概览\n'
                   '## 知识点（按讲解顺序，写清定义、推导或例子，并标出时间点）\n## 关键公式或结论（如有）\n'
                   '## 容易混淆或出错的地方\n## 复习自测题（3～5 道，附简短答案）',
+    },
+    'quiz': {
+        'name': '复习自测题', 'description': '结构化选择题，可逐题作答并导出 Anki', 'source': 'transcript', 'requires': 'transcript',
+        'prompt': '请根据视频内容出 6～10 道复习自测题，覆盖主要知识点，由易到难。\n'
+                  '只输出一个 ```json 代码块，不要输出任何其他文字。JSON 结构：\n'
+                  '{"title":"这套题的标题","questions":[{"question":"题干","options":["选项内容","选项内容","选项内容","选项内容"],'
+                  '"answer":"A","explanation":"为什么选它，以及常见错误","time":192}]}\n'
+                  '要求：每题 4 个选项且只有一个正确答案；answer 只写选项字母 A/B/C/D；'
+                  '判断题也写成两个选项（A. 正确、B. 错误）；time 是该知识点在视频中的秒数，无法确定时写 null；'
+                  '题干、选项和解析都用简体中文；不要编造材料里没有的内容；不要使用 Markdown 或注释。',
     },
     'breakdown': {
         'name': '短视频拆解', 'description': '开头钩子、结构节奏、镜头和文案', 'source': 'both',
@@ -597,12 +607,15 @@ def _record(project, name, item):
     frames = [{'url': base + frame['path'], 'time': frame['time'], 'label': ts(frame['time'])}
               for frame in item.get('frames') or [] if frame.get('path') in project['resources']]
     source = item.get('source') or 'frames'
+    agent = item.get('agent') if isinstance(item.get('agent'), dict) else {}
+    engine = agent.get('engine') if agent.get('engine') in ('api', 'claude', 'codex', 'opencode') else 'api'
     return {'id': record_id, 'created_at': item.get('created_at') or _batch_time(record_id), 'template': template if not legacy else 'legacy',
             'template_name': TEMPLATES[template]['name'] if not legacy else '画面分析（旧版）', 'source': source,
             'source_label': SOURCES.get(source, '只用画面'), 'prompt': item.get('prompt') or '', 'model': item.get('model') or '',
-            'provider': item.get('provider') or '', 'transcript_label': item.get('transcript_label') or '',
+            'provider': item.get('provider') or '', 'engine': engine, 'transcript_label': item.get('transcript_label') or '',
             'transcript_merged': bool(item.get('transcript_merged')), 'video_resource': item.get('video_resource'),
             'frame_count': item.get('frame_count') or len(frames), 'frames': frames, 'usage': item.get('usage') or {},
+            'quiz': quiz.parse(text) if template == 'quiz' and text else None,
             'text': text, 'followups': followups(project, record_id), 'context_after': item.get('context_after'), 'legacy': legacy}
 
 
@@ -658,10 +671,32 @@ def export_markdown(project_id, record_id):
         lines.append(f"- 原始链接：{project['source_url']}")
     if data['prompt']:
         lines.append(f"- 补充要求：{data['prompt']}")
-    lines += ['', data['text'].strip()]
+    body = quiz.markdown(data['quiz']) if data.get('quiz') else data['text'].strip()
+    lines += ['', body]
     if data['followups']:
         lines += ['', '## 追问']
         for item in data['followups']:
             lines += ['', f"### 问：{item['question']}", '', item['answer'].strip()]
     filename = library.safe_name(f"{project['title']}_{data['template_name']}")
     return '\n'.join(lines) + '\n', filename
+
+
+def export_anki(project_id, record_id):
+    """Structured quiz → Anki Basic CSV. Refuses records without a usable quiz."""
+    project = library.get(project_id)
+    data = record(project_id, record_id)
+    if not data.get('quiz'):
+        raise ValueError('这条记录没有可导出的结构化自测题，请先用“复习自测题”模板重新生成。')
+    cards = quiz.cards(data['quiz'], project['title'], project.get('source_url') or '')
+    return anki_export.cards_csv(cards), library.safe_name(f"{project['title']}_{data['template_name']}_Anki")
+
+
+def export_quiz_csv(project_id, record_id):
+    """Structured quiz → spreadsheet CSV (question, options, answer, explanation, time)."""
+    project = library.get(project_id)
+    data = record(project_id, record_id)
+    if not data.get('quiz'):
+        raise ValueError('这条记录没有可导出的结构化自测题，请先用“复习自测题”模板重新生成。')
+    rows = quiz.csv_rows(data['quiz'])
+    return (anki_export.table_csv(['题号', '题干', '选项', '答案', '解析', '时间点'], rows, bom=True),
+            library.safe_name(f"{project['title']}_{data['template_name']}"))

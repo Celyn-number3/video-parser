@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import re
-from video_parser.services import library
+from video_parser.services import anki_export, library
 
 MAX_TIME = 31 * 86400
 MAX_NOTES = 1000
@@ -132,3 +132,53 @@ def delete_note(identifier, resource, note_id, expected_revision):
         data['notes'][note_id] = {'id': note_id, 'revision': expected_revision + 1, 'deleted': True}
         return {'deleted': note_id}
     return mutate(identifier, resource, change)
+
+
+# ---- Export -------------------------------------------------------------------
+
+def clock(seconds):
+    total = max(0, int(seconds or 0))
+    hours, rest = divmod(total, 3600)
+    return f'{hours}:{rest // 60:02d}:{rest % 60:02d}' if hours else f'{rest // 60:02d}:{rest % 60:02d}'
+
+
+def _label(project):
+    return library.episode_title(project) or project.get('title') or '视频笔记'
+
+
+def export_filename(identifier):
+    return library.safe_name(f'{_label(library.get(identifier))}_笔记')
+
+
+def export_markdown(identifier, resource):
+    """Timestamped personal notes as a portable Markdown document."""
+    project = library.get(identifier)
+    rows = notes(identifier, resource)
+    title = _label(project)
+    lines = [f'# {title}', '', f'- 视频资源：{resource}', f'- 笔记数量：{len(rows)}']
+    if project.get('source_url'):
+        lines.append(f"- 原始链接：{project['source_url']}")
+    lines.append('')
+    for note in rows:
+        lines += [f"## [{clock(note['time'])}]", '', note['text'], '']
+    return '\n'.join(lines).rstrip() + '\n', library.safe_name(f'{title}_笔记')
+
+
+def note_cards(identifier, resource):
+    """Anki Basic cards: the note is the prompt; the video and time stamp are the source."""
+    project = library.get(identifier)
+    title = _label(project)
+    url = project.get('source_url') or ''
+    link = f"<div><a href='{anki_export.html(url)}'>{anki_export.html(url)}</a></div>" if re.match(r'^https?://', url) else ''
+    rows = []
+    for note in notes(identifier, resource):
+        back = [f"<div>时间点：{clock(note['time'])}</div>", f'<div>来源：{anki_export.html(title)}</div>']
+        if link: back.append(link)
+        rows.append({'front': f"<div>{anki_export.html(note['text'])}</div>", 'back': ''.join(back), 'tags': 'video-parser::notes'})
+    return rows
+
+
+def notes_csv(identifier, resource):
+    """Spreadsheet export: time, note, created time."""
+    rows = [[clock(note['time']), note['text'], note.get('created_at') or ''] for note in notes(identifier, resource)]
+    return anki_export.table_csv(['时间点', '笔记', '创建时间'], rows, bom=True)

@@ -132,6 +132,11 @@ export default function TimestampNotes({ projectId, media, videoRef, onSeek }: P
     <div className="timestamp-notes-heading"><strong>个人笔记</strong>
       {draft && !editorOpen && draft.dirty && <button type="button" disabled={saving} onClick={() => { setEditorOpen(true); requestAnimationFrame(() => editor.current?.focus()); }}>继续编辑</button>}
       <button type="button" disabled={loading || saving} onClick={() => { void start(); }}>记下当前时刻</button></div>
+    {!!notes.length && <div className="timestamp-notes-tools" aria-label="导出个人笔记">
+      <a className="button" download href={`/api/workspace/projects/${projectId}/study/notes/export?resource=${encodeURIComponent(media.resource)}&format=md`}>导出笔记</a>
+      <a className="button" download href={`/api/workspace/projects/${projectId}/study/notes/export?resource=${encodeURIComponent(media.resource)}&format=csv`}>导出 CSV</a>
+      <a className="button" download href={`/api/workspace/projects/${projectId}/study/notes/export?resource=${encodeURIComponent(media.resource)}&format=anki`}>导出 Anki</a>
+    </div>}
     {(loading || draft || error) && <p className="study-save-status" role="status">{status}</p>}
     {!loading && !draft && !error && !notes.length && <p className="study-save-status">还没有个人笔记，点击“记下当前时刻”记录当前播放时刻。</p>}
     {error && <div className="study-error" role="alert"><p>{error}</p>

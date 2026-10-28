@@ -28,6 +28,10 @@ from video_parser.web.naming_routes import router as naming_router
 app.include_router(naming_router)
 from video_parser.web.embedding_routes import router as embedding_router
 app.include_router(embedding_router)
+from video_parser.web.usage_routes import router as usage_router
+app.include_router(usage_router)
+from video_parser.web.archive_routes import router as archive_router
+app.include_router(archive_router)
 
 @app.on_event('startup')
 def restore_task_history():
