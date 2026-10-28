@@ -24,7 +24,7 @@ def read_input(reference):
     else:
         project = library.get(reference['project_id'])
         info = project['resources'].get(reference['resource']) or {}
-        if info.get('kind') not in ('subtitle', 'transcription') or Path(reference['resource']).suffix.lower() not in ('.srt', '.vtt', '.txt'):
+        if info.get('kind') not in library.TRANSCRIPT_KINDS or Path(reference['resource']).suffix.lower() not in ('.srt', '.vtt', '.txt'):
             raise ValueError('只能翻译已校验的原字幕或转写结果。')
         if reference.get('video_resource'):
             video = reference['video_resource']
