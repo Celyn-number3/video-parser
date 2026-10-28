@@ -163,13 +163,14 @@ def transcript_label(item):
     if item['kind'] == 'subtitle':
         return '平台字幕'
     language = item.get('language') or ''
-    return ('AI 翻译' if item['kind'] == 'translation' else '本地转写') + (f'（{LANGUAGES.get(language, language)}）' if language else '')
+    name = {'translation': 'AI 翻译', 'correction': '人工校对'}.get(item['kind'], '本地转写')
+    return name + (f'（{LANGUAGES.get(language, language)}）' if language else '')
 
 
 def transcript_sources(project, include_translations=False):
     rows = []
     for name, item in project['resources'].items():
-        if item['kind'] not in (('subtitle', 'transcription', 'translation') if include_translations else ('subtitle', 'transcription')) or Path(name).suffix.lower() not in ('.srt', '.vtt'):
+        if item['kind'] not in ((*library.TRANSCRIPT_KINDS, 'translation') if include_translations else library.TRANSCRIPT_KINDS) or Path(name).suffix.lower() not in ('.srt', '.vtt'):
             continue
         try:
             cues = parse_cues(library.resource_from_project(project, name).read_text(encoding='utf-8', errors='replace'))
@@ -186,7 +187,7 @@ def transcript_sources(project, include_translations=False):
 
 def load_transcript(project, resource):
     item = project['resources'].get(resource)
-    if not item or item['kind'] not in ('subtitle', 'transcription'):
+    if not item or item['kind'] not in library.TRANSCRIPT_KINDS:
         raise AnalysisError('所选字幕不属于这个视频，请重新选择。')
     cues = parse_cues(library.resource_from_project(project, resource).read_text(encoding='utf-8', errors='replace'))
     if not cues:

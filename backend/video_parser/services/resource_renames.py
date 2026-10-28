@@ -85,7 +85,7 @@ def _file_stat(path):
     return {'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns, 'inode': stat.st_ino, 'device': stat.st_dev}
 
 
-SUBTITLE_KINDS = {'subtitle', 'transcription', 'translation'}
+SUBTITLE_KINDS = {'subtitle', 'transcription', 'translation', 'correction'}
 SUBTITLE_EXTENSIONS = {'.srt', '.vtt', '.ass', '.ssa', '.txt', '.md', '.json'}
 JOINT_SCOPE = 'video_subtitles'
 

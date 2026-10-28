@@ -1681,7 +1681,16 @@
   "读取原字幕失败。": "Could not read the original subtitle.",
   "AI翻译字幕": "AI translation",
   "时间未记录": "Time not recorded",
-  "来源待核对": "Source to verify"
+  "来源待核对": "Source to verify",
+  "人工校对": "Proofread",
+  "人工校对字幕": "Proofread subtitles",
+  "未保存": "Unsaved",
+  "放弃修改": "Discard changes",
+  "正在保存…": "Saving…",
+  "Ctrl+Enter 完成 · Esc 取消": "Ctrl+Enter to finish \u00b7 Esc to cancel",
+  "双击（或按 F2）任意条目可校对；保存会新增「-校对」版本，原字幕文件不变。": "Double-click a line (or press F2) to proofread. Saving adds a proofread version; the original file stays unchanged.",
+  "单条字幕不能为空；如需删除整条，请保留原文后另行处理。": "A subtitle line cannot be empty. To drop a line, keep its text and handle it separately.",
+  "保存校对版本失败，请重试。": "Could not save the proofread version. Please try again."
  },
  "patterns": [
   [
@@ -2214,6 +2223,18 @@
   [
    "^（版本(.+)）$",
    " (version $1)"
+  ],
+  [
+   "^保存为新版本（(\\d+) 处修改）$",
+   "Save as new version ({1|raw} edits)"
+  ],
+  [
+   "^已另存校对版本「(.+)」，原字幕未改动。$",
+   "Saved proofread version \"{1|raw}\"; the original is unchanged."
+  ],
+  [
+   "^校对第 (\\d+) 条字幕$",
+   "Proofread subtitle {1|raw}"
   ]
  ]
 }

@@ -24,8 +24,9 @@ def base_title(project_id, fallback, owned_input=False):
 
 def suffix(kind, language='', source_kind=None, platform='bilibili'):
     origin = source_kind if kind == 'translation' else kind
-    label = ('本地转写' if origin == 'transcription' else
-             ('B站平台字幕' if platform == 'bilibili' else '平台字幕') if origin == 'subtitle' else '来源未确认')
+    # A correction is a proofread copy of another subtitle, not a new source of its own.
+    label = {'transcription': '本地转写', 'correction': '校对',
+             'subtitle': 'B站平台字幕' if platform == 'bilibili' else '平台字幕'}.get(origin, '来源未确认')
     parts = [language_label(language)]
     if kind == 'translation': parts.append('AI译文')
     parts.append(label)

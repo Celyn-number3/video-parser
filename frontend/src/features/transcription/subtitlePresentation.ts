@@ -1,9 +1,9 @@
 import type { SubtitleVersion } from '../../lib/api';
 
-export const subtitleFunctions: Record<string, string> = { platform: '平台下载字幕', local: '本地生成字幕', translation: 'AI翻译字幕', unknown: '来源未确认' };
+export const subtitleFunctions: Record<string, string> = { platform: '平台下载字幕', local: '本地生成字幕', corrected: '人工校对字幕', translation: 'AI翻译字幕', unknown: '来源未确认' };
 const languages: Record<string, string> = { zh: '中文', 'zh-CN': '中文', en: '英文', ja: '日语', yue: '粤语' };
 export const subtitleLanguage = (code?: string) => code ? languages[code] || code : '语言未标注';
-export const subtitleOrigin = (row: SubtitleVersion) => row.origin || (row.kind === 'transcription' ? 'local' : row.kind === 'translation' ? 'translation' : 'unknown');
+export const subtitleOrigin = (row: SubtitleVersion) => row.origin || (row.kind === 'transcription' ? 'local' : row.kind === 'correction' ? 'corrected' : row.kind === 'translation' ? 'translation' : 'unknown');
 export const subtitleGroup = (row: SubtitleVersion) => row.version_id || row.resource;
 export const subtitleFormat = (row: SubtitleVersion) => row.format || row.filename.split('.').pop()?.toUpperCase() || '字幕';
 export function subtitleGroups(rows: SubtitleVersion[]) {

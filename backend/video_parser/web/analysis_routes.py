@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from video_parser.services import ai_analysis, conversations, ai_settings, ai_startup, ai_runtime, ai_files, docx_export, library, task_runtime, workflows, local_agents, model_calls
+from video_parser.services import ai_analysis, conversations, ai_settings, ai_startup, ai_runtime, ai_files, docx_export, library, task_runtime, workflows, local_agents, model_calls, subtitle_edits
 from video_parser.web import routes
 from video_parser.web.security import local_request
 
@@ -261,6 +261,31 @@ def subtitle_cues(project_id: str, resource: str = ''):
     path = handled(library.resource_from_project, project, chosen)
     cues = handled(ai_analysis.parse_cues, path.read_text(encoding='utf-8', errors='replace'), True)
     return {'sources': sources, 'resource': chosen, 'cues': [{'time': time, 'text': text} for time, text in cues]}
+
+
+class CueEditBody(BaseModel):
+    model_config = {'extra': 'forbid'}
+    time: float = Field(ge=0, le=1000000)
+    text: str = Field(min_length=1, max_length=subtitle_edits.MAX_CUE_CHARS)
+
+
+class SubtitleEditBody(BaseModel):
+    model_config = {'extra': 'forbid'}
+    resource: str = Field(min_length=1, max_length=1000)
+    edits: list[CueEditBody] = Field(min_length=1, max_length=2000)
+
+
+@router.post('/projects/{project_id}/subtitle-edits')
+def save_subtitle_edits(project_id: str, body: SubtitleEditBody):
+    """校对结果另存为新版本；原字幕文件保持不变。"""
+    try:
+        return subtitle_edits.save(project_id, body.resource, [{'time': item.time, 'text': item.text} for item in body.edits])
+    except KeyError:
+        raise HTTPException(404, '找不到这个视频项目或字幕，请刷新后重试。') from None
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from None
+    except OSError:
+        raise HTTPException(507, '无法写入校对版本，请检查磁盘空间与目录权限。') from None
 
 
 @router.get('/projects/{project_id}/analysis/context')

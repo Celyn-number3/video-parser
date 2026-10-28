@@ -118,7 +118,7 @@ def filename_labels():
             name = resource(pid, key, fallback)
             if not name: return
             resource_kind = info.get('kind')
-            role = role or {'video': 'video', 'subtitle': 'subtitle', 'transcription': 'transcription', 'translation': 'translation'}.get(resource_kind, 'file')
+            role = role or {'video': 'video', 'subtitle': 'subtitle', 'transcription': 'transcription', 'translation': 'translation', 'correction': 'subtitle'}.get(resource_kind, 'file')
             if role == 'video' and PureWindowsPath(name).suffix.lower() in {'.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus'}: role = 'audio'
             files[(pid, key or str(fallback), role, part)] = {'project_id': pid, 'part': project(pid).get('part') or part, 'role': role, 'name': name}
 

@@ -18,6 +18,8 @@ from video_parser.core.paths import ROOT, canonical
 
 LIBRARY_ROOT = Path(os.getenv('VIDEO_LIBRARY_ROOT', ROOT / 'outputs'))
 PLATFORMS = {'哔哩哔哩': 'bilibili', '抖音': 'douyin', '小红书': 'xiaohongshu', 'YouTube': 'youtube'}
+# Kinds that carry readable subtitle text: originals, local transcripts and proofread copies.
+TRANSCRIPT_KINDS = ('subtitle', 'transcription', 'correction')
 MAX_EPISODES = 500
 MAX_PART = 100000
 
@@ -294,7 +296,7 @@ def resource_path(project, relative):
     storage = info.get('storage_path', relative)
     if not isinstance(storage, str) or '\\' in storage or '\0' in storage:
         raise ValueError('Unsafe resource storage path')
-    if storage != relative and (info.get('kind') not in ('video', 'subtitle', 'transcription', 'translation') or Path(storage).parent != Path(relative).parent
+    if storage != relative and (info.get('kind') not in ('video', *TRANSCRIPT_KINDS, 'translation') or Path(storage).parent != Path(relative).parent
                                 or Path(storage).suffix.lower() != Path(relative).suffix.lower()):
         raise ValueError('Storage aliases may only rename a registered media resource within its original folder')
     return contained(project['directory'], storage)
@@ -487,10 +489,10 @@ def rename(identifier, title):
 
 
 def subtitle_records(project, video_resource=None):
-    """Verified ORIGINAL captions, shared by list badges, previews and episode inventory."""
+    """Verified original captions plus proofread copies, shared by list badges, previews and inventory."""
     records = []
     for name, info in project.get('resources', {}).items():
-        if not isinstance(info, dict) or info.get('kind') not in ('subtitle', 'transcription'): continue
+        if not isinstance(info, dict) or info.get('kind') not in TRANSCRIPT_KINDS: continue
         if Path(name).suffix.lower() not in ('.srt', '.vtt', '.txt'): continue
         if video_resource and info.get('video_resource') not in (None, '', video_resource): continue
         try:
@@ -498,14 +500,15 @@ def subtitle_records(project, video_resource=None):
             if not path.stat().st_size or path.stat().st_size > 2 * 1024 * 1024: continue
         except (OSError, ValueError, KeyError, TypeError): continue
         records.append({'resource': name, 'kind': info['kind'], 'filename': info.get('download_name') or path.name,
-                        'language': info.get('language') or '', 'origin': ('local' if info['kind'] == 'transcription' else 'platform' if project.get('platform') == 'bilibili' else 'unknown'), 'sha256': info.get('sha256'), 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
+                        'language': info.get('language') or '', 'origin': {'transcription': 'local', 'correction': 'corrected'}.get(
+                            info['kind'], 'platform' if project.get('platform') == 'bilibili' else 'unknown'), 'sha256': info.get('sha256'), 'url': f"/api/workspace/projects/{project['id']}/files/{name}"})
     return sorted(records, key=lambda row: (row['kind'] != 'subtitle', Path(row['resource']).suffix.lower() == '.txt', row['resource']))
 
 
 def translation_records(project, video_resource=None, source_resource=None):
     """Verified published translations. Never infer association from a filename/title."""
     source = project.get('resources', {}).get(source_resource, {}) if source_resource else None
-    if source is not None and source.get('kind') not in ('subtitle', 'transcription'): return []
+    if source is not None and source.get('kind') not in TRANSCRIPT_KINDS: return []
     if source is not None:
         try: source_hash = digest(resource_from_project(project, source_resource))
         except (OSError, ValueError, KeyError): return []
@@ -526,7 +529,7 @@ def translation_records(project, video_resource=None, source_resource=None):
         if not parent_key and info.get('source_sha256'):
             candidates = []
             for key, candidate in project.get('resources', {}).items():
-                if candidate.get('kind') not in ('subtitle', 'transcription') or candidate.get('sha256') != info['source_sha256']: continue
+                if candidate.get('kind') not in TRANSCRIPT_KINDS or candidate.get('sha256') != info['source_sha256']: continue
                 if info.get('video_resource') and candidate.get('video_resource') not in (None, '', info['video_resource']): continue
                 try:
                     if digest(resource_from_project(project, key)) == info['source_sha256']: candidates.append(key)
@@ -536,17 +539,17 @@ def translation_records(project, video_resource=None, source_resource=None):
         # A legacy/missing/stale parent is explicitly unknown, not guessed from
         # the language or filename. Validate the recorded hash if present.
         parent_kind = parent.get('kind')
-        if parent_kind in ('subtitle', 'transcription'):
+        if parent_kind in TRANSCRIPT_KINDS:
             try:
                 parent_path = resource_from_project(project, parent_key)
                 if info.get('source_sha256') and digest(parent_path) != info['source_sha256']:
                     parent_kind = None
             except (OSError, ValueError, KeyError): parent_kind = None
-        parent_origin = 'local' if parent_kind == 'transcription' else 'platform' if parent_kind == 'subtitle' and project.get('platform') == 'bilibili' else 'unknown'
+        parent_origin = {'transcription': 'local', 'correction': 'corrected'}.get(parent_kind, 'platform' if parent_kind == 'subtitle' and project.get('platform') == 'bilibili' else 'unknown')
         rows.append({'resource': name, 'filename': info.get('download_name') or path.name, 'kind': 'translation', 'origin': 'translation',
                      'source_resource': parent_key, 'source_origin': parent_origin,
                      'source_resolution': resolution if parent_origin != 'unknown' else 'unknown',
-                     'source_language': (parent.get('language') or '') if parent_kind in ('subtitle', 'transcription') else '', 'sha256': info.get('sha256'), 'language': info.get('language') or '',
+                     'source_language': (parent.get('language') or '') if parent_kind in TRANSCRIPT_KINDS else '', 'sha256': info.get('sha256'), 'language': info.get('language') or '',
                      'url': f"/api/workspace/projects/{project['id']}/files/{name}",
                      'location': 'outputs/' + path.relative_to(LIBRARY_ROOT).as_posix(), 'modified': path.stat().st_mtime})
     return sorted(rows, key=lambda row: (-row['modified'], Path(row['resource']).suffix.lower() == '.txt', row['resource']))
